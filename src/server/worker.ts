@@ -2,6 +2,7 @@ import type { PgBoss as PgBossType } from "pg-boss";
 import { PgBoss } from "pg-boss";
 import { env } from "@/config/env";
 import { registerReminderWorker } from "@/features/activities/reminders";
+import { registerCalendarSyncJob } from "@/features/calendar-feeds/syncJob";
 import { registerEmailJobs } from "@/features/email/workerJobs";
 import { registerReaperJob } from "@/features/files/reaper";
 import { registerImportWorkers } from "@/features/import/registerImportWorkers";
@@ -25,6 +26,7 @@ export async function registerAllJobs(boss: PgBossType): Promise<void> {
   await registerReleaseCheckJob(boss);
   await registerIntercomSyncJob(boss);
   await registerXSyncJob(boss);
+  await registerCalendarSyncJob(boss);
 }
 
 // Compose `worker` service. Boots pg-boss, publishes the singleton so producers

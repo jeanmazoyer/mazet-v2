@@ -15,6 +15,7 @@ export const PGBOSS_QUEUE_EMAIL_SEND = "email.send.process";
 export const EMAIL_JOB_RETRY_LIMIT = 8;
 
 export const PGBOSS_QUEUE_FILE_REAPER = "file.reaper";
+export const PGBOSS_QUEUE_CALENDAR_SYNC = "calendar.sync";
 
 // Notification email delivery: payload is { notificationId: string }.
 // Task 7 registers the worker that consumes this queue.

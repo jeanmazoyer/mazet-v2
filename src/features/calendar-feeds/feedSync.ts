@@ -68,7 +68,16 @@ export async function syncCalendarFeed(
 ): Promise<Result<SyncSummary, AppError>> {
   const denied = requireAdmin(actor);
   if (denied !== null) return err(denied);
+  return runFeedSync(db, feedId, fetchFeed, signal);
+}
 
+// The sync itself, without a person behind it: the scheduled job runs it for every enabled calendar.
+export async function runFeedSync(
+  db: DbOrTx,
+  feedId: string,
+  fetchFeed: FeedFetch,
+  signal: AbortSignal,
+): Promise<Result<SyncSummary, AppError>> {
   const [feed] = await db.select().from(calendarFeeds).where(eq(calendarFeeds.id, feedId)).limit(1);
   if (feed === undefined) return err(new AppError(ERROR_IDS.FEED_NOT_FOUND, "Calendar not found"));
 
