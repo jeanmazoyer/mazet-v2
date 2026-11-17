@@ -28,7 +28,8 @@ l'historique git, au commit `822f899`.
   ligne.
 - **Réglages par défaut** : télémétrie et vérification de mise à jour désactivées.
 - **Tests sans Docker** : `TEST_PG_URL` permet de lancer les tests d'intégration sur un
-  PostgreSQL déjà installé.
+  PostgreSQL déjà installé. Cette exécution demande environ 15 Go de disque libre et supprime,
+  avant et après, toutes les bases nommées `t_` suivies de 32 caractères hexadécimaux.
 
 ### Ce qui n'a pas été repris de l'archive
 

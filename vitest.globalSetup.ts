@@ -40,11 +40,30 @@ declare module "vitest" {
 
 let container: StartedPostgreSqlContainer | undefined;
 
+// makeTestDb() names every per-test clone t_<32 hex>. It never drops them: with Testcontainers
+// the whole server is thrown away. On a server that outlives the run they would pile up (about
+// 2,000 databases, over 10 GB, per run), so this mode sweeps them itself.
+const TEST_DB_NAME = "^t_[0-9a-f]{32}$";
+
+async function dropTestDatabases(adminPool: Pool): Promise<void> {
+  const { rows } = await adminPool.query<{ datname: string }>(
+    "SELECT datname FROM pg_database WHERE datname ~ $1",
+    [TEST_DB_NAME],
+  );
+  for (const { datname } of rows) {
+    // The name matched the strict pattern above, so quoting it is all the escaping it needs.
+    await adminPool.query(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
+  }
+}
+
 // Optional escape hatch for machines without a container runtime: point TEST_PG_URL at an
 // existing Postgres (a role that may CREATE DATABASE) and the integration lane uses it instead
 // of starting a Testcontainers instance. Same real Postgres, same migrations, same per-test
 // clones; only the server's lifecycle differs. Lower --maxWorkers if the server's
 // max_connections is small (the container is started with 300).
+// Caveats: every database named t_<32 hex> on that server is treated as a leftover and dropped,
+// before the run (a crashed run's debris) and after it, so do not run two lanes against the same
+// server at once; and the run needs roughly 15 GB of free disk while it is in flight.
 async function setupOnExistingServer(
   project: TestProject,
   url: string,
@@ -59,6 +78,7 @@ async function setupOnExistingServer(
   };
 
   const adminPool = new Pool({ ...base, database: adminDatabase, max: 2 });
+  await dropTestDatabases(adminPool);
   await adminPool.query(`DROP DATABASE IF EXISTS ${TEMPLATE_DB}`);
   await adminPool.query(`CREATE DATABASE ${TEMPLATE_DB}`);
 
@@ -74,6 +94,7 @@ async function setupOnExistingServer(
   project.provide("testPg", { ...base, adminDatabase, template: TEMPLATE_DB });
 
   return async () => {
+    await dropTestDatabases(adminPool);
     await adminPool.query(`DROP DATABASE IF EXISTS ${TEMPLATE_DB}`);
     await adminPool.end();
   };
