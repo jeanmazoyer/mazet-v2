@@ -9,7 +9,12 @@
     "save": "Save",
     "back": "Back",
     "saved": "Saved.",
-    "optional": "optional"
+    "optional": "optional",
+    "search": "Search a file or a client…",
+    "searchLabel": "Search",
+    "quickAdd": "New file",
+    "account": "Account",
+    "mainNav": "Main navigation"
   },
   "nav": {
     "dossiers": "Files",
@@ -20,7 +25,8 @@
     "fiche": "Event sheet",
     "journal": "Journal",
     "sectionWork": "Work",
-    "sectionAdmin": "Administration"
+    "sectionAdmin": "Administration",
+    "contacts": "Contacts"
   },
   "roles": {
     "admin": "Administrator",
@@ -105,6 +111,33 @@
         "expired": "Expired",
         "cancelled": "Cancelled"
       }
+    },
+    "count": "{count, plural, =0 {No files} one {# file} other {# files}}",
+    "lostLink": "{count, plural, one {# lost file} other {# lost files}}",
+    "dropLost": "Drop here to mark the file as lost",
+    "markLost": "Lost",
+    "reopen": "Reopen file",
+    "lostBanner": "This file is marked as lost.",
+    "move": "Move {ref}",
+    "searchResults": "Results for “{q}”",
+    "clearSearch": "Clear search",
+    "noResults": "No file matches.",
+    "stageBar": "File stage",
+    "allStatuses": "All",
+    "summary": "Summary",
+    "person": "Client",
+    "edit": "Edit record",
+    "history": "History",
+    "noHistory": "No events yet.",
+    "noteTab": "Note",
+    "historyActions": {
+      "dossier_created": "File created",
+      "dossier_updated": "Record edited",
+      "dossier_status_changed": "Stage: {from} → {to}",
+      "reservation_created": "Dates booked ({kind}): {start} – {end}",
+      "reservation_cancelled": "Booking cancelled",
+      "reservation_option_expired": "Option expired, dates released",
+      "other": "Action recorded"
     }
   },
   "journal": {
@@ -159,6 +192,20 @@
       "kind": "Kind",
       "expiresOn": "Option expires on",
       "create": "Book these dates"
+    }
+  },
+  "contacts": {
+    "title": "Contacts",
+    "subtitle": "The clients behind your files.",
+    "empty": "No contacts yet.",
+    "columns": {
+      "name": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "country": "Country",
+      "language": "Language",
+      "dossier": "File",
+      "status": "Stage"
     }
   }
 }

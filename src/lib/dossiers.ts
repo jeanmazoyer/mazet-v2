@@ -11,6 +11,10 @@ export const DOSSIER_STATUSES = [
 ] as const;
 export type DossierStatus = (typeof DOSSIER_STATUSES)[number];
 
+// Étapes du pipeline, dans l'ordre. « perdu » n'est pas une étape : c'est une issue.
+export const PIPELINE_STAGES = ["demande", "visite", "option", "devis_envoye", "signe", "solde"] as const;
+export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+
 export const DOSSIER_TYPES = ["mariage", "sejour", "autre"] as const;
 export type DossierType = (typeof DOSSIER_TYPES)[number];
 

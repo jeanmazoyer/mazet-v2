@@ -5,13 +5,20 @@ et les règles sont dans [BRIEF.md](./BRIEF.md).
 
 ## État actuel : étapes 1 à 3
 
-- **Socle** : connexion Google limitée aux comptes actifs de la base, interface FR/EN, thème noir et blanc (clair et sombre).
+- **Socle** : connexion Google limitée aux comptes actifs de la base, interface FR/EN, modes clair et sombre.
+- **Interface de type CRM** : barre supérieure (recherche, ajout rapide, compte), navigation sombre repliable, aucun défilement horizontal.
 - **Rôles** (administrateur, gestionnaire, partenaire) vérifiés côté serveur (`src/lib/permissions.ts`).
 - **Journal** en ajout seul, protégé par trigger SQL (`src/db/migrations/0001_journal_immutable.sql`).
-- **Dossiers** : tableau par statut (glisser-déposer, ou menu « Déplacer vers » au clavier et au toucher), vue liste, création, fiche avec contacts et fil de notes.
+- **Dossiers** : pipeline en six étapes (glisser-déposer, ou bouton « Déplacer » au clavier et au toucher), issue « Perdu » à part, vue liste filtrable, recherche, création.
+- **Fiche dossier** : barre d'étapes cliquable, résumé, client, réservations, notes et historique complet.
+- **Contacts** : la liste des clients et de leur dossier.
 - **Calendrier** : planning mensuel, options avec date d'expiration, réservations fermes. La double réservation est interdite par une contrainte d'exclusion Postgres (`src/db/migrations/0003_reservations_no_overlap.sql`), pas seulement par le code.
 
 Pas encore fait : export vers Google Agenda et import du calendrier Airbnb (iCal), puis les étapes 4 à 8 du brief.
+
+## Crédits
+
+La structure des écrans (pipeline, fiche dossier, navigation) s'inspire de warpdrive, projet open source sous licence MIT, © 2026 Nikita Sawinyh. Aucun fichier de ce projet n'est repris tel quel : le code est écrit pour cette application.
 
 ## Installation locale
 

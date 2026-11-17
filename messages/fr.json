@@ -9,7 +9,12 @@
     "save": "Enregistrer",
     "back": "Retour",
     "saved": "Enregistré.",
-    "optional": "facultatif"
+    "optional": "facultatif",
+    "search": "Rechercher un dossier, un client…",
+    "searchLabel": "Recherche",
+    "quickAdd": "Nouveau dossier",
+    "account": "Compte",
+    "mainNav": "Navigation principale"
   },
   "nav": {
     "dossiers": "Dossiers",
@@ -20,7 +25,8 @@
     "fiche": "Fiche événement",
     "journal": "Journal",
     "sectionWork": "Travail",
-    "sectionAdmin": "Administration"
+    "sectionAdmin": "Administration",
+    "contacts": "Contacts"
   },
   "roles": {
     "admin": "Administrateur",
@@ -105,6 +111,33 @@
         "expired": "Expirée",
         "cancelled": "Annulée"
       }
+    },
+    "count": "{count, plural, =0 {Aucun dossier} one {# dossier} other {# dossiers}}",
+    "lostLink": "{count, plural, one {# dossier perdu} other {# dossiers perdus}}",
+    "dropLost": "Déposer ici pour marquer le dossier comme perdu",
+    "markLost": "Perdu",
+    "reopen": "Rouvrir le dossier",
+    "lostBanner": "Ce dossier est marqué comme perdu.",
+    "move": "Déplacer {ref}",
+    "searchResults": "Résultats pour « {q} »",
+    "clearSearch": "Effacer la recherche",
+    "noResults": "Aucun dossier ne correspond.",
+    "stageBar": "Étape du dossier",
+    "allStatuses": "Tous",
+    "summary": "Résumé",
+    "person": "Client",
+    "edit": "Modifier la fiche",
+    "history": "Historique",
+    "noHistory": "Aucun événement pour l'instant.",
+    "noteTab": "Note",
+    "historyActions": {
+      "dossier_created": "Dossier créé",
+      "dossier_updated": "Fiche modifiée",
+      "dossier_status_changed": "Étape : {from} → {to}",
+      "reservation_created": "Dates réservées ({kind}) : {start} – {end}",
+      "reservation_cancelled": "Réservation annulée",
+      "reservation_option_expired": "Option expirée, dates libérées",
+      "other": "Action enregistrée"
     }
   },
   "journal": {
@@ -159,6 +192,20 @@
       "kind": "Nature",
       "expiresOn": "L'option expire le",
       "create": "Réserver ces dates"
+    }
+  },
+  "contacts": {
+    "title": "Contacts",
+    "subtitle": "Les clients de vos dossiers.",
+    "empty": "Aucun contact pour l'instant.",
+    "columns": {
+      "name": "Nom",
+      "email": "E-mail",
+      "phone": "Téléphone",
+      "country": "Pays",
+      "language": "Langue",
+      "dossier": "Dossier",
+      "status": "Étape"
     }
   }
 }

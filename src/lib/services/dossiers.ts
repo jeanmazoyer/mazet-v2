@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, dossierNotes, dossiers, organisations } from "@/db/schema";
+import { clients, dossierNotes, dossiers, journal, organisations } from "@/db/schema";
 import type { CurrentUser } from "@/lib/current-user";
 import {
   CLIENT_LANGUAGES,
@@ -63,7 +63,19 @@ function parseInput(input: DossierInput) {
 
 const actorOf = (actor: CurrentUser) => ({ id: actor.id, name: actor.name });
 
-export async function listDossiers(actor: CurrentUser): Promise<DossierListItem[]> {
+// Recherche sur le nom du client ou le numéro de dossier (« 12 », « D-0012 »).
+function searchFilter(q: string | undefined): SQL | undefined {
+  const text = q?.trim().slice(0, 100);
+  if (!text) return undefined;
+  const pattern = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const digits = /^(?:d-?)?0*(\d{1,9})$/i.exec(text)?.[1];
+  return digits ? or(ilike(clients.name, pattern), eq(dossiers.number, Number(digits))) : ilike(clients.name, pattern);
+}
+
+export async function listDossiers(
+  actor: CurrentUser,
+  filter: { q?: string; status?: DossierStatus } = {},
+): Promise<DossierListItem[]> {
   assertCan(actor.role, "dossier.read");
   return db
     .select({
@@ -78,8 +90,85 @@ export async function listDossiers(actor: CurrentUser): Promise<DossierListItem[
     })
     .from(dossiers)
     .innerJoin(clients, eq(clients.id, dossiers.clientId))
-    .where(eq(dossiers.organisationId, actor.organisationId))
+    .where(
+      and(
+        eq(dossiers.organisationId, actor.organisationId),
+        filter.status ? eq(dossiers.status, filter.status) : undefined,
+        searchFilter(filter.q),
+      ),
+    )
     .orderBy(asc(sql`${dossiers.targetDate} IS NULL`), asc(dossiers.targetDate), asc(dossiers.number));
+}
+
+export type ContactListItem = {
+  clientId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  country: string | null;
+  language: string;
+  dossierId: string;
+  dossierNumber: number;
+  dossierStatus: DossierStatus;
+};
+
+export async function listContacts(actor: CurrentUser): Promise<ContactListItem[]> {
+  assertCan(actor.role, "dossier.read");
+  return db
+    .select({
+      clientId: clients.id,
+      name: clients.name,
+      email: clients.email,
+      phone: clients.phone,
+      country: clients.country,
+      language: clients.language,
+      dossierId: dossiers.id,
+      dossierNumber: dossiers.number,
+      dossierStatus: dossiers.status,
+    })
+    .from(clients)
+    .innerJoin(dossiers, eq(dossiers.clientId, clients.id))
+    .where(eq(clients.organisationId, actor.organisationId))
+    .orderBy(asc(clients.name), asc(dossiers.number));
+}
+
+export type DossierHistoryEntry = {
+  id: string;
+  action: string;
+  actorName: string;
+  at: Date;
+  detail: Record<string, unknown> | null;
+};
+
+// Historique d'un dossier : les entrées du journal qui le concernent, y compris
+// celles de ses réservations. Lisible avec le droit de lire le dossier,
+// alors que le journal complet reste réservé à l'administrateur.
+export async function getDossierHistory(actor: CurrentUser, dossierId: string): Promise<DossierHistoryEntry[]> {
+  assertCan(actor.role, "dossier.read");
+  const [owned] = await db
+    .select({ id: dossiers.id })
+    .from(dossiers)
+    .where(and(eq(dossiers.id, dossierId), eq(dossiers.organisationId, actor.organisationId)))
+    .limit(1);
+  if (!owned) throw new NotFoundError("dossier");
+
+  return db
+    .select({
+      id: journal.id,
+      action: journal.action,
+      actorName: journal.actorName,
+      at: journal.at,
+      detail: journal.detail,
+    })
+    .from(journal)
+    .where(
+      and(
+        eq(journal.organisationId, actor.organisationId),
+        or(eq(journal.objectId, dossierId), sql`${journal.detail} ->> 'dossierId' = ${dossierId}`),
+      ),
+    )
+    .orderBy(desc(journal.at))
+    .limit(200);
 }
 
 export async function getDossier(actor: CurrentUser, dossierId: string) {

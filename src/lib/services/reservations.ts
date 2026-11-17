@@ -50,7 +50,7 @@ export async function expireStaleOptions(organisationId: string): Promise<number
           lt(reservations.optionExpiresAt, sql`now()`),
         ),
       )
-      .returning({ id: reservations.id });
+      .returning({ id: reservations.id, dossierId: reservations.dossierId });
 
     for (const r of expired) {
       await recordEvent(tx, {
@@ -59,6 +59,7 @@ export async function expireStaleOptions(organisationId: string): Promise<number
         action: "reservation.option_expired",
         objectType: "reservation",
         objectId: r.id,
+        detail: { dossierId: r.dossierId },
       });
     }
     return expired.length;
@@ -158,6 +159,7 @@ export async function cancelReservation(actor: CurrentUser, reservationId: strin
       action: "reservation.cancelled",
       objectType: "reservation",
       objectId: reservationId,
+      detail: { dossierId: current.dossierId },
     });
 
     return updated;
