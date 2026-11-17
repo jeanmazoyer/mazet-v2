@@ -7,6 +7,7 @@ import type { DealWorkspace } from "@/features/deal-workspace/summaryRepo";
 import { PresenceBar } from "@/features/presence/ui/PresenceBar";
 import { BlockVisibilityButton } from "./BlockVisibilityButton";
 import { DealActionsMenu } from "./DealActionsMenu";
+import { DealDocumentLinks } from "./DealDocumentLinks";
 import { EditableTitle } from "./EditableTitle";
 import { FollowersButton } from "./FollowersButton";
 import { OwnerBlock } from "./OwnerBlock";
@@ -111,6 +112,7 @@ export function DealHeader({
           currentStageName={currentStageName}
         />
       </div>
+      <DealDocumentLinks dealId={deal.id} />
     </div>
   );
 }
