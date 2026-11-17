@@ -3,6 +3,7 @@ import { PILL_TAB, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components
 import { STRINGS } from "@/constants/strings";
 import { PieceRow } from "@/features/deal-pieces/ui/PieceRow";
 import { trpc } from "@/lib/trpc-client";
+import { ContractDataForm } from "./ContractDataForm";
 import { CreateDocumentMenu } from "./CreateDocumentMenu";
 import { DocumentsList } from "./DocumentsList";
 import { DriveConnection } from "./DriveConnection";
@@ -39,6 +40,13 @@ export function DealDocumentsPanel({ dealId }: { dealId: string }): React.ReactN
           <TemplatesList />
         </TabsContent>
       </Tabs>
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-semibold uppercase text-muted-foreground">
+          {STRINGS.contractForm.title}
+        </h3>
+        <ContractDataForm dealId={dealId} />
+      </section>
 
       <section className="flex flex-col gap-2">
         <h3 className="text-xs font-semibold uppercase text-muted-foreground">

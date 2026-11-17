@@ -9,7 +9,7 @@ import { listPaymentLines } from "@/features/payments/paymentRepo";
 import { listPriceItems, listQuotes } from "@/features/quotes/quoteRepo";
 import { protectedProcedure, router } from "@/server/trpc/trpc";
 import type { Result } from "@/types/result";
-import { documentsRouter } from "./documentsRouter";
+import { contractRouter, documentsRouter } from "./documentsRouter";
 
 const dealInput = z.object({ dealId: z.string().uuid() });
 const READ_TIMEOUT_MS = 10_000;
@@ -50,4 +50,5 @@ export const dealDocumentsRouter = router({
   }),
   documents: documentsRouter.documents,
   templates: documentsRouter.templates,
+  contract: contractRouter,
 });

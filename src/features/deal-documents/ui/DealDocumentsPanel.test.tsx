@@ -42,6 +42,17 @@ vi.mock("@/lib/trpc-client", () => ({
       templates: {
         list: { useQuery: () => ({ data: [], isPending: false, isError: false }) },
       },
+      contract: {
+        get: {
+          useQuery: () => ({
+            data: { terms: null, parties: [], viewerIsAdmin: false },
+            isPending: false,
+            isError: false,
+          }),
+        },
+        saveTerms: { useMutation: () => ({ mutate: noop, isPending: false }) },
+        saveParty: { useMutation: () => ({ mutate: noop, isPending: false }) },
+      },
     },
   },
 }));

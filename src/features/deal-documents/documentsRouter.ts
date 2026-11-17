@@ -5,6 +5,12 @@ import { z } from "zod";
 import { env } from "@/config/env";
 import { type AppError, ERROR_IDS } from "@/constants/errorIds";
 import {
+  getContractData,
+  saveContractParty,
+  saveContractTerms,
+} from "@/features/contract-data/contractRepo";
+import { CONTRACT_NATURES, PARTY_ROLES } from "@/features/contract-data/contractRules";
+import {
   createDealDocument,
   createTemplateFromFile,
   listDealDocuments,
@@ -55,6 +61,61 @@ function unwrap<T>(result: Result<T, AppError>): T {
           : "BAD_REQUEST";
   throw new TRPCError({ code, message: result.error.id });
 }
+
+const partyInput = z.object({
+  dealId: z.string().uuid(),
+  role: z.enum(PARTY_ROLES),
+  fullName: z.string().max(120),
+  email: z.string().max(200).nullable(),
+  phone: z.string().max(40).nullable(),
+  address: z.string().max(300).nullable(),
+  // Omitted to leave the stored ID number as it is; only an administrator can send it.
+  idNumber: z.string().max(40).nullable().optional(),
+});
+
+const termsInput = z.object({
+  dealId: z.string().uuid(),
+  nature: z.enum(CONTRACT_NATURES),
+  occupants: z.number().int(),
+  arrivalTime: z.string().max(5),
+  departureTime: z.string().max(5),
+});
+
+export const contractRouter = router({
+  get: protectedProcedure.input(dealInput).query(async ({ ctx, input }) => ({
+    ...unwrap(
+      await getContractData(ctx.db, ctx.actor, input.dealId, AbortSignal.timeout(READ_TIMEOUT_MS)),
+    ),
+    viewerIsAdmin: ctx.actor.type === "admin",
+  })),
+  saveTerms: protectedProcedure
+    .input(termsInput)
+    .mutation(async ({ ctx, input }) =>
+      unwrap(
+        await saveContractTerms(
+          ctx.db,
+          ctx.actor,
+          input.dealId,
+          input,
+          AbortSignal.timeout(READ_TIMEOUT_MS),
+        ),
+      ),
+    ),
+  saveParty: protectedProcedure.input(partyInput).mutation(async ({ ctx, input }) => {
+    const { dealId, role, idNumber, ...rest } = input;
+    const party = idNumber === undefined ? rest : { ...rest, idNumber };
+    return unwrap(
+      await saveContractParty(
+        ctx.db,
+        ctx.actor,
+        dealId,
+        role,
+        party,
+        AbortSignal.timeout(READ_TIMEOUT_MS),
+      ),
+    );
+  }),
+});
 
 export const documentsRouter = router({
   documents: router({
