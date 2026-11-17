@@ -34,3 +34,9 @@ const BY_KEY: ReadonlyMap<string, TemplateField> = new Map(TEMPLATE_FIELDS.map((
 export function findField(key: string): TemplateField | undefined {
   return BY_KEY.get(key);
 }
+
+// True when any of the given fields is restricted to administrators: such a document is filed
+// apart, where only administrators reach it.
+export function carriesAdminOnlyData(keys: readonly string[]): boolean {
+  return keys.some((key) => findField(key)?.adminOnly === true);
+}

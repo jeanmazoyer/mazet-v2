@@ -249,6 +249,49 @@ describe("Smart Docs: templates and the documents made from them (base réelle, 
     });
   });
 
+  it("a document that carries an ID number is filed in the administrators' contracts folder, apart from the team's", async () => {
+    await withTestDb(async (db) => {
+      const s = await setup(db);
+      await saveContractParty(
+        db,
+        s.admin,
+        s.dealId,
+        "tenant_1",
+        {
+          fullName: "Johanna Hung",
+          email: null,
+          phone: null,
+          address: null,
+          idNumber: "ABC123456",
+        },
+        SIGNAL(),
+      );
+      const drive = createFakeDrive();
+      const templateId = await addTemplate(db, s, drive, "CNI : {{tenant1IdNumber}}");
+      const asAdmin = await createDealDocument(
+        db,
+        s.admin,
+        drive,
+        s.dealId,
+        { templateId, title: "Contrat admin" },
+        SIGNAL(),
+      );
+      const asEditor = await createDealDocument(
+        db,
+        s.editor,
+        drive,
+        s.dealId,
+        { templateId, title: "Contrat éditeur" },
+        SIGNAL(),
+      );
+      if (!asAdmin.ok || !asEditor.ok) throw new Error("creation failed");
+      expect(drive.folderOf(asAdmin.value.document.driveFileId)?.[0]).toBe(
+        "Contrats (administrateurs)",
+      );
+      expect(drive.folderOf(asEditor.value.document.driveFileId)?.[0]).toBe("Deals");
+    });
+  });
+
   it("the audit trail records the creation, never the ID number", async () => {
     await withTestDb(async (db) => {
       const s = await setup(db);

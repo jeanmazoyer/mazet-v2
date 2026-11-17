@@ -10,6 +10,7 @@ import type { PermSetUser } from "@/features/permissions/effective";
 import type { DbOrTx } from "@/server/realtime/channelVersions";
 import { err, ok, type Result } from "@/types/result";
 import type { DriveFile, DriveProvider } from "./driveProvider";
+import { carriesAdminOnlyData } from "./fieldCatalog";
 import { buildFieldValues } from "./fieldValues";
 import { extractPlaceholders, planFill } from "./placeholders";
 import { validateDocumentTitle, validateTemplateInput } from "./templateRules";
@@ -134,7 +135,9 @@ export async function createDealDocument(
       {
         templateFileId: template.driveFileId,
         name: title.value,
-        folderPath,
+        folderPath: carriesAdminOnlyData(Object.keys(plan.filled))
+          ? adminFolderPath(deal.id, deal.title)
+          : folderPath,
         replacements: plan.filled,
       },
       signal,
@@ -216,6 +219,15 @@ export async function listDealDocuments(
 // Each deal gets its own folder, under the year it was made, so the shared drive stays readable.
 function dealFolderPath(dealId: string, dealTitle: string): string[] {
   return ["Deals", String(new Date().getUTCFullYear()), `${dealTitle} · ${dealId.slice(0, 8)}`];
+}
+
+// Documents with an identity number go to a folder the team does not share, under the year.
+function adminFolderPath(dealId: string, dealTitle: string): string[] {
+  return [
+    "Contrats (administrateurs)",
+    String(new Date().getUTCFullYear()),
+    `${dealTitle} · ${dealId.slice(0, 8)}`,
+  ];
 }
 
 async function templateTitleOf(db: DbOrTx, templateId: string | null): Promise<string | null> {
