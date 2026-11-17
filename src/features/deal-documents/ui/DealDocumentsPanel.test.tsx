@@ -20,11 +20,21 @@ const pieces = [
   },
 ];
 
+const noop = () => undefined;
 vi.mock("@/lib/trpc-client", () => ({
   trpc: {
-    useUtils: () => ({ dealDocuments: { pieces: { invalidate: () => undefined } } }),
+    useUtils: () => ({
+      dealDocuments: { pieces: { invalidate: noop }, documents: { list: { invalidate: noop } } },
+    }),
     dealDocuments: {
       pieces: { useQuery: () => ({ data: pieces, isPending: false, isError: false }) },
+      documents: {
+        list: { useQuery: () => ({ data: [], isPending: false, isError: false }) },
+        create: { useMutation: () => ({ mutate: noop, isPending: false }) },
+      },
+      templates: {
+        list: { useQuery: () => ({ data: [], isPending: false, isError: false }) },
+      },
     },
   },
 }));
@@ -37,4 +47,11 @@ it("lists the booking's documents inside the deal, one row per document, with th
   render(<DealDocumentsPanel dealId="deal-1" />);
   expect(screen.getByText(STRINGS.pieces.kinds.quote_sent)).toBeTruthy();
   expect(screen.getByText(STRINGS.pieces.kinds.deposit_received)).toBeTruthy();
+});
+
+it("offers Create new, a Documents list and a Templates library, like Pipedrive's Documents tab", () => {
+  render(<DealDocumentsPanel dealId="deal-1" />);
+  expect(screen.getByRole("button", { name: STRINGS.documentsTab.createNew })).toBeTruthy();
+  expect(screen.getByText(STRINGS.documentsTab.documentsCreated)).toBeTruthy();
+  expect(screen.getByRole("tab", { name: STRINGS.documentsTab.tabTemplates })).toBeTruthy();
 });

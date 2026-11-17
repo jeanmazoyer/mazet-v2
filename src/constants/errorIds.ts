@@ -36,6 +36,9 @@ export const ERROR_IDS = {
   PAYMENT_INVALID: "E_PAYMENT_001", // amount, date or settlement rejected by the payment rules
   PAYMENT_NOT_FOUND: "E_PAYMENT_002", // payment line does not exist on this booking
   CONTRACT_INVALID: "E_CONTRACT_001", // stay terms or tenant details rejected by the contract rules
+  DOCUMENT_INVALID: "E_DOCUMENT_001", // template, title or category rejected
+  DOCUMENT_NOT_FOUND: "E_DOCUMENT_002", // template or Drive file does not exist or cannot be read
+  DRIVE_NOT_CONNECTED: "E_DOCUMENT_003", // no Google Drive is connected yet, so nothing can be stored
   DEAL_ARCHIVED_NO_ACTIVITY: "E_DEAL_006", // cannot link a new activity to an archived deal
   DEAL_SAVED_FILTER_NOT_FOUND: "E_DEAL_007", // saved filter not found or not owned by the actor (delete guard)
   DEAL_FILTER_INVALID: "E_DEAL_008", // saved-filter input failed Zod validation (bad field/op pairing or value)

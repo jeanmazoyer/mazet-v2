@@ -631,6 +631,13 @@
       "when": 1794935224281,
       "tag": "0089_contract_data",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1794940953399,
+      "tag": "0090_deal_documents",
+      "breakpoints": true
     }
   ]
 }
