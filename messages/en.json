@@ -1,0 +1,74 @@
+{
+  "common": {
+    "appName": "Estate",
+    "fictiveData": "Fictitious data: step 1 of the build, nothing is saved to the database for files yet.",
+    "soon": "Coming soon",
+    "signOut": "Sign out",
+    "collapse": "Collapse menu",
+    "expand": "Expand menu",
+    "switchLanguage": "Français"
+  },
+  "nav": {
+    "dossiers": "Files",
+    "calendrier": "Calendar",
+    "devis": "Quotes and contracts",
+    "echeancier": "Payment schedule",
+    "pieces": "Documents",
+    "fiche": "Event sheet",
+    "journal": "Journal",
+    "sectionWork": "Work",
+    "sectionAdmin": "Administration"
+  },
+  "roles": {
+    "admin": "Administrator",
+    "manager": "Manager",
+    "partner": "Partner"
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Access is restricted to authorised accounts.",
+    "google": "Sign in with Google",
+    "accessDenied": "This Google account is not authorised. Ask an administrator for access."
+  },
+  "dossiers": {
+    "title": "Files",
+    "subtitle": "One record per request, followed through to final payment.",
+    "newDossier": "New file",
+    "filterAll": "All",
+    "columns": {
+      "reference": "Reference",
+      "client": "Client",
+      "type": "Type",
+      "date": "Target date",
+      "guests": "Guests",
+      "source": "Source",
+      "status": "Status"
+    },
+    "types": {
+      "mariage": "Wedding",
+      "sejour": "Stay",
+      "autre": "Other"
+    },
+    "statuses": {
+      "demande": "Request",
+      "visite": "Visit",
+      "option": "Option",
+      "devis_envoye": "Quote sent",
+      "signe": "Signed",
+      "solde": "Paid in full",
+      "perdu": "Lost"
+    },
+    "guests": "{count} guests"
+  },
+  "journal": {
+    "title": "Journal",
+    "subtitle": "Who did what, and when. Read only.",
+    "empty": "No entries yet.",
+    "columns": {
+      "date": "Date",
+      "actor": "Author",
+      "action": "Action",
+      "object": "Object"
+    }
+  }
+}

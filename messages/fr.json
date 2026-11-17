@@ -1,0 +1,74 @@
+{
+  "common": {
+    "appName": "Domaine",
+    "fictiveData": "Données fictives : étape 1 du chantier, rien n'est enregistré en base pour les dossiers.",
+    "soon": "Bientôt",
+    "signOut": "Se déconnecter",
+    "collapse": "Replier le menu",
+    "expand": "Déplier le menu",
+    "switchLanguage": "English"
+  },
+  "nav": {
+    "dossiers": "Dossiers",
+    "calendrier": "Calendrier",
+    "devis": "Devis et contrats",
+    "echeancier": "Échéancier",
+    "pieces": "Pièces",
+    "fiche": "Fiche événement",
+    "journal": "Journal",
+    "sectionWork": "Travail",
+    "sectionAdmin": "Administration"
+  },
+  "roles": {
+    "admin": "Administrateur",
+    "manager": "Gestionnaire",
+    "partner": "Partenaire"
+  },
+  "login": {
+    "title": "Connexion",
+    "subtitle": "Accès réservé aux comptes autorisés.",
+    "google": "Se connecter avec Google",
+    "accessDenied": "Ce compte Google n'est pas autorisé. Demandez l'accès à un administrateur."
+  },
+  "dossiers": {
+    "title": "Dossiers",
+    "subtitle": "Une fiche par demande, suivie jusqu'au solde.",
+    "newDossier": "Nouveau dossier",
+    "filterAll": "Tous",
+    "columns": {
+      "reference": "Référence",
+      "client": "Client",
+      "type": "Type",
+      "date": "Date visée",
+      "guests": "Effectif",
+      "source": "Source",
+      "status": "Statut"
+    },
+    "types": {
+      "mariage": "Mariage",
+      "sejour": "Séjour",
+      "autre": "Autre"
+    },
+    "statuses": {
+      "demande": "Demande",
+      "visite": "Visite",
+      "option": "Option",
+      "devis_envoye": "Devis envoyé",
+      "signe": "Signé",
+      "solde": "Soldé",
+      "perdu": "Perdu"
+    },
+    "guests": "{count} pers."
+  },
+  "journal": {
+    "title": "Journal",
+    "subtitle": "Qui a fait quoi, et quand. Lecture seule.",
+    "empty": "Aucune entrée pour l'instant.",
+    "columns": {
+      "date": "Date",
+      "actor": "Auteur",
+      "action": "Action",
+      "object": "Objet"
+    }
+  }
+}
