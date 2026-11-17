@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { isOverdue, nextStatuses, validateNewLine, validatePayment } from "./paymentRules";
+import {
+  INITIAL_STATUS,
+  isOverdue,
+  parseAmountText,
+  settledStatus,
+  validateNewLine,
+  validatePayment,
+} from "./paymentRules";
 
 describe("payment schedule rules", () => {
-  it("a deposit or balance line is due, then paid; a hold is held, then released", () => {
-    expect(nextStatuses("deposit")).toEqual(["paid"]);
-    expect(nextStatuses("balance")).toEqual(["paid"]);
-    expect(nextStatuses("hold")).toEqual(["released"]);
+  it("a deposit or balance is owed then paid; a hold is held then released, and never settles twice", () => {
+    expect(INITIAL_STATUS).toEqual({ deposit: "due", balance: "due", hold: "held" });
+    expect(settledStatus("deposit", "due")).toBe("paid");
+    expect(settledStatus("balance", "due")).toBe("paid");
+    expect(settledStatus("hold", "held")).toBe("released");
+    expect(settledStatus("deposit", "paid")).toBeNull();
+    expect(settledStatus("hold", "released")).toBeNull();
+    expect(settledStatus("hold", "due")).toBeNull();
   });
 
   it("a line needs a positive amount and a real due date", () => {
@@ -46,5 +57,19 @@ describe("payment schedule rules", () => {
     expect(isOverdue({ status: "due", dueOn: "2027-05-01" }, "2027-05-02")).toBe(true);
     expect(isOverdue({ status: "due", dueOn: "2027-05-02" }, "2027-05-02")).toBe(false);
     expect(isOverdue({ status: "paid", dueOn: "2027-05-01" }, "2027-05-02")).toBe(false);
+  });
+
+  it("reads a typed amount the way the French team writes it: spaces and a comma are fine", () => {
+    expect(parseAmountText("1 250,00")).toBe(125000);
+    expect(parseAmountText("1\u202f250,5")).toBe(125050);
+    expect(parseAmountText("1250.50")).toBe(125050);
+    expect(parseAmountText("12")).toBe(1200);
+  });
+
+  it("refuses an amount it cannot read exactly, rather than guessing", () => {
+    expect(parseAmountText("12,345")).toBeNull();
+    expect(parseAmountText("-5")).toBeNull();
+    expect(parseAmountText("abc")).toBeNull();
+    expect(parseAmountText("")).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 // The rules of the payment schedule (échéancier). Pure: the repo calls these before any write.
+import { parseMoneyToCents } from "@/features/quotes/quoteMath";
 import { isIsoDay } from "@/features/reservations/reservationRules";
 import { err, ok, type Result } from "@/types/result";
 
@@ -8,14 +9,36 @@ export type PaymentKind = (typeof PAYMENT_KINDS)[number];
 export const PAYMENT_STATUSES = ["due", "paid", "held", "released"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
-// A deposit or balance is paid once. A hold (caution, a card pre-authorisation or a deposit held
-// against damage) is held, then released; it is never counted as income.
-const NEXT: Record<PaymentKind, PaymentStatus[]> = {
-  deposit: ["paid"],
-  balance: ["paid"],
-  hold: ["released"],
+// A deposit or balance is owed, then paid. A hold (caution or deposit held against damage) is
+// held, then released; it is never counted as income.
+export const INITIAL_STATUS: Record<PaymentKind, PaymentStatus> = {
+  deposit: "due",
+  balance: "due",
+  hold: "held",
 };
-export const nextStatuses = (kind: PaymentKind): PaymentStatus[] => NEXT[kind];
+
+const SETTLEMENT: Record<PaymentKind, { from: PaymentStatus; to: PaymentStatus }> = {
+  deposit: { from: "due", to: "paid" },
+  balance: { from: "due", to: "paid" },
+  hold: { from: "held", to: "released" },
+};
+
+// The status a line moves to when its money is recorded, or null when that move is not allowed
+// (already paid or released, so a second payment is refused rather than counted twice).
+export function settledStatus(kind: PaymentKind, current: PaymentStatus): PaymentStatus | null {
+  const rule = SETTLEMENT[kind];
+  return rule.from === current ? rule.to : null;
+}
+
+export const MAX_PAYMENT_REFERENCE_LENGTH = 200;
+
+// Typed amounts follow French habits ("1 250,00", with a space or narrow no-break space as the
+// thousands separator). They are normalised to the strict form the money parser reads, which
+// still refuses anything it cannot place exactly.
+const THOUSANDS_SEPARATORS = /[\s\u00a0\u202f]/g;
+export function parseAmountText(text: string): number | null {
+  return parseMoneyToCents(text.replace(THOUSANDS_SEPARATORS, "").replace(",", "."));
+}
 
 export type PaymentRuleError = "invalid_kind" | "invalid_amount" | "invalid_date";
 
@@ -41,6 +64,8 @@ export function validatePayment(input: {
   if (!isIsoDay(input.paidOn)) return err("invalid_date");
   const reference =
     input.reference === null || input.reference.trim() === "" ? null : input.reference.trim();
+  if (reference !== null && reference.length > MAX_PAYMENT_REFERENCE_LENGTH)
+    return err("invalid_date");
   return ok({ paidOn: input.paidOn, reference });
 }
 

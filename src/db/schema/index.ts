@@ -38,6 +38,7 @@ export * from "./notifications";
 export * from "./oauth";
 export * from "./organizationRelations";
 export * from "./organizations";
+export * from "./paymentLines";
 export * from "./persons";
 export * from "./pipelines";
 export * from "./prospects";

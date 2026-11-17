@@ -33,6 +33,8 @@ export const ERROR_IDS = {
   FEED_INVALID: "E_FEED_001", // address refused, or the file is not a valid calendar
   FEED_FETCH_FAILED: "E_FEED_002", // the calendar could not be downloaded
   FEED_NOT_FOUND: "E_FEED_003", // calendar does not exist
+  PAYMENT_INVALID: "E_PAYMENT_001", // amount, date or settlement rejected by the payment rules
+  PAYMENT_NOT_FOUND: "E_PAYMENT_002", // payment line does not exist on this booking
   DEAL_ARCHIVED_NO_ACTIVITY: "E_DEAL_006", // cannot link a new activity to an archived deal
   DEAL_SAVED_FILTER_NOT_FOUND: "E_DEAL_007", // saved filter not found or not owned by the actor (delete guard)
   DEAL_FILTER_INVALID: "E_DEAL_008", // saved-filter input failed Zod validation (bad field/op pairing or value)
