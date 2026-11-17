@@ -16,6 +16,8 @@ export interface PaymentLineRowProps {
   line: Line;
   overdue: boolean;
   today: string;
+  // Called after a payment is recorded, so the host can refetch the schedule.
+  onSaved?: () => void;
 }
 
 // A deposit or balance is settled by recording the day it arrived; a hold by its release day.
@@ -24,6 +26,7 @@ export function PaymentLineRow({
   line,
   overdue,
   today,
+  onSaved,
 }: PaymentLineRowProps): React.ReactNode {
   const [paidOn, setPaidOn] = useState(today);
   const [reference, setReference] = useState("");
@@ -77,6 +80,7 @@ export function PaymentLineRow({
                     { dealId, lineId: line.id, paidOn, reference },
                     readCsrfToken(),
                   );
+                  if (result.ok) onSaved?.();
                   setMessage(
                     result.ok
                       ? { tone: "ok", text: STRINGS.payments.saved }

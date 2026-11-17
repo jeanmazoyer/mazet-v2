@@ -16,7 +16,13 @@ const KIND_OPTIONS = PAYMENT_KINDS.map((kind) => ({
 }));
 
 // Creating a line never settles it: the deposit or balance stays due until its money arrives.
-export function AddPaymentLineForm({ dealId }: { dealId: string }): React.ReactNode {
+export function AddPaymentLineForm({
+  dealId,
+  onSaved,
+}: {
+  dealId: string;
+  onSaved?: () => void;
+}): React.ReactNode {
   const [kind, setKind] = useState<PaymentKind>("deposit");
   const [amountText, setAmountText] = useState("");
   const [dueOn, setDueOn] = useState("");
@@ -37,6 +43,7 @@ export function AddPaymentLineForm({ dealId }: { dealId: string }): React.ReactN
           if (result.ok) {
             setAmountText("");
             setDueOn("");
+            onSaved?.();
             setMessage({ tone: "ok", text: STRINGS.payments.saved });
           } else {
             setMessage({ tone: "error", text: paymentErrorText(result.error.id) });

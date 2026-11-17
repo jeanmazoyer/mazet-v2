@@ -97,3 +97,9 @@ export function activityAnchor(scope: ComposeScope): {
   const orgId = scope.entityType === "org" ? scope.entityId : (scope.orgId ?? null);
   return { dealId, leadId, personId, orgId };
 }
+
+// Documents, quotes and payments are records of a booking: they exist only under a deal, so their
+// tabs are offered there and nowhere else.
+export function dealRecordTabsEnabled(scope: ComposeScope): boolean {
+  return scope.entityType === "deal";
+}

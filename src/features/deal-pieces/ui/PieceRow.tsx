@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { readCsrfToken } from "@/utils/csrfCookie";
 
 export interface PieceRowProps {
+  // Called after a successful save, so a host that lists rows can refetch them.
+  onSaved?: () => void;
   dealId: string;
   kind: PieceKind;
   status: PieceStatus;
@@ -79,6 +81,7 @@ export function PieceRow(props: PieceRowProps): React.ReactNode {
                 },
                 readCsrfToken(),
               );
+              if (result.ok) props.onSaved?.();
               setMessage(
                 result.ok
                   ? { tone: "ok", text: STRINGS.pieces.saved }

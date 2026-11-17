@@ -13,10 +13,12 @@ export function QuoteStatusButtons({
   dealId,
   quoteId,
   status,
+  onChanged,
 }: {
   dealId: string;
   quoteId: string;
   status: QuoteStatus;
+  onChanged?: () => void;
 }): React.ReactNode {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -39,8 +41,10 @@ export function QuoteStatusButtons({
           setError(null);
           startTransition(async () => {
             const result = await next.run({ dealId, quoteId }, readCsrfToken());
-            if (result.ok) router.refresh();
-            else setError(quoteErrorText(result.error.id));
+            if (result.ok) {
+              router.refresh();
+              onChanged?.();
+            } else setError(quoteErrorText(result.error.id));
           });
         }}
       >

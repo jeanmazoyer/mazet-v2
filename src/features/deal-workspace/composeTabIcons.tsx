@@ -1,4 +1,12 @@
-import { CalendarDays, FileText, Mail, Paperclip } from "lucide-react";
+import {
+  CalendarDays,
+  FileSignature,
+  FileText,
+  Mail,
+  Paperclip,
+  ReceiptText,
+  Wallet,
+} from "lucide-react";
 import type React from "react";
 
 // Tab glyphs for the deal compose toolbar. aria-hidden: the tab's text label names it.
@@ -19,4 +27,16 @@ export const EmailIcon = (): React.ReactNode => (
 
 export const FilesIcon = (): React.ReactNode => (
   <Paperclip aria-hidden="true" className={TAB_ICON_CLASS} />
+);
+
+export const DocumentsIcon = (): React.ReactNode => (
+  <FileSignature aria-hidden="true" className={TAB_ICON_CLASS} />
+);
+
+export const QuotesIcon = (): React.ReactNode => (
+  <ReceiptText aria-hidden="true" className={TAB_ICON_CLASS} />
+);
+
+export const PaymentsIcon = (): React.ReactNode => (
+  <Wallet aria-hidden="true" className={TAB_ICON_CLASS} />
 );

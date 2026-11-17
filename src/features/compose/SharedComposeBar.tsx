@@ -4,12 +4,17 @@ import type React from "react";
 import { useRef, useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { EditableActivity } from "@/features/activities/getForEdit";
+import { DealDocumentsPanel } from "@/features/deal-documents/ui/DealDocumentsPanel";
+import { DealPaymentsPanel } from "@/features/deal-documents/ui/DealPaymentsPanel";
 import { ActivityComposerInline } from "@/features/deal-workspace/composer/ActivityComposerInline";
 import {
   ActivityIcon,
+  DocumentsIcon,
   EmailIcon,
   FilesIcon,
   NotesIcon,
+  PaymentsIcon,
+  QuotesIcon,
 } from "@/features/deal-workspace/composeTabIcons";
 import { Composer } from "@/features/email/Composer";
 import { preloadRichTextBody } from "@/features/email/composer/RichTextBodyLazy";
@@ -17,6 +22,7 @@ import type { DraftSummary } from "@/features/email/draftRepo";
 import { invalidateRecordTimelines } from "@/features/email/invalidateRecordTimelines";
 import { toComposerDraft } from "@/features/email/toComposerDraft";
 import { FileAttachments } from "@/features/files/FileAttachments";
+import { DealQuotesPanel } from "@/features/quotes/ui/DealQuotesPanel";
 import { trpc } from "@/lib/trpc-client";
 import { ComposeCollapsedTrigger } from "./ComposeCollapsedTrigger";
 import { ComposeNoteTab } from "./ComposeNoteTab";
@@ -24,13 +30,14 @@ import {
   activityAnchor,
   type ComposeScope,
   dealComposerContext,
+  dealRecordTabsEnabled,
   emailTabEnabled,
   fileEntityType,
   fileTabEnabled,
   noteEntityType,
 } from "./composeScope";
 
-type ComposeTab = "activity" | "notes" | "email" | "files";
+type ComposeTab = "activity" | "notes" | "email" | "files" | "documents" | "quotes" | "payments";
 
 interface TabDef {
   id: ComposeTab;
@@ -43,6 +50,9 @@ const ALL_TABS: TabDef[] = [
   { id: "notes", label: "Notes", Icon: NotesIcon },
   { id: "email", label: "Email", Icon: EmailIcon },
   { id: "files", label: "Files", Icon: FilesIcon },
+  { id: "documents", label: "Documents", Icon: DocumentsIcon },
+  { id: "quotes", label: "Quotes", Icon: QuotesIcon },
+  { id: "payments", label: "Payments", Icon: PaymentsIcon },
 ];
 
 // Pipedrive's per-tab "default state" prompts. Only Activity and Notes collapse to a
@@ -59,6 +69,9 @@ function tabsForScope(scope: ComposeScope): TabDef[] {
   const enabled = ALL_TABS.filter((t) => {
     if (t.id === "email") return emailTabEnabled(scope);
     if (t.id === "files") return fileTabEnabled(scope);
+    if (t.id === "documents" || t.id === "quotes" || t.id === "payments") {
+      return dealRecordTabsEnabled(scope);
+    }
     return true;
   });
   // PD's lead drawer leads with Notes (its default state is the "Take a note..." prompt), unlike the
@@ -271,6 +284,21 @@ export function SharedComposeBar({
                 </div>
               );
             })()}
+          {activeTab === "documents" && (
+            <div className="p-1.5">
+              <DealDocumentsPanel dealId={scope.entityId} />
+            </div>
+          )}
+          {activeTab === "quotes" && (
+            <div className="p-1.5">
+              <DealQuotesPanel dealId={scope.entityId} />
+            </div>
+          )}
+          {activeTab === "payments" && (
+            <div className="p-1.5">
+              <DealPaymentsPanel dealId={scope.entityId} />
+            </div>
+          )}
         </div>
       )}
     </section>

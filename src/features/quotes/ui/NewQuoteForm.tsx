@@ -18,9 +18,11 @@ import { quoteErrorText } from "./quoteErrors";
 export function NewQuoteForm({
   dealId,
   items,
+  onChanged,
 }: {
   dealId: string;
   items: PriceItemRow[];
+  onChanged?: () => void;
 }): React.ReactNode {
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [language, setLanguage] = useState<"fr" | "en">("fr");
@@ -50,6 +52,7 @@ export function NewQuoteForm({
         setQuantities({});
         setNotes("");
         router.refresh();
+        onChanged?.();
         return;
       }
       setError(quoteErrorText(result.error.id));

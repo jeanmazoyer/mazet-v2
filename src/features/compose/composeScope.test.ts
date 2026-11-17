@@ -3,6 +3,7 @@ import { insertFields } from "@/features/email/composer/insertFields";
 import {
   activityAnchor,
   dealComposerContext,
+  dealRecordTabsEnabled,
   emailTabEnabled,
   fileEntityType,
   fileTabEnabled,
@@ -112,5 +113,14 @@ describe("composeScope mappings", () => {
       personId: null,
       orgId: "o1",
     });
+  });
+});
+
+describe("deal record tabs (Documents, Quotes, Payments)", () => {
+  it("are offered on a deal, and only there: documents, quotes and payments belong to a booking", () => {
+    expect(dealRecordTabsEnabled({ entityType: "deal", entityId: "d1" })).toBe(true);
+    expect(dealRecordTabsEnabled({ entityType: "lead", entityId: "l1" })).toBe(false);
+    expect(dealRecordTabsEnabled({ entityType: "person", entityId: "p1" })).toBe(false);
+    expect(dealRecordTabsEnabled({ entityType: "org", entityId: "o1" })).toBe(false);
   });
 });

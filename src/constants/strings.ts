@@ -63,6 +63,10 @@ export const STRINGS = {
       generic: "Something went wrong. Try again.",
     },
   },
+  dealRecords: {
+    loading: "Loading…",
+    loadError: "Couldn't load this. Try again.",
+  },
   payments: {
     title: "Payments",
     subtitle: "Deposit, balance and deposit held against damage: what is owed, paid or released.",
