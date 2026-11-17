@@ -39,6 +39,7 @@ describe("error IDs", () => {
       "LABEL",
       "LOSTREASON",
       "RESERVATION",
+      "PIECE",
       "ENRICH",
       "UI",
       "INTERCOM",

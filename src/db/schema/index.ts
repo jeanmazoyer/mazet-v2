@@ -8,6 +8,7 @@ export * from "./contactFollowers";
 export * from "./customFieldDefs";
 export * from "./dealFollowers";
 export * from "./dealParticipants";
+export * from "./dealPieces";
 export * from "./deals";
 export * from "./email";
 export * from "./emailAccounts";

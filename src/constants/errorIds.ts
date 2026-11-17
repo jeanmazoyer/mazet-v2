@@ -24,6 +24,8 @@ export const ERROR_IDS = {
   RESERVATION_INVALID: "E_RESERVATION_001", // dates or kind rejected by the booking rules
   RESERVATION_CONFLICT: "E_RESERVATION_002", // dates overlap an active booking
   RESERVATION_NOT_FOUND: "E_RESERVATION_003", // booking does not exist or is not visible
+  // Documents of a booking (checklist: quote, contract, invoices, deposit, insurance).
+  PIECE_INVALID: "E_PIECE_001", // document status, reference or validity date rejected by the rules
   DEAL_ARCHIVED_NO_ACTIVITY: "E_DEAL_006", // cannot link a new activity to an archived deal
   DEAL_SAVED_FILTER_NOT_FOUND: "E_DEAL_007", // saved filter not found or not owned by the actor (delete guard)
   DEAL_FILTER_INVALID: "E_DEAL_008", // saved-filter input failed Zod validation (bad field/op pairing or value)
