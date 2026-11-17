@@ -41,6 +41,7 @@ describe("error IDs", () => {
       "RESERVATION",
       "PIECE",
       "PAYMENT",
+      "CONTRACT",
       "QUOTE",
       "FEED",
       "ENRICH",

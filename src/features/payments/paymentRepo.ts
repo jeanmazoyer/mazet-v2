@@ -1,13 +1,11 @@
 // The payment schedule of a booking. Reads follow visibility; writes follow the deal's edit
 // rules, and every settlement is written to the deal's audit trail in the same transaction.
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { AppError, ERROR_IDS } from "@/constants/errorIds";
-import { deals } from "@/db/schema/deals";
 import { paymentLines } from "@/db/schema/paymentLines";
-import { pipelines } from "@/db/schema/pipelines";
 import { recordChange } from "@/features/collaboration/changeLog";
-import { loadEditableDeal, toVisibleDeal } from "@/features/deals/dealAuth";
-import { canSee } from "@/features/permissions/canSee";
+import { assertDealVisible } from "@/features/deals/assertDealVisible";
+import { loadEditableDeal } from "@/features/deals/dealAuth";
 import type { PermSetUser } from "@/features/permissions/effective";
 import type { DbOrTx } from "@/server/realtime/channelVersions";
 import { err, ok, type Result } from "@/types/result";
@@ -49,23 +47,8 @@ export async function listPaymentLines(
   dealId: string,
   signal: AbortSignal,
 ): Promise<Result<PaymentLineRow[], AppError>> {
-  const [deal] = await db
-    .select({
-      id: deals.id,
-      ownerId: deals.ownerId,
-      visibilityLevel: deals.visibilityLevel,
-      visibilityGroupId: deals.visibilityGroupId,
-      visibleToUserIds: deals.visibleToUserIds,
-      pipelineVisibilityGroupId: pipelines.visibilityGroupId,
-    })
-    .from(deals)
-    .innerJoin(pipelines, eq(pipelines.id, deals.pipelineId))
-    .where(and(eq(deals.id, dealId), isNull(deals.deletedAt), eq(pipelines.isArchived, false)))
-    .limit(1);
-  if (deal === undefined || !canSee(actor, toVisibleDeal(deal, deal.pipelineVisibilityGroupId))) {
-    return err(new AppError(ERROR_IDS.DEAL_NOT_FOUND, "Deal not found or not visible", { dealId }));
-  }
-  signal.throwIfAborted();
+  const visible = await assertDealVisible(db, actor, dealId, signal);
+  if (!visible.ok) return err(visible.error);
 
   const rows = await db
     .select()
