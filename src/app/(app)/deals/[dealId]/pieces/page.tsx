@@ -27,6 +27,9 @@ export default async function DealPiecesPage({
       >
         ← {STRINGS.pieces.back}
       </Link>
+      <Link href={`/deals/${dealId}/quotes`} className="text-sm underline underline-offset-4">
+        {STRINGS.quotes.title}
+      </Link>
       <header>
         <h1 className="text-display font-[450] leading-tight tracking-tight">
           {STRINGS.pieces.title}

@@ -26,6 +26,9 @@ export const ERROR_IDS = {
   RESERVATION_NOT_FOUND: "E_RESERVATION_003", // booking does not exist or is not visible
   // Documents of a booking (checklist: quote, contract, invoices, deposit, insurance).
   PIECE_INVALID: "E_PIECE_001", // document status, reference or validity date rejected by the rules
+  // Quotes built from the price grid (devis).
+  QUOTE_INVALID: "E_QUOTE_001", // quote lines, price grid entry or state transition rejected
+  QUOTE_NOT_FOUND: "E_QUOTE_002", // quote does not exist or is not visible
   DEAL_ARCHIVED_NO_ACTIVITY: "E_DEAL_006", // cannot link a new activity to an archived deal
   DEAL_SAVED_FILTER_NOT_FOUND: "E_DEAL_007", // saved filter not found or not owned by the actor (delete guard)
   DEAL_FILTER_INVALID: "E_DEAL_008", // saved-filter input failed Zod validation (bad field/op pairing or value)
