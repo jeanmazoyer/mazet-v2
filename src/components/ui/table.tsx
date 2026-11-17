@@ -3,9 +3,9 @@ import { cn } from "@/lib/utils";
 
 export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="relative w-full overflow-x-auto">
-      <table data-slot="table" className={cn("w-full caption-bottom text-sm", className)} {...props} />
-    </div>
+    // Pas de défilement horizontal : les cellules passent à la ligne, et les pages
+    // masquent les colonnes secondaires sur petit écran.
+    <table data-slot="table" className={cn("w-full caption-bottom text-sm", className)} {...props} />
   );
 }
 
@@ -30,7 +30,7 @@ export function TableHead({ className, ...props }: React.ThHTMLAttributes<HTMLTa
   return (
     <th
       className={cn(
-        "h-10 px-3 text-left align-middle text-xs font-medium text-muted-foreground whitespace-nowrap",
+        "h-10 px-3 text-left align-middle text-xs font-medium text-muted-foreground",
         className,
       )}
       {...props}
@@ -39,5 +39,5 @@ export function TableHead({ className, ...props }: React.ThHTMLAttributes<HTMLTa
 }
 
 export function TableCell({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("px-3 py-3 align-middle whitespace-nowrap", className)} {...props} />;
+  return <td className={cn("px-3 py-3 align-middle break-words", className)} {...props} />;
 }

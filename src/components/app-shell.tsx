@@ -39,7 +39,7 @@ export async function AppShell({ user, children }: { user: CurrentUser; children
         soonLabel={t("common.soon")}
       />
       <main className="min-w-0 flex-1 p-6 md:p-8">
-        <div className="mx-auto max-w-[1400px]">{children}</div>
+        <div className="mx-auto max-w-[1600px]">{children}</div>
       </main>
     </div>
   );

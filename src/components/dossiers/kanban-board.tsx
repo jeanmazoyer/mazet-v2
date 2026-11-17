@@ -47,8 +47,10 @@ export function KanbanBoard({ dossiers, canWrite }: { dossiers: DossierListItem[
         </p>
       ) : null}
 
-      <div className="-mx-6 overflow-x-auto px-6 pb-4 md:-mx-8 md:px-8">
-        <ol className="flex min-w-max gap-3">
+      {/* Pas de défilement horizontal : les colonnes se partagent la largeur,
+          puis passent à la ligne sur les écrans plus étroits. */}
+      <div>
+        <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 xl:gap-2">
           {DOSSIER_STATUSES.map((status) => {
             const cards = optimistic.filter((d) => d.status === status);
             return (
@@ -72,17 +74,17 @@ export function KanbanBoard({ dossiers, canWrite }: { dossiers: DossierListItem[
                   if (canWrite && id) move(id, status);
                 }}
                 className={cn(
-                  "flex w-64 shrink-0 flex-col rounded-lg border border-border bg-muted transition-colors",
+                  "flex min-w-0 flex-col rounded-lg border border-border bg-muted transition-colors",
                   overStatus === status && "border-foreground bg-accent",
                 )}
               >
-                <h2 className="flex items-center gap-2 px-3 pt-3 pb-2 text-sm font-medium">
+                <h2 className="flex items-center gap-2 px-2.5 pt-2.5 pb-2 text-sm font-medium">
                   <StatusDot status={status} />
-                  {t(`statuses.${status}`)}
+                  <span className="min-w-0 truncate">{t(`statuses.${status}`)}</span>
                   <span className="ml-auto font-mono text-xs text-muted-foreground">{cards.length}</span>
                 </h2>
 
-                <ul className="flex min-h-24 flex-1 flex-col gap-2 px-2 pb-2">
+                <ul className="flex min-h-16 flex-1 flex-col gap-2 px-1.5 pb-1.5 xl:min-h-24">
                   {cards.length === 0 ? (
                     <li className="px-1 py-2 text-xs text-muted-foreground">{t("emptyColumn")}</li>
                   ) : null}
@@ -102,7 +104,7 @@ export function KanbanBoard({ dossiers, canWrite }: { dossiers: DossierListItem[
                       }}
                       className={cn(
                         // `relative` : garde les libellés sr-only dans la zone de défilement du tableau.
-                        "relative rounded-md border border-border bg-card p-3 shadow-[0_1px_2px_rgb(0_0_0/0.04)]",
+                        "relative min-w-0 rounded-md border border-border bg-card p-2.5 shadow-[0_1px_2px_rgb(0_0_0/0.04)]",
                         canWrite && "cursor-grab active:cursor-grabbing",
                         draggingId === d.id && "opacity-50",
                       )}
@@ -111,7 +113,7 @@ export function KanbanBoard({ dossiers, canWrite }: { dossiers: DossierListItem[
                       <Link
                         href={`/dossiers/${d.id}`}
                         draggable={false}
-                        className="mt-0.5 block text-sm font-medium underline-offset-4 hover:underline"
+                        className="mt-0.5 block text-sm font-medium break-words underline-offset-4 hover:underline"
                       >
                         {d.clientName}
                       </Link>

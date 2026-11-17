@@ -129,13 +129,13 @@ export function SidebarNav({
         </button>
       </div>
 
-      <nav aria-label="Principal" className="flex flex-1 gap-2 overflow-x-auto px-2 pb-2 md:block md:overflow-y-auto md:overflow-x-visible md:pb-0">
+      <nav aria-label="Principal" className="flex flex-1 flex-wrap gap-x-2 gap-y-1 px-2 pb-2 md:block md:overflow-y-auto md:pb-0">
         {work.length > 0 && (
           <div className="md:mb-4">
             {!collapsed && (
               <p className="hidden px-2.5 pb-1 text-xs font-medium text-muted-foreground md:block">{sections.work}</p>
             )}
-            <ul className="flex gap-1 md:flex-col md:gap-0.5">{work.map(renderItem)}</ul>
+            <ul className="flex flex-wrap gap-1 md:flex-col md:gap-0.5">{work.map(renderItem)}</ul>
           </div>
         )}
         {admin.length > 0 && (
@@ -143,7 +143,7 @@ export function SidebarNav({
             {!collapsed && (
               <p className="hidden px-2.5 pb-1 text-xs font-medium text-muted-foreground md:block">{sections.admin}</p>
             )}
-            <ul className="flex gap-1 md:flex-col md:gap-0.5">{admin.map(renderItem)}</ul>
+            <ul className="flex flex-wrap gap-1 md:flex-col md:gap-0.5">{admin.map(renderItem)}</ul>
           </div>
         )}
       </nav>

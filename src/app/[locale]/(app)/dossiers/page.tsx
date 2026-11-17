@@ -71,28 +71,28 @@ export default async function DossiersPage({
               <TableRow>
                 <TableHead>{t("columns.reference")}</TableHead>
                 <TableHead>{t("columns.client")}</TableHead>
-                <TableHead>{t("columns.type")}</TableHead>
-                <TableHead>{t("columns.date")}</TableHead>
-                <TableHead>{t("columns.guests")}</TableHead>
-                <TableHead>{t("columns.source")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("columns.type")}</TableHead>
+                <TableHead className="hidden sm:table-cell">{t("columns.date")}</TableHead>
+                <TableHead className="hidden lg:table-cell">{t("columns.guests")}</TableHead>
+                <TableHead className="hidden lg:table-cell">{t("columns.source")}</TableHead>
                 <TableHead>{t("columns.status")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {dossiers.map((d) => (
                 <TableRow key={d.id}>
-                  <TableCell className="font-mono text-xs">{formatRef(d.number)}</TableCell>
+                  <TableCell className="font-mono text-xs whitespace-nowrap">{formatRef(d.number)}</TableCell>
                   <TableCell className="font-medium">
                     <Link href={`/dossiers/${d.id}`} className="underline-offset-4 hover:underline">
                       {d.clientName}
                     </Link>
                   </TableCell>
-                  <TableCell>{t(`types.${d.type}`)}</TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">{t(`types.${d.type}`)}</TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     {d.targetDate ? dateFmt.format(new Date(`${d.targetDate}T00:00:00Z`)) : "—"}
                   </TableCell>
-                  <TableCell>{d.guests !== null ? t("guests", { count: d.guests }) : "—"}</TableCell>
-                  <TableCell className="text-muted-foreground">{d.source ?? "—"}</TableCell>
+                  <TableCell className="hidden lg:table-cell">{d.guests !== null ? t("guests", { count: d.guests }) : "—"}</TableCell>
+                  <TableCell className="hidden text-muted-foreground lg:table-cell">{d.source ?? "—"}</TableCell>
                   <TableCell>
                     <span className="inline-flex items-center gap-2">
                       <StatusDot status={d.status} />

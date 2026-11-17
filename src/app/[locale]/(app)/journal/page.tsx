@@ -38,7 +38,7 @@ export default async function JournalPage({ params }: { params: Promise<{ locale
               <TableHead>{t("columns.date")}</TableHead>
               <TableHead>{t("columns.actor")}</TableHead>
               <TableHead>{t("columns.action")}</TableHead>
-              <TableHead>{t("columns.object")}</TableHead>
+              <TableHead className="hidden sm:table-cell">{t("columns.object")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -47,7 +47,7 @@ export default async function JournalPage({ params }: { params: Promise<{ locale
                 <TableCell>{dateFmt.format(r.at)}</TableCell>
                 <TableCell>{r.actorName}</TableCell>
                 <TableCell className="font-mono text-xs">{r.action}</TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell className="hidden text-muted-foreground sm:table-cell">
                   {r.objectType}
                   {r.objectId ? ` · ${r.objectId.slice(0, 8)}` : ""}
                 </TableCell>
