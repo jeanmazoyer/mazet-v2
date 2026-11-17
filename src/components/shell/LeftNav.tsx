@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import {
   ActivitiesIcon,
   BookingsIcon,
+  DealsIcon,
   ContactsIcon,
   DashboardIcon,
   DocsIcon,
@@ -25,6 +26,7 @@ import {
 
 const ICONS: Record<NavKey, typeof PipelineIcon> = {
   pipeline: PipelineIcon,
+  deals: DealsIcon,
   leads: LeadsIcon,
   contacts: ContactsIcon,
   activities: ActivitiesIcon,
