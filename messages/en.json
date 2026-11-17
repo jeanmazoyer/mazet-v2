@@ -28,7 +28,8 @@
     "title": "Sign in",
     "subtitle": "Access is restricted to authorised accounts.",
     "google": "Sign in with Google",
-    "accessDenied": "This Google account is not authorised. Ask an administrator for access."
+    "accessDenied": "This Google account is not authorised. Ask an administrator for access.",
+    "configError": "Sign-in failed because of a server configuration problem (Google credentials, secret or database). Details are in the server terminal, on the [auth][error] line."
   },
   "dossiers": {
     "title": "Files",

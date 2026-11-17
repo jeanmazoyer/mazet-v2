@@ -28,7 +28,8 @@
     "title": "Connexion",
     "subtitle": "Accès réservé aux comptes autorisés.",
     "google": "Se connecter avec Google",
-    "accessDenied": "Ce compte Google n'est pas autorisé. Demandez l'accès à un administrateur."
+    "accessDenied": "Ce compte Google n'est pas autorisé. Demandez l'accès à un administrateur.",
+    "configError": "La connexion a échoué à cause d'un problème de configuration du serveur (identifiants Google, secret ou base de données). Le détail est dans le terminal du serveur, ligne [auth][error]."
   },
   "dossiers": {
     "title": "Dossiers",

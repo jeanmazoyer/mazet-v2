@@ -25,7 +25,7 @@ export default async function LoginPage({
 
         {error ? (
           <p role="alert" className="mt-4 rounded-md bg-accent p-3 text-sm text-accent-foreground">
-            {t("accessDenied")}
+            {error === "AccessDenied" ? t("accessDenied") : t("configError")}
           </p>
         ) : null}
 
