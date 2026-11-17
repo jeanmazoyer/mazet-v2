@@ -35,6 +35,11 @@ l'historique git, au commit `822f899`.
   devis envoyé, contrat signé, facture d'acompte et acompte reçu, facture de solde et solde reçu,
   caution, attestation d'assurance événement (avec date de validité). Les factures restent émises
   par ton outil de facturation : warpdrive ne fait que suivre où elles en sont.
+- **Airbnb (calendrier iCal)** : l'administrateur connecte le lien `.ics` de chaque annonce. Les
+  dates réservées sur Airbnb sont copiées dans le calendrier (sans dossier), et une réservation
+  faite ici qui chevauche une réservation Airbnb est signalée, jamais écrasée. La synchronisation
+  se lance à la demande (« Sync now ») : une synchronisation automatique reste à brancher.
+  Seules les adresses https d'Airbnb sont acceptées.
 - **Réglages par défaut** : télémétrie et vérification de mise à jour désactivées.
 - **Tests sans Docker** : `TEST_PG_URL` permet de lancer les tests d'intégration sur un
   PostgreSQL déjà installé. Cette exécution demande environ 15 Go de disque libre et supprime,

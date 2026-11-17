@@ -2,6 +2,8 @@ import { CalendarClock } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { STRINGS } from "@/constants/strings";
+import { listCalendarFeeds } from "@/features/calendar-feeds/feedRepo";
+import { FeedsPanel } from "@/features/calendar-feeds/ui/FeedsPanel";
 import {
   monthGrid,
   monthKey,
@@ -39,9 +41,10 @@ export default async function BookingsPage({
   const gridTo = grid.at(-1)?.at(-1)?.iso ?? gridFrom;
 
   const signal = AbortSignal.timeout(10_000);
-  const [reservations, deals] = await Promise.all([
+  const [reservations, deals, feeds] = await Promise.all([
     listReservations(ctx.db, ctx.actor, { from: gridFrom, to: gridTo }, signal),
     listBookableDeals(ctx.db, ctx.actor, signal),
+    listCalendarFeeds(ctx.db),
   ]);
 
   const monthStart = `${monthKey(year, month)}-01`;
@@ -115,12 +118,20 @@ export default async function BookingsPage({
                       : ""}
                   </p>
                 </div>
-                <CancelBookingButton reservationId={r.id} />
+                {r.dealId === null ? (
+                  <span className="text-xs text-muted-foreground">
+                    {STRINGS.bookings.fromCalendar}
+                  </span>
+                ) : (
+                  <CancelBookingButton reservationId={r.id} />
+                )}
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      <FeedsPanel feeds={feeds} isAdmin={ctx.actor.type === "admin"} />
     </div>
   );
 }

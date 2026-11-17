@@ -29,6 +29,10 @@ export const ERROR_IDS = {
   // Quotes built from the price grid (devis).
   QUOTE_INVALID: "E_QUOTE_001", // quote lines, price grid entry or state transition rejected
   QUOTE_NOT_FOUND: "E_QUOTE_002", // quote does not exist or is not visible
+  // External calendars copied into the estate calendar (iCal).
+  FEED_INVALID: "E_FEED_001", // address refused, or the file is not a valid calendar
+  FEED_FETCH_FAILED: "E_FEED_002", // the calendar could not be downloaded
+  FEED_NOT_FOUND: "E_FEED_003", // calendar does not exist
   DEAL_ARCHIVED_NO_ACTIVITY: "E_DEAL_006", // cannot link a new activity to an archived deal
   DEAL_SAVED_FILTER_NOT_FOUND: "E_DEAL_007", // saved filter not found or not owned by the actor (delete guard)
   DEAL_FILTER_INVALID: "E_DEAL_008", // saved-filter input failed Zod validation (bad field/op pairing or value)

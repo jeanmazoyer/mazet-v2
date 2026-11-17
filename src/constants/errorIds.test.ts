@@ -41,6 +41,7 @@ describe("error IDs", () => {
       "RESERVATION",
       "PIECE",
       "QUOTE",
+      "FEED",
       "ENRICH",
       "UI",
       "INTERCOM",

@@ -610,6 +610,13 @@
       "when": 1794931619365,
       "tag": "0086_quotes",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1794932413886,
+      "tag": "0087_calendar_feeds",
+      "breakpoints": true
     }
   ]
 }

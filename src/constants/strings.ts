@@ -49,6 +49,7 @@ export const STRINGS = {
     cancelBooking: "Cancel booking",
     monthList: "Bookings this month",
     noBookings: "No bookings this month.",
+    fromCalendar: "From an external calendar",
     noDeals: "You have no deal you can book yet.",
     optionUntil: (date: string) => `Option until ${date}`,
     errors: {

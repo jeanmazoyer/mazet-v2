@@ -6,6 +6,7 @@ import { and, asc, eq, gte, isNull, lt, lte, sql } from "drizzle-orm";
 import { AppError, ERROR_IDS } from "@/constants/errorIds";
 import { deals } from "@/db/schema/deals";
 import { pipelines } from "@/db/schema/pipelines";
+import { calendarFeeds } from "@/db/schema/calendarFeeds";
 import { reservations } from "@/db/schema/reservations";
 import { recordChange } from "@/features/collaboration/changeLog";
 import { loadEditableDeal, toVisibleDeal } from "@/features/deals/dealAuth";
@@ -24,7 +25,8 @@ export type ReservationState = "active" | "expired" | "cancelled";
 
 export interface ReservationRow {
   id: string;
-  dealId: string;
+  // Null for a booking copied from an external calendar: it belongs to no deal.
+  dealId: string | null;
   dealTitle: string;
   startDate: string;
   endDate: string;
@@ -86,6 +88,8 @@ export async function expireStaleOptions(db: DbOrTx, signal: AbortSignal): Promi
     .returning({ id: reservations.id, dealId: reservations.dealId });
 
   for (const row of lapsed) {
+    // Only deal bookings are options, so a lapsed option always has a deal.
+    if (row.dealId === null) continue;
     await recordChange(
       db,
       {
@@ -192,18 +196,24 @@ export async function cancelReservation(
   reservationId: string,
   signal: AbortSignal,
 ): Promise<Result<ReservationRow, AppError>> {
-  const [current] = await db
+  const [found] = await db
     .select({ reservation: reservations, dealTitle: deals.title })
     .from(reservations)
-    .innerJoin(deals, eq(deals.id, reservations.dealId))
+    .leftJoin(deals, eq(deals.id, reservations.dealId))
     .where(eq(reservations.id, reservationId))
     .limit(1);
-  if (current === undefined) {
+  if (found === undefined) {
     return err(new AppError(ERROR_IDS.RESERVATION_NOT_FOUND, "Booking not found"));
   }
+  const dealId = found.reservation.dealId;
+  if (dealId === null) {
+    // Copied from a calendar feed: it changes when the external calendar changes, not here.
+    return err(new AppError(ERROR_IDS.PERM_DENIED, "This booking follows its external calendar"));
+  }
+  const current = { reservation: found.reservation, dealTitle: found.dealTitle ?? "" };
 
   // Cancelling is an edit of the deal, so the same rule applies.
-  const editable = await loadEditableDeal(db, actor, current.reservation.dealId, signal);
+  const editable = await loadEditableDeal(db, actor, dealId, signal);
   if (!editable.ok) return err(editable.error);
 
   if (current.reservation.state !== "active") {
@@ -223,7 +233,7 @@ export async function cancelReservation(
       tx,
       {
         entityType: "deal",
-        entityId: row.dealId,
+        entityId: dealId,
         field: "reservation",
         oldValue: { id: row.id, state: "active" },
         newValue: { id: row.id, state: "cancelled" },
@@ -245,6 +255,7 @@ export async function listReservations(
 ): Promise<ReservationRow[]> {
   await expireStaleOptions(db, signal);
 
+  const fromFeeds = await listFeedReservations(db, range, signal);
   const rows = await db
     .select({ reservation: reservations, deal: visibleDealColumns })
     .from(reservations)
@@ -261,9 +272,28 @@ export async function listReservations(
     )
     .orderBy(asc(reservations.startDate));
 
-  return rows
+  const fromDeals = rows
     .filter((r) => canSee(actor, toVisibleDeal(r.deal, r.deal.pipelineVisibilityGroupId)))
     .map((r) => toRow(r.reservation, r.deal.title));
+  return [...fromDeals, ...fromFeeds].sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+// Days blocked by external calendars. Anyone who can read the calendar sees them: they hold
+// dates, not client data.
+async function listFeedReservations(db: DbOrTx, range: DateRange, signal: AbortSignal): Promise<ReservationRow[]> {
+  const rows = await db
+    .select({ reservation: reservations, label: calendarFeeds.label })
+    .from(reservations)
+    .innerJoin(calendarFeeds, eq(calendarFeeds.id, reservations.feedId))
+    .where(
+      and(
+        eq(reservations.state, "active"),
+        lte(reservations.startDate, range.to),
+        gte(reservations.endDate, range.from),
+      ),
+    );
+  signal.throwIfAborted();
+  return rows.map((r) => toRow(r.reservation, r.label));
 }
 
 // Deals the user may book: the same rule as editing them, so the picker never offers a deal
