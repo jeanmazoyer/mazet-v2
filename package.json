@@ -42,5 +42,9 @@
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2",
+    "tinypool": "2.2.0"
   }
 }
