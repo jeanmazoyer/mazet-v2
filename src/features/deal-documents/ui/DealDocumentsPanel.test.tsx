@@ -29,6 +29,13 @@ vi.mock("@/lib/trpc-client", () => ({
     dealDocuments: {
       pieces: { useQuery: () => ({ data: pieces, isPending: false, isError: false }) },
       documents: {
+        driveStatus: {
+          useQuery: () => ({
+            data: { connected: false, accountEmail: null },
+            isPending: false,
+            isError: false,
+          }),
+        },
         list: { useQuery: () => ({ data: [], isPending: false, isError: false }) },
         create: { useMutation: () => ({ mutate: noop, isPending: false }) },
       },
@@ -54,4 +61,10 @@ it("offers Create new, a Documents list and a Templates library, like Pipedrive'
   expect(screen.getByRole("button", { name: STRINGS.documentsTab.createNew })).toBeTruthy();
   expect(screen.getByText(STRINGS.documentsTab.documentsCreated)).toBeTruthy();
   expect(screen.getByRole("tab", { name: STRINGS.documentsTab.tabTemplates })).toBeTruthy();
+});
+
+it("offers to connect Google Drive, returning to this deal, while no account is connected", () => {
+  render(<DealDocumentsPanel dealId="deal-1" />);
+  const link = screen.getByRole("link", { name: STRINGS.documentsTab.connectDrive });
+  expect(link.getAttribute("href")).toBe("/api/drive/oauth/start?return=%2Fdeals%2Fdeal-1");
 });

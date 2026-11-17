@@ -5,6 +5,7 @@ import { PieceRow } from "@/features/deal-pieces/ui/PieceRow";
 import { trpc } from "@/lib/trpc-client";
 import { CreateDocumentMenu } from "./CreateDocumentMenu";
 import { DocumentsList } from "./DocumentsList";
+import { DriveConnection } from "./DriveConnection";
 import { TemplatesList } from "./TemplatesList";
 
 // The Documents tab, laid out like Pipedrive's Smart Docs: "Create new", then the documents made
@@ -15,6 +16,7 @@ export function DealDocumentsPanel({ dealId }: { dealId: string }): React.ReactN
   const t = STRINGS.documentsTab;
   return (
     <div className="flex flex-col gap-4">
+      <DriveConnection dealId={dealId} />
       <Tabs defaultValue="documents">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TabsList className="flex-wrap gap-1">
