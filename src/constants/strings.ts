@@ -102,6 +102,8 @@ export const STRINGS = {
     requiredDocuments: "Required documents",
     driveNotConnected: "Connect Google Drive first, to create documents.",
     connectDrive: "Connect Google Drive",
+    preview: "Preview",
+    openInDocs: "Open in Google Docs",
     addTemplate: "Add a template",
     templateTitle: "Template name",
     templateCategory: "Category",
