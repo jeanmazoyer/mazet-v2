@@ -3,8 +3,10 @@ import { sql } from "drizzle-orm";
 import { env } from "@/config/env";
 import { AppError } from "@/constants/errorIds";
 import type { Db } from "@/db/client";
+import { type LoginPolicy, parseAllowedEmails } from "@/features/auth/loginPolicy";
 import { err, ok, type Result } from "@/types/result";
 import { encryptToken } from "./crypto";
+import { mailboxIdentityAllowed } from "./mailboxPolicy";
 
 const PG_UNIQUE_VIOLATION = "23505";
 
@@ -41,7 +43,8 @@ export function buildAuthUrl(args: {
     response_type: "code",
     access_type: "offline",
     prompt: args.team === true ? "select_account consent" : "consent",
-    hd: env.GOOGLE_WORKSPACE_DOMAIN,
+    // With an allowlist, a consumer account must be offered too: the hd hint would hide it.
+    ...(env.ALLOWED_LOGIN_EMAILS.trim() === "" ? { hd: env.GOOGLE_WORKSPACE_DOMAIN } : {}),
     scope: SCOPES.join(" "),
     state: args.state,
   });
@@ -50,6 +53,13 @@ export function buildAuthUrl(args: {
 }
 
 const norm = (e: string): string => e.trim().toLowerCase();
+
+function mailboxPolicy(): LoginPolicy {
+  return {
+    workspaceDomain: env.GOOGLE_WORKSPACE_DOMAIN,
+    allowedEmails: parseAllowedEmails(env.ALLOWED_LOGIN_EMAILS),
+  };
+}
 
 export function stateMatches(fromQuery: string, fromCookie: string | undefined): boolean {
   if (fromCookie === undefined || fromQuery.length === 0) return false;
@@ -94,9 +104,11 @@ export async function exchangeAndBind(args: {
 
   const id = ident.value;
   if (
-    !id.emailVerified ||
-    id.hd !== env.GOOGLE_WORKSPACE_DOMAIN ||
-    norm(id.email) !== norm(args.sessionEmail)
+    !mailboxIdentityAllowed(
+      { email: id.email, emailVerified: id.emailVerified, hd: id.hd },
+      args.sessionEmail,
+      mailboxPolicy(),
+    )
   ) {
     return err(new AppError("E_AUTH_001", "gmail identity binding failed", {}));
   }
