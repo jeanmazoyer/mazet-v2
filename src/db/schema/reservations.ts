@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { check, date, index, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  date,
+  index,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { RESERVATION_KINDS } from "@/features/reservations/reservationRules";
 import { calendarFeeds } from "./calendarFeeds";
 import { deals } from "./deals";

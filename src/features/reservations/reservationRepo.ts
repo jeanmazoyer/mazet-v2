@@ -4,9 +4,9 @@
 // its refusal into a readable error.
 import { and, asc, eq, gte, isNull, lt, lte, sql } from "drizzle-orm";
 import { AppError, ERROR_IDS } from "@/constants/errorIds";
+import { calendarFeeds } from "@/db/schema/calendarFeeds";
 import { deals } from "@/db/schema/deals";
 import { pipelines } from "@/db/schema/pipelines";
-import { calendarFeeds } from "@/db/schema/calendarFeeds";
 import { reservations } from "@/db/schema/reservations";
 import { recordChange } from "@/features/collaboration/changeLog";
 import { loadEditableDeal, toVisibleDeal } from "@/features/deals/dealAuth";
@@ -280,7 +280,11 @@ export async function listReservations(
 
 // Days blocked by external calendars. Anyone who can read the calendar sees them: they hold
 // dates, not client data.
-async function listFeedReservations(db: DbOrTx, range: DateRange, signal: AbortSignal): Promise<ReservationRow[]> {
+async function listFeedReservations(
+  db: DbOrTx,
+  range: DateRange,
+  signal: AbortSignal,
+): Promise<ReservationRow[]> {
   const rows = await db
     .select({ reservation: reservations, label: calendarFeeds.label })
     .from(reservations)

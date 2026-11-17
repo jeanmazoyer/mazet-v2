@@ -14,9 +14,9 @@ import { cn } from "@/lib/utils";
 import {
   ActivitiesIcon,
   BookingsIcon,
-  DealsIcon,
   ContactsIcon,
   DashboardIcon,
+  DealsIcon,
   DocsIcon,
   InboxIcon,
   LeadsIcon,
