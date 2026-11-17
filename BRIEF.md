@@ -26,6 +26,8 @@ Vérifier les versions et les commandes d'installation dans la documentation off
 
 Base : la structure d'application de shadcn/ui (barre latérale repliable, en-tête de page, onglets, tableaux, panneaux latéraux). Ne reprendre ni les écrans, ni les textes, ni le code d'un produit existant : on part des composants open source et on dessine nos propres écrans.
 
+> **Décision du 17 novembre 2026** : le thème vert sauge ci-dessous est remplacé par un thème noir et blanc dans l'esprit du design system Geist (échelle de gris neutre, modes clair et sombre, couleur réservée aux états). Les valeurs en vigueur sont dans `src/app/globals.css`. Le bloc qui suit est conservé pour mémoire.
+
 Thème vert sauge sur fond crème, à poser dans les variables CSS du thème :
 
 ```css

@@ -1,12 +1,15 @@
 {
   "common": {
     "appName": "Domaine",
-    "fictiveData": "Données fictives : étape 1 du chantier, rien n'est enregistré en base pour les dossiers.",
     "soon": "Bientôt",
     "signOut": "Se déconnecter",
     "collapse": "Replier le menu",
     "expand": "Déplier le menu",
-    "switchLanguage": "English"
+    "switchLanguage": "English",
+    "save": "Enregistrer",
+    "back": "Retour",
+    "saved": "Enregistré.",
+    "optional": "facultatif"
   },
   "nav": {
     "dossiers": "Dossiers",
@@ -59,7 +62,50 @@
       "solde": "Soldé",
       "perdu": "Perdu"
     },
-    "guests": "{count} pers."
+    "guests": "{count} pers.",
+    "viewBoard": "Tableau",
+    "viewList": "Liste",
+    "empty": "Aucun dossier pour l'instant.",
+    "emptyColumn": "Aucun dossier",
+    "moveTo": "Déplacer vers",
+    "moveLabel": "Statut de {ref}",
+    "noDate": "Date à définir",
+    "backToList": "Tous les dossiers",
+    "newTitle": "Nouveau dossier",
+    "newSubtitle": "Créez la fiche, vous la compléterez ensuite.",
+    "form": {
+      "client": "Client",
+      "clientName": "Nom du client",
+      "clientEmail": "E-mail",
+      "clientPhone": "Téléphone",
+      "clientLanguage": "Langue",
+      "clientCountry": "Pays",
+      "request": "Demande",
+      "type": "Type",
+      "targetDate": "Date visée",
+      "guests": "Effectif",
+      "source": "Source de la demande",
+      "sourcePlaceholder": "Site web, recommandation, salon…",
+      "create": "Créer le dossier"
+    },
+    "languages": {
+      "fr": "Français",
+      "en": "Anglais"
+    },
+    "detail": {
+      "status": "Statut",
+      "notes": "Notes",
+      "addNote": "Ajouter la note",
+      "notePlaceholder": "Compte rendu d'appel, précision, décision…",
+      "noNotes": "Aucune note.",
+      "reservations": "Réservations",
+      "noReservations": "Aucune date réservée pour ce dossier.",
+      "states": {
+        "active": "Active",
+        "expired": "Expirée",
+        "cancelled": "Annulée"
+      }
+    }
   },
   "journal": {
     "title": "Journal",
@@ -70,6 +116,49 @@
       "actor": "Auteur",
       "action": "Action",
       "object": "Objet"
+    }
+  },
+  "errors": {
+    "forbidden": "Vous n'avez pas le droit de faire cette action.",
+    "not_found": "Élément introuvable.",
+    "conflict": "Ces dates chevauchent une réservation existante. Le domaine est déjà pris sur cette période.",
+    "client_required": "Le nom du client est obligatoire.",
+    "invalid_type": "Choisissez un type de dossier.",
+    "invalid_date": "La date n'est pas valide.",
+    "invalid_guests": "L'effectif doit être un nombre entier positif.",
+    "too_long": "Un des champs est trop long.",
+    "invalid_status": "Statut inconnu.",
+    "note_required": "La note est vide.",
+    "dossier_required": "Choisissez un dossier.",
+    "dates_order": "La date de fin doit être égale ou postérieure à la date de début.",
+    "invalid_kind": "Choisissez option ou réservation ferme.",
+    "expiry_required": "Une option doit avoir une date d'expiration.",
+    "expiry_past": "La date d'expiration de l'option doit être dans le futur."
+  },
+  "calendar": {
+    "title": "Calendrier",
+    "subtitle": "Le planning unique du domaine. Deux réservations ne peuvent pas se chevaucher.",
+    "previous": "Mois précédent",
+    "next": "Mois suivant",
+    "today": "Aujourd'hui",
+    "kinds": {
+      "option": "Option",
+      "ferme": "Ferme"
+    },
+    "optionUntil": "Option jusqu'au {date}",
+    "monthList": "Réservations du mois",
+    "noReservations": "Aucune réservation ce mois-ci.",
+    "cancel": "Annuler la réservation",
+    "newReservation": "Nouvelle réservation",
+    "created": "Réservation enregistrée.",
+    "form": {
+      "dossier": "Dossier",
+      "chooseDossier": "Choisir un dossier",
+      "startDate": "Début",
+      "endDate": "Fin (incluse)",
+      "kind": "Nature",
+      "expiresOn": "L'option expire le",
+      "create": "Réserver ces dates"
     }
   }
 }

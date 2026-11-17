@@ -1,12 +1,15 @@
 {
   "common": {
     "appName": "Estate",
-    "fictiveData": "Fictitious data: step 1 of the build, nothing is saved to the database for files yet.",
     "soon": "Coming soon",
     "signOut": "Sign out",
     "collapse": "Collapse menu",
     "expand": "Expand menu",
-    "switchLanguage": "Français"
+    "switchLanguage": "Français",
+    "save": "Save",
+    "back": "Back",
+    "saved": "Saved.",
+    "optional": "optional"
   },
   "nav": {
     "dossiers": "Files",
@@ -59,7 +62,50 @@
       "solde": "Paid in full",
       "perdu": "Lost"
     },
-    "guests": "{count} guests"
+    "guests": "{count} guests",
+    "viewBoard": "Board",
+    "viewList": "List",
+    "empty": "No files yet.",
+    "emptyColumn": "No files",
+    "moveTo": "Move to",
+    "moveLabel": "Status of {ref}",
+    "noDate": "Date to be set",
+    "backToList": "All files",
+    "newTitle": "New file",
+    "newSubtitle": "Create the record now and complete it later.",
+    "form": {
+      "client": "Client",
+      "clientName": "Client name",
+      "clientEmail": "Email",
+      "clientPhone": "Phone",
+      "clientLanguage": "Language",
+      "clientCountry": "Country",
+      "request": "Request",
+      "type": "Type",
+      "targetDate": "Target date",
+      "guests": "Guests",
+      "source": "Source of the request",
+      "sourcePlaceholder": "Website, referral, trade fair…",
+      "create": "Create file"
+    },
+    "languages": {
+      "fr": "French",
+      "en": "English"
+    },
+    "detail": {
+      "status": "Status",
+      "notes": "Notes",
+      "addNote": "Add note",
+      "notePlaceholder": "Call summary, detail, decision…",
+      "noNotes": "No notes.",
+      "reservations": "Bookings",
+      "noReservations": "No dates booked for this file.",
+      "states": {
+        "active": "Active",
+        "expired": "Expired",
+        "cancelled": "Cancelled"
+      }
+    }
   },
   "journal": {
     "title": "Journal",
@@ -70,6 +116,49 @@
       "actor": "Author",
       "action": "Action",
       "object": "Object"
+    }
+  },
+  "errors": {
+    "forbidden": "You are not allowed to do this.",
+    "not_found": "Item not found.",
+    "conflict": "These dates overlap an existing booking. The estate is already taken for this period.",
+    "client_required": "The client name is required.",
+    "invalid_type": "Choose a file type.",
+    "invalid_date": "The date is not valid.",
+    "invalid_guests": "The guest count must be a positive whole number.",
+    "too_long": "One of the fields is too long.",
+    "invalid_status": "Unknown status.",
+    "note_required": "The note is empty.",
+    "dossier_required": "Choose a file.",
+    "dates_order": "The end date must be on or after the start date.",
+    "invalid_kind": "Choose option or firm booking.",
+    "expiry_required": "An option must have an expiry date.",
+    "expiry_past": "The option expiry date must be in the future."
+  },
+  "calendar": {
+    "title": "Calendar",
+    "subtitle": "The single schedule for the estate. Two bookings can never overlap.",
+    "previous": "Previous month",
+    "next": "Next month",
+    "today": "Today",
+    "kinds": {
+      "option": "Option",
+      "ferme": "Firm"
+    },
+    "optionUntil": "Option until {date}",
+    "monthList": "Bookings this month",
+    "noReservations": "No bookings this month.",
+    "cancel": "Cancel booking",
+    "newReservation": "New booking",
+    "created": "Booking saved.",
+    "form": {
+      "dossier": "File",
+      "chooseDossier": "Choose a file",
+      "startDate": "Start",
+      "endDate": "End (inclusive)",
+      "kind": "Kind",
+      "expiresOn": "Option expires on",
+      "create": "Book these dates"
     }
   }
 }

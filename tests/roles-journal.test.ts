@@ -1,24 +1,12 @@
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db, type Db } from "@/db";
-import { journal, organisations, users } from "@/db/schema";
-import { runMigrations } from "@/db/migrate";
+import { beforeAll, describe, expect, it } from "vitest";
+import { db } from "@/db";
+import { journal, users } from "@/db/schema";
 import type { CurrentUser } from "@/lib/current-user";
 import { ForbiddenError } from "@/lib/permissions";
 import { changeUserRole } from "@/lib/services/accounts";
 import { NotFoundError } from "@/lib/errors";
-
-// Tests sur une vraie base Postgres (TEST_DATABASE_URL), réinitialisée à chaque run.
-// Données entièrement fictives.
-
-async function resetDatabase() {
-  const { Pool } = await import("pg");
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  await pool.query("DROP SCHEMA IF EXISTS drizzle CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
-  await pool.end();
-  await runMigrations(process.env.DATABASE_URL!);
-}
-
+import { resetDatabase, seedOrg } from "./helpers";
 
 // Drizzle enveloppe l'erreur SQL : le message du trigger est dans `cause`.
 async function expectJournalRefusal(promise: PromiseLike<unknown>) {
@@ -31,18 +19,6 @@ async function expectJournalRefusal(promise: PromiseLike<unknown>) {
   expect(error, "la base aurait dû refuser l'opération").toBeDefined();
   const err = error as Error & { cause?: Error };
   expect(`${err.message} ${err.cause?.message ?? ""}`).toMatch(/ajout seul/);
-}
-
-async function seedOrg(slug: string) {
-  const [org] = await db.insert(organisations).values({ name: slug, slug }).returning();
-  const make = async (email: string, role: CurrentUser["role"]) => {
-    const [u] = await db
-      .insert(users)
-      .values({ email, name: email.split("@")[0], role, organisationId: org.id })
-      .returning();
-    return { id: u.id, name: u.name, email: u.email, role, organisationId: org.id } satisfies CurrentUser;
-  };
-  return { org, make };
 }
 
 describe("comptes et journal (base réelle)", () => {
@@ -63,12 +39,6 @@ describe("comptes et journal (base réelle)", () => {
     partner = await orgA.make("partenaire@example.com", "partner");
     targetA = await orgA.make("cible@example.com", "partner");
     otherOrgAdmin = await orgB.make("admin-b@example.com", "admin");
-  });
-
-  afterAll(async () => {
-    const { Pool } = await import("pg");
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    await pool.end();
   });
 
   async function journalCount(): Promise<number> {
@@ -127,5 +97,3 @@ describe("comptes et journal (base réelle)", () => {
     await expectJournalRefusal(db.execute("TRUNCATE journal"));
   });
 });
-
-export type { Db };

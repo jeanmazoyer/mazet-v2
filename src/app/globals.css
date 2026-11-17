@@ -1,31 +1,68 @@
 @import "tailwindcss";
 
-/* Thème vert sauge sur fond crème (BRIEF.md, section 3).
-   Point de départ : le contraste AA est vérifié par tests/contrast.test.ts. */
+/* Thème noir et blanc, dans l'esprit du design system Geist :
+   échelle de gris neutre, fond blanc (clair) ou presque noir (sombre),
+   couleur réservée aux états. Suit le réglage clair/sombre du système.
+   Le contraste AA de chaque couple est vérifié par tests/contrast.test.ts. */
 :root {
-  --background: oklch(0.985 0.008 95);
-  --foreground: oklch(0.22 0.02 150);
-  --card: oklch(0.995 0.005 95);
-  --card-foreground: oklch(0.22 0.02 150);
-  --primary: oklch(0.42 0.07 150);
-  --primary-foreground: oklch(0.98 0.01 95);
-  --secondary: oklch(0.95 0.015 130);
-  --secondary-foreground: oklch(0.28 0.04 150);
-  --muted: oklch(0.96 0.01 100);
-  --muted-foreground: oklch(0.5 0.02 140);
-  --accent: oklch(0.93 0.03 140);
-  --accent-foreground: oklch(0.28 0.04 150);
-  --border: oklch(0.9 0.012 110);
-  --input: oklch(0.9 0.012 110);
-  --ring: oklch(0.55 0.08 150);
-  --sidebar: oklch(0.97 0.012 110);
-  --sidebar-foreground: oklch(0.28 0.03 150);
-  --sidebar-primary: oklch(0.42 0.07 150);
-  --sidebar-primary-foreground: oklch(0.98 0.01 95);
-  --sidebar-accent: oklch(0.93 0.03 140);
-  --sidebar-accent-foreground: oklch(0.28 0.04 150);
-  --sidebar-border: oklch(0.9 0.012 110);
-  --radius: 0.625rem;
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(0 0% 9%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(0 0% 9%);
+  --primary: hsl(0 0% 9%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(0 0% 95%);
+  --secondary-foreground: hsl(0 0% 9%);
+  --muted: hsl(0 0% 98%);
+  --muted-foreground: hsl(0 0% 30%);
+  --accent: hsl(0 0% 95%);
+  --accent-foreground: hsl(0 0% 9%);
+  --border: hsl(0 0% 92%);
+  --input: hsl(0 0% 85%);
+  --ring: hsl(212 100% 48%);
+  --sidebar: hsl(0 0% 98%);
+  --sidebar-foreground: hsl(0 0% 9%);
+  --sidebar-primary: hsl(0 0% 9%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(0 0% 93%);
+  --sidebar-accent-foreground: hsl(0 0% 9%);
+  --sidebar-border: hsl(0 0% 92%);
+  --status-red: #cf2f36;
+  --status-green: #18703a;
+  --status-amber: #8a5300;
+  --status-blue: #1a5fb4;
+  --radius: 0.375rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: hsl(0 0% 4%);
+    --foreground: hsl(0 0% 93%);
+    --card: hsl(0 0% 7%);
+    --card-foreground: hsl(0 0% 93%);
+    --primary: hsl(0 0% 93%);
+    --primary-foreground: hsl(0 0% 4%);
+    --secondary: hsl(0 0% 12%);
+    --secondary-foreground: hsl(0 0% 93%);
+    --muted: hsl(0 0% 10%);
+    --muted-foreground: hsl(0 0% 63%);
+    --accent: hsl(0 0% 14%);
+    --accent-foreground: hsl(0 0% 93%);
+    --border: hsl(0 0% 18%);
+    --input: hsl(0 0% 27%);
+    --ring: hsl(212 100% 60%);
+    --sidebar: hsl(0 0% 0%);
+    --sidebar-foreground: hsl(0 0% 93%);
+    --sidebar-primary: hsl(0 0% 93%);
+    --sidebar-primary-foreground: hsl(0 0% 4%);
+    --sidebar-accent: hsl(0 0% 14%);
+    --sidebar-accent-foreground: hsl(0 0% 93%);
+    --sidebar-border: hsl(0 0% 18%);
+    --status-red: #ff5e63;
+    --status-green: #00ca52;
+    --status-amber: #ff9900;
+    --status-blue: #50a8ff;
+  }
 }
 
 @theme inline {
@@ -51,14 +88,22 @@
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
+  --color-status-red: var(--status-red);
+  --color-status-green: var(--status-green);
+  --color-status-amber: var(--status-amber);
+  --color-status-blue: var(--status-blue);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 @layer base {
   * {
     border-color: var(--border);
+  }
+  html {
+    color-scheme: light dark;
   }
   body {
     background: var(--background);

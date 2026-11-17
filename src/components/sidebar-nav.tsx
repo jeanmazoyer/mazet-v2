@@ -43,7 +43,6 @@ export function SidebarNav({
   roleLabel,
   signOutAction,
   soonLabel,
-  fictiveLabel,
 }: {
   items: NavItem[];
   sections: { work: string; admin: string };
@@ -51,7 +50,6 @@ export function SidebarNav({
   roleLabel: string;
   signOutAction: (formData: FormData) => Promise<void>;
   soonLabel: string;
-  fictiveLabel: string;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
@@ -62,7 +60,7 @@ export function SidebarNav({
 
   function renderItem(item: NavItem) {
     const Icon = ICONS[item.key] ?? FolderOpen;
-    const active = item.href !== null && pathname === item.href;
+    const active = item.href !== null && (pathname === item.href || pathname.startsWith(`${item.href}/`));
     const base = cn(
       "flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors",
       collapsed && "justify-center px-2",
@@ -178,7 +176,6 @@ export function SidebarNav({
             </button>
           </form>
         </div>
-        {!collapsed && <p className="hidden px-1 text-[11px] leading-snug text-muted-foreground md:block">{fictiveLabel}</p>}
       </div>
     </aside>
   );

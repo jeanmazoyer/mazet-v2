@@ -1,7 +1,10 @@
 import { journal } from "@/db/schema";
 import type { Tx, Db } from "@/db";
 
-export type JournalActor = { id: string; name: string };
+// `id` nul : action automatique du système (expiration d'une option, par exemple).
+export type JournalActor = { id: string | null; name: string };
+
+export const SYSTEM_ACTOR: JournalActor = { id: null, name: "Système" };
 
 export type JournalEntry = {
   organisationId: string;

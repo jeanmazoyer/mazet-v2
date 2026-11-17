@@ -10,7 +10,7 @@ type Entry = Omit<NavItem, "label"> & { permission: Permission; labelKey: string
 // Une entrée masquée n'est pas seulement cachée : sa page refuse aussi l'accès.
 const ENTRIES: Entry[] = [
   { key: "dossiers", href: "/dossiers", section: "work", permission: "dossier.read", labelKey: "nav.dossiers" },
-  { key: "calendrier", href: null, section: "work", permission: "calendar.read", labelKey: "nav.calendrier" },
+  { key: "calendrier", href: "/calendrier", section: "work", permission: "calendar.read", labelKey: "nav.calendrier" },
   { key: "devis", href: null, section: "work", permission: "quote.write", labelKey: "nav.devis" },
   { key: "echeancier", href: null, section: "work", permission: "payment.manage", labelKey: "nav.echeancier" },
   { key: "pieces", href: null, section: "work", permission: "document.manage", labelKey: "nav.pieces" },
@@ -37,10 +37,9 @@ export async function AppShell({ user, children }: { user: CurrentUser; children
         roleLabel={t(`roles.${user.role}`)}
         signOutAction={signOutAction}
         soonLabel={t("common.soon")}
-        fictiveLabel={t("common.fictiveData")}
       />
       <main className="min-w-0 flex-1 p-6 md:p-8">
-        <div className="mx-auto max-w-6xl">{children}</div>
+        <div className="mx-auto max-w-[1400px]">{children}</div>
       </main>
     </div>
   );
