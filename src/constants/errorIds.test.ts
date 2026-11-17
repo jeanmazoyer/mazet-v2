@@ -38,6 +38,7 @@ describe("error IDs", () => {
       "STATS",
       "LABEL",
       "LOSTREASON",
+      "RESERVATION",
       "ENRICH",
       "UI",
       "INTERCOM",

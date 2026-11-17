@@ -13,6 +13,7 @@ import { isOverlayOpen, isTypingTarget } from "@/features/shortcuts/shortcutTarg
 import { cn } from "@/lib/utils";
 import {
   ActivitiesIcon,
+  BookingsIcon,
   ContactsIcon,
   DashboardIcon,
   DocsIcon,
@@ -27,6 +28,7 @@ const ICONS: Record<NavKey, typeof PipelineIcon> = {
   leads: LeadsIcon,
   contacts: ContactsIcon,
   activities: ActivitiesIcon,
+  calendar: BookingsIcon,
   inbox: InboxIcon,
   dashboard: DashboardIcon,
   settings: SettingsIcon,

@@ -41,6 +41,7 @@ export * from "./pipelines";
 export * from "./prospects";
 export * from "./realtime";
 export * from "./release";
+export * from "./reservations";
 export * from "./savedFilters";
 export * from "./stages";
 export * from "./system";

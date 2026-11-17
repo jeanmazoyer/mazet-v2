@@ -1,6 +1,7 @@
 import {
   BookOpen,
   CalendarDays,
+  CalendarRange,
   ChartColumn,
   Inbox,
   Kanban,
@@ -54,4 +55,8 @@ export function DashboardIcon({ className }: IconProps): React.ReactNode {
 
 export function SettingsIcon({ className }: IconProps): React.ReactNode {
   return <Settings aria-hidden="true" className={className ?? NAV_ICON_CLASS} />;
+}
+
+export function BookingsIcon({ className }: IconProps): React.ReactNode {
+  return <CalendarRange aria-hidden="true" className={className ?? NAV_ICON_CLASS} />;
 }

@@ -26,6 +26,11 @@ l'historique git, au commit `822f899`.
   dollars.
 - **Pipeline sans défilement horizontal** : les colonnes se partagent la largeur et passent à la
   ligne.
+- **Calendrier des réservations** (entrée « Bookings » du menu) : dates bloquées pour chaque
+  dossier, avec options à date d'expiration. Deux réservations actives ne peuvent jamais partager
+  un jour : c'est une contrainte de la base (`drizzle/0084_reservations_no_overlap.sql`), pas
+  seulement du code. Chaque ajout, annulation et expiration est écrit dans l'historique du dossier.
+  Après un `git pull`, pense à relancer `pnpm db:migrate`.
 - **Réglages par défaut** : télémétrie et vérification de mise à jour désactivées.
 - **Tests sans Docker** : `TEST_PG_URL` permet de lancer les tests d'intégration sur un
   PostgreSQL déjà installé. Cette exécution demande environ 15 Go de disque libre et supprime,
