@@ -1,0 +1,219 @@
+"use client";
+import { useRouter } from "next/navigation";
+import type React from "react";
+import { useState } from "react";
+import { HiddenRecordNotice } from "@/components/HiddenRecordNotice";
+import { DEFAULT_BASE_CURRENCY } from "@/constants/currency";
+import {
+  CustomFieldCreateFields,
+  customFieldCreatePayload,
+  firstMissingImportantField,
+} from "@/features/custom-fields/CustomFieldCreateFields";
+import { deriveEntityTitle } from "@/features/deals/dealTitleAutofill";
+import { EntityCreateModalShell } from "@/features/entity-create/EntityCreateModalShell";
+import {
+  optionsOrNull,
+  resolveNewOrgId,
+  resolveNewPersonId,
+} from "@/features/entity-create/modalHelpers";
+import { useInterfacePrefs } from "@/features/identity/InterfacePrefsProvider";
+import { trpc } from "@/lib/trpc-client";
+import { readCsrfToken } from "@/utils/csrfCookie";
+import { AddLeadLeftColumn } from "./AddLeadLeftColumn";
+import { type AddLeadState, initialAddLeadState } from "./addLeadState";
+import { parseNewLead } from "./leadForm";
+import { createLeadAction } from "./leadServerActions";
+
+export interface AddLeadModalProps {
+  baseCurrency?: string;
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+export function AddLeadModal({
+  baseCurrency = DEFAULT_BASE_CURRENCY,
+  onClose,
+  onCreated,
+}: AddLeadModalProps): React.ReactNode {
+  const router = useRouter();
+  const { autoPrefixLeadDealTitles, openDetailsAfterCreate } = useInterfacePrefs();
+  const [state, setState] = useState<AddLeadState>(initialAddLeadState());
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [hiddenTitle, setHiddenTitle] = useState<string | null>(null);
+
+  const peopleQ = trpc.contacts.personOptions.useQuery();
+  const orgsQ = trpc.contacts.orgOptions.useQuery();
+  const usersQ = trpc.identity.listUsers.useQuery(undefined, { retry: false });
+  const groupsQ = trpc.identity.listVisibilityGroups.useQuery(undefined, { retry: false });
+  const personFieldsQ = trpc.customFields.listDefs.useQuery({ target: "person" });
+  const orgFieldsQ = trpc.customFields.listDefs.useQuery({ target: "organization" });
+  const leadFieldsQ = trpc.customFields.listDefs.useQuery({ target: "lead" });
+
+  const set = (patch: Partial<AddLeadState>): void => setState((s) => ({ ...s, ...patch }));
+
+  // Autofill the lead title from the chosen person/org ("{name} lead") until the user edits it.
+  const people = peopleQ.data ?? [];
+  const orgs = orgsQ.data ?? [];
+  const [titleEdited, setTitleEdited] = useState(false);
+  const derivedTitle = deriveEntityTitle(state, orgs, people, "lead", autoPrefixLeadDealTitles);
+  // Derived during render: an effect would paint the stale title for a frame, then correct it.
+  if (!titleEdited && state.title !== derivedTitle) {
+    setState((s) => (s.title === derivedTitle ? s : { ...s, title: derivedTitle }));
+  }
+
+  async function submit(): Promise<void> {
+    setError(null);
+    setPending(true);
+    try {
+      const csrf = readCsrfToken();
+      // Validate the lead fields BEFORE creating any inline org/person, so an invalid lead (e.g.
+      // blank title) can never leave an orphaned org/person behind or duplicate one on retry.
+      const parsed = parseNewLead({
+        title: state.title,
+        value: state.value,
+        personId: null,
+        orgId: null,
+        labels: state.labels,
+        sourceChannel: state.sourceChannel,
+        sourceChannelId: state.sourceChannelId,
+        expectedCloseDate: state.expectedCloseDate,
+        ownerId: state.ownerId,
+        visibilityGroupId: state.visibilityGroupId,
+      });
+      if (!parsed.ok) {
+        setError(parsed.error);
+        return;
+      }
+      const leadFields = leadFieldsQ.data ?? [];
+      const missingLeadField = firstMissingImportantField(leadFields, state.leadCustomFields);
+      if (missingLeadField !== null) {
+        setError(`${missingLeadField.name} is required`);
+        return;
+      }
+      const personFields = personFieldsQ.data ?? [];
+      const orgFields = orgFieldsQ.data ?? [];
+      if (state.orgMode === "new") {
+        const missingOrgField = firstMissingImportantField(orgFields, state.orgCustomFields);
+        if (missingOrgField !== null) {
+          setError(`${missingOrgField.name} is required`);
+          return;
+        }
+      }
+      if (state.personMode === "new") {
+        const missingPersonField = firstMissingImportantField(
+          personFields,
+          state.personCustomFields,
+        );
+        if (missingPersonField !== null) {
+          setError(`${missingPersonField.name} is required`);
+          return;
+        }
+      }
+      const submitState = {
+        ...state,
+        personCustomFields: customFieldCreatePayload(personFields, state.personCustomFields),
+        orgCustomFields: customFieldCreatePayload(orgFields, state.orgCustomFields),
+      };
+      const orgId = await resolveNewOrgId(submitState, csrf);
+      if (orgId !== null && typeof orgId === "object") {
+        setError(orgId.error);
+        return;
+      }
+      const personId = await resolveNewPersonId(submitState, orgId, csrf);
+      if (personId !== null && typeof personId === "object") {
+        setError(personId.error);
+        return;
+      }
+      const result = await createLeadAction(
+        {
+          ...parsed.input,
+          personId,
+          orgId,
+          customFields: customFieldCreatePayload(leadFields, state.leadCustomFields),
+        },
+        csrf,
+      );
+      if (!result.ok) {
+        setError(`Could not create lead (${result.error.id})`);
+        return;
+      }
+      onCreated();
+      if (result.value === null) {
+        setHiddenTitle(parsed.input.title);
+        return;
+      }
+      onClose();
+      // "Open details view after creating a new item" (personal preference): leads share the
+      // lead/deal flag with deals. Otherwise the caller's onCreated handles the refresh.
+      if (openDetailsAfterCreate.leadDeal) router.push(`/leads/${result.value.id}`);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (hiddenTitle !== null) {
+    return <HiddenRecordNotice entityLabel="Lead" title={hiddenTitle} onDismiss={onClose} />;
+  }
+
+  return (
+    <EntityCreateModalShell
+      title="Add lead"
+      personMode={state.personMode}
+      phones={state.phones}
+      emails={state.emails}
+      onPhones={(phones) => set({ phones })}
+      onEmails={(emails) => set({ emails })}
+      personCustomFields={
+        <CustomFieldCreateFields
+          title="Person fields"
+          defs={personFieldsQ.data ?? []}
+          values={state.personCustomFields}
+          onChange={(key, value) =>
+            set({ personCustomFields: { ...state.personCustomFields, [key]: value } })
+          }
+        />
+      }
+      error={error}
+      pending={pending}
+      submitDisabled={personFieldsQ.isLoading || orgFieldsQ.isLoading || leadFieldsQ.isLoading}
+      onSubmit={() => void submit()}
+      onClose={onClose}
+      leftColumn={
+        <AddLeadLeftColumn
+          state={state}
+          set={set}
+          onTitleChange={(v) => {
+            setTitleEdited(true);
+            set({ title: v });
+          }}
+          people={peopleQ.data ?? []}
+          orgs={orgsQ.data ?? []}
+          owners={optionsOrNull(usersQ.data)}
+          groups={optionsOrNull(groupsQ.data)}
+          baseCurrency={baseCurrency}
+          organizationCustomFields={
+            <CustomFieldCreateFields
+              title="Organization fields"
+              defs={orgFieldsQ.data ?? []}
+              values={state.orgCustomFields}
+              onChange={(key, value) =>
+                set({ orgCustomFields: { ...state.orgCustomFields, [key]: value } })
+              }
+            />
+          }
+          leadCustomFields={
+            <CustomFieldCreateFields
+              title="Lead fields"
+              defs={leadFieldsQ.data ?? []}
+              values={state.leadCustomFields}
+              onChange={(key, value) =>
+                set({ leadCustomFields: { ...state.leadCustomFields, [key]: value } })
+              }
+            />
+          }
+        />
+      }
+    />
+  );
+}

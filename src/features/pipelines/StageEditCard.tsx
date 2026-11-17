@@ -1,0 +1,87 @@
+"use client";
+import type React from "react";
+import { useId } from "react";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Input } from "@/components/ui/Input";
+import { DEFAULT_ROTTING_DAYS } from "@/constants/pipelineDefaults";
+import type { StageRow } from "./stageDiff";
+import { dealCountLabel } from "./stageRemoval";
+
+interface StageEditCardProps {
+  row: StageRow & { dealCount: number; closedDealCount: number };
+  index: number;
+  canDelete: boolean;
+  onChange: (patch: Partial<StageRow>) => void;
+  onDelete: () => void;
+  dragHandle?: React.ReactNode;
+}
+
+// One stage column in the Edit Pipeline page (each stage is a card with a name and an optional
+// rotting-days threshold). Presentational: all state lives in the parent so the save-diff can
+// read a single source of truth.
+export function StageEditCard({
+  row,
+  index,
+  canDelete,
+  onChange,
+  onDelete,
+  dragHandle,
+}: StageEditCardProps): React.ReactNode {
+  const rottingEnabled = row.rottingDays !== null;
+  const nameId = useId();
+  return (
+    <div className="flex w-64 shrink-0 flex-col gap-3 rounded-lg border bg-card p-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1">
+          {dragHandle}
+          <span className="text-xs font-medium text-muted-foreground">Stage {index + 1}</span>
+        </div>
+        <button
+          type="button"
+          aria-label={`Delete stage ${index + 1}`}
+          disabled={!canDelete}
+          onClick={onDelete}
+          className="grid size-10 -m-2 place-items-center rounded text-muted-foreground transition-transform hover:bg-accent hover:text-red-600 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+
+      <div className="text-sm">
+        <label htmlFor={nameId} className="mb-1 block font-medium">
+          Stage name
+        </label>
+        <Input
+          id={nameId}
+          aria-label={`Stage ${index + 1} name`}
+          value={row.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          {dealCountLabel(row.dealCount, row.closedDealCount)}
+        </p>
+      </div>
+
+      <div className="text-sm">
+        <div className="flex items-center gap-2">
+          <Checkbox
+            label={`Stage ${index + 1} rotting enabled`}
+            checked={rottingEnabled}
+            onCheckedChange={(v) => onChange({ rottingDays: v ? DEFAULT_ROTTING_DAYS : null })}
+          />
+          <span className="font-medium">Rotting in (days)</span>
+        </div>
+        {rottingEnabled && (
+          <Input
+            aria-label={`Stage ${index + 1} rotting days`}
+            type="number"
+            min={1}
+            value={row.rottingDays ?? DEFAULT_ROTTING_DAYS}
+            onChange={(e) => onChange({ rottingDays: Math.max(1, Number(e.target.value) || 1) })}
+            className="mt-2"
+          />
+        )}
+      </div>
+    </div>
+  );
+}

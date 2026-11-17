@@ -1,5 +1,21 @@
 # Brief de démarrage : outil de gestion du domaine
 
+> **Décision du 17 novembre 2026 : changement de base.** Le projet repart de warpdrive 2.8.1
+> (open source, licence MIT), repris en entier puis adapté au domaine. Conséquences sur ce brief :
+> - **Pile et hébergement (sections 2 et 8)** : Next.js, Drizzle et Postgres restent, mais
+>   l'hébergement Vercel est abandonné. Warpdrive se déploie avec Docker sur un serveur, à
+>   placer dans l'Union européenne.
+> - **Interface (section 3)** : c'est celle de warpdrive. La règle « aucun défilement
+>   horizontal » est conservée.
+> - **Périmètre (section 4)** : le calendrier, les devis, l'échéancier, les pièces et la fiche
+>   événement restent à construire ou à porter dans cette nouvelle base.
+> - **Rôles et traçabilité (section 6)** : à rapprocher des permissions et de l'historique de
+>   warpdrive. Le journal infalsifiable n'y existe pas encore.
+> - **Langue** : l'interface de warpdrive est en anglais. La traduction reste à faire.
+>
+> L'état réel du dépôt est décrit dans README.md.
+
+
 Document à placer à la racine du dépôt. Il décrit ce qu'on construit, dans quel ordre, et les règles à ne pas enfreindre.
 
 ## 1. Le produit en une phrase

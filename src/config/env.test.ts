@@ -1,0 +1,113 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { parseEnv } from "./env";
+
+describe("env boundary", () => {
+  test("loads a valid env from process.env (vitest.setup defaults)", async () => {
+    const { env } = await import("./env");
+    expect(env.BASE_URL).toBe("https://app.example.com");
+    expect(env.GOOGLE_WORKSPACE_DOMAIN).toBe("example.com");
+    expect(env.ALLOW_FIRST_LOGIN_ADMIN).toBe(false);
+    expect(Buffer.from(env.TOKEN_ENCRYPTION_KEY, "base64")).toHaveLength(32);
+  });
+
+  test("rejects production with no SEED_ADMIN_EMAIL and no dev flag", () => {
+    const result = parseEnv({
+      ...process.env,
+      NODE_ENV: "production",
+      SEED_ADMIN_EMAIL: "",
+      ALLOW_FIRST_LOGIN_ADMIN: "false",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  test("rejects ALLOW_FIRST_LOGIN_ADMIN=true in production", () => {
+    const result = parseEnv({
+      ...process.env,
+      NODE_ENV: "production",
+      SEED_ADMIN_EMAIL: "admin@example.com",
+      ALLOW_FIRST_LOGIN_ADMIN: "true",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  test("accepts production with SEED_ADMIN_EMAIL and dev flag false", () => {
+    const result = parseEnv({
+      ...process.env,
+      NODE_ENV: "production",
+      SEED_ADMIN_EMAIL: "admin@example.com",
+      ALLOW_FIRST_LOGIN_ADMIN: "false",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  test("defaults APP_VERSION empty and DISABLE_UPDATE_CHECK false", () => {
+    const result = parseEnv({ ...process.env });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.APP_VERSION).toBe("");
+      expect(result.value.DISABLE_UPDATE_CHECK).toBe(false);
+    }
+  });
+
+  test("defaults telemetry vars to disabled-safe values when unset", () => {
+    const parsed = parseEnv({ ...process.env });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.POSTHOG_KEY).toBe("");
+    expect(parsed.value.POSTHOG_HOST).toBe("");
+    expect(parsed.value.DISABLE_TELEMETRY).toBe(false);
+    expect(parsed.value.APP_COMMIT).toBe("");
+  });
+
+  test("parses an APP_VERSION stamp and DISABLE_UPDATE_CHECK=true", () => {
+    const result = parseEnv({
+      ...process.env,
+      APP_VERSION: "v1.2.0",
+      DISABLE_UPDATE_CHECK: "true",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.APP_VERSION).toBe("v1.2.0");
+      expect(result.value.DISABLE_UPDATE_CHECK).toBe(true);
+    }
+  });
+
+  describe("Docker secret <VAR>_FILE resolution", () => {
+    let dir: string;
+
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), "warpdrive-secret-"));
+    });
+
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    test("TOKEN_ENCRYPTION_KEY_FILE contents take preference over the plain var", () => {
+      // Two DISTINCT valid 32-byte base64 keys: byte-0 vs byte-9 fill.
+      // The file holds keyFromFile, the plain var holds keyFromPlain.
+      // If resolveFileVars works, the parsed value MUST equal keyFromFile.
+      const keyFromFile = Buffer.alloc(32, 0).toString("base64");
+      const keyFromPlain = Buffer.alloc(32, 9).toString("base64");
+      expect(keyFromFile).not.toBe(keyFromPlain); // guard: assertion is not vacuous
+
+      const filePath = join(dir, "token_encryption_key");
+      // Trailing whitespace/newline must be trimmed by resolveFileVars.
+      writeFileSync(filePath, `${keyFromFile}\n`, "utf8");
+
+      const result = parseEnv({
+        ...process.env,
+        TOKEN_ENCRYPTION_KEY: keyFromPlain,
+        TOKEN_ENCRYPTION_KEY_FILE: filePath,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return; // narrow for TypeScript
+      expect(result.value.TOKEN_ENCRYPTION_KEY).toBe(keyFromFile);
+      expect(result.value.TOKEN_ENCRYPTION_KEY).not.toBe(keyFromPlain);
+    });
+  });
+});

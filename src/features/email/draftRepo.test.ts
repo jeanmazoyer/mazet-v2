@@ -1,0 +1,270 @@
+import { sql } from "drizzle-orm";
+import { describe, expect, it } from "vitest";
+import { withTestDb } from "@/db/testing";
+import { seedUser } from "@/db/testing/factories";
+import type { AuthUser } from "@/features/permissions/types";
+import { deleteDraft, listDrafts, patchDraft, saveDraft } from "./draftRepo";
+
+type TestDb = Parameters<Parameters<typeof withTestDb>[0]>[0];
+const SIG = (): AbortSignal => AbortSignal.timeout(8000);
+const actorOf = (id: string): AuthUser => ({
+  id,
+  type: "regular",
+  isActive: true,
+  groupIds: new Set(),
+});
+
+async function seedAccount(
+  db: TestDb,
+  ownerId: string,
+  email = "o@gunsnation.com",
+): Promise<string> {
+  const acct = (
+    await db.execute(
+      sql`INSERT INTO email_accounts (user_id, email_address) VALUES (${ownerId}, ${email}) RETURNING id`,
+    )
+  ).rows[0] as { id: string };
+  return acct.id;
+}
+
+describe("draft repository", () => {
+  it("saves, updates by id, lists newest-first, and deletes", async () => {
+    await withTestDb(async (db) => {
+      const owner = await seedUser(db, { email: "o@gunsnation.com" });
+      const acctId = await seedAccount(db, owner.id);
+      const actor = actorOf(owner.id);
+
+      const created = await saveDraft(
+        db,
+        {
+          actor,
+          draft: {
+            accountId: acctId,
+            subject: "One",
+            bodyHtml: "<p>1</p>",
+            toEmails: ["a@y.com"],
+            ccEmails: [],
+          },
+        },
+        SIG(),
+      );
+      if (!created.ok) throw new Error("save failed");
+
+      const updated = await saveDraft(
+        db,
+        {
+          actor,
+          draft: {
+            id: created.value.id,
+            accountId: acctId,
+            subject: "One-edited",
+            bodyHtml: "<p>1b</p>",
+            toEmails: ["a@y.com"],
+            ccEmails: ["c@y.com"],
+          },
+        },
+        SIG(),
+      );
+      expect(updated.ok).toBe(true);
+
+      await saveDraft(
+        db,
+        {
+          actor,
+          draft: {
+            accountId: acctId,
+            subject: "Two",
+            bodyHtml: "<p>2</p>",
+            toEmails: [],
+            ccEmails: [],
+          },
+        },
+        SIG(),
+      );
+
+      const list = await listDrafts(db, actor, SIG());
+      expect(list).toHaveLength(2);
+      const edited = list.find((d) => d.id === created.value.id);
+      expect(edited?.subject).toBe("One-edited");
+      expect(edited?.ccEmails).toEqual(["c@y.com"]);
+
+      const del = await deleteDraft(db, { actor, draftId: created.value.id }, SIG());
+      expect(del.ok).toBe(true);
+      expect(await listDrafts(db, actor, SIG())).toHaveLength(1);
+    });
+  });
+
+  it("round-trips the compose visibility so a private draft resumes private (codex P1)", async () => {
+    await withTestDb(async (db) => {
+      const owner = await seedUser(db, { email: "o@gunsnation.com" });
+      const acctId = await seedAccount(db, owner.id);
+      const actor = actorOf(owner.id);
+
+      const priv = await saveDraft(
+        db,
+        {
+          actor,
+          draft: {
+            accountId: acctId,
+            subject: "Secret",
+            bodyHtml: "<p>hush</p>",
+            toEmails: [],
+            ccEmails: [],
+            visibility: "private",
+          },
+        },
+        SIG(),
+      );
+      if (!priv.ok) throw new Error("save failed");
+
+      const list = await listDrafts(db, actor, SIG());
+      expect(list.find((d) => d.id === priv.value.id)?.visibility).toBe("private");
+    });
+  });
+
+  it("defaults a draft with no explicit visibility to shared", async () => {
+    await withTestDb(async (db) => {
+      const owner = await seedUser(db, { email: "o@gunsnation.com" });
+      const acctId = await seedAccount(db, owner.id);
+      const actor = actorOf(owner.id);
+      const res = await saveDraft(
+        db,
+        {
+          actor,
+          draft: {
+            accountId: acctId,
+            subject: "Hi",
+            bodyHtml: "<p>x</p>",
+            toEmails: [],
+            ccEmails: [],
+          },
+        },
+        SIG(),
+      );
+      if (!res.ok) throw new Error("save failed");
+      const list = await listDrafts(db, actor, SIG());
+      expect(list.find((d) => d.id === res.value.id)?.visibility).toBe("shared");
+    });
+  });
+
+  it("saving a draft with a foreign/nonexistent threadId returns a Result, not an FK throw", async () => {
+    await withTestDb(async (db) => {
+      const owner = await seedUser(db, { email: "o@gunsnation.com" });
+      const acctId = await seedAccount(db, owner.id);
+      // A threadId that does not exist on this mailbox: the composite FK would raise a Postgres
+      // error, but the boundary must return a typed AppError instead of throwing.
+      const res = await saveDraft(
+        db,
+        {
+          actor: actorOf(owner.id),
+          draft: {
+            accountId: acctId,
+            threadId: crypto.randomUUID(),
+            subject: "Reply",
+            bodyHtml: "<p>x</p>",
+            toEmails: [],
+            ccEmails: [],
+          },
+        },
+        SIG(),
+      );
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.id).toBe("E_GMAIL_011");
+    });
+  });
+
+  it("delete of a non-owned draft returns E_GMAIL_014 (no leak)", async () => {
+    await withTestDb(async (db) => {
+      const owner = await seedUser(db, { email: "o@gunsnation.com" });
+      const other = await seedUser(db, { email: "x@gunsnation.com" });
+      const acctId = await seedAccount(db, owner.id);
+      const created = await saveDraft(
+        db,
+        {
+          actor: actorOf(owner.id),
+          draft: { accountId: acctId, subject: "Mine", bodyHtml: "", toEmails: [], ccEmails: [] },
+        },
+        SIG(),
+      );
+      if (!created.ok) throw new Error("save failed");
+      const del = await deleteDraft(
+        db,
+        { actor: actorOf(other.id), draftId: created.value.id },
+        SIG(),
+      );
+      expect(del.ok).toBe(false);
+      if (!del.ok) expect(del.error.id).toBe("E_GMAIL_014");
+    });
+  });
+
+  it("patches only the columns it is given, so a concurrent write to the rest survives", async () => {
+    await withTestDb(async (db) => {
+      const owner = await seedUser(db, { email: "o@gunsnation.com" });
+      const other = await seedUser(db, { email: "x@gunsnation.com" });
+      const acctId = await seedAccount(db, owner.id);
+      const actor = actorOf(owner.id);
+
+      const created = await saveDraft(
+        db,
+        {
+          actor,
+          draft: {
+            accountId: acctId,
+            subject: "Original",
+            bodyHtml: "<p>original body</p>",
+            toEmails: ["a@y.com"],
+            ccEmails: ["c@y.com"],
+            visibility: "private",
+          },
+        },
+        SIG(),
+      );
+      if (!created.ok) throw new Error("save failed");
+
+      // Stands in for the composer autosaving between an agent reading the draft and writing it
+      // back: a read-modify-write would replay the stale body over this.
+      await db.execute(
+        sql`UPDATE email_drafts SET body_html = '<p>autosaved</p>' WHERE id = ${created.value.id}`,
+      );
+
+      const patched = await patchDraft(
+        db,
+        { actor, draftId: created.value.id, patch: { subject: "Revised" } },
+        SIG(),
+      );
+      expect(patched.ok).toBe(true);
+
+      const row = (
+        await db.execute(
+          sql`SELECT subject, body_html, to_emails, cc_emails, visibility FROM email_drafts`,
+        )
+      ).rows[0] as {
+        subject: string;
+        body_html: string;
+        to_emails: unknown;
+        cc_emails: unknown;
+        visibility: string;
+      };
+      expect(row.subject).toBe("Revised");
+      expect(row.body_html).toBe("<p>autosaved</p>");
+      expect(row.to_emails).toEqual(["a@y.com"]);
+      expect(row.cc_emails).toEqual(["c@y.com"]);
+      expect(row.visibility).toBe("private");
+
+      const theirs = await patchDraft(
+        db,
+        { actor: actorOf(other.id), draftId: created.value.id, patch: { subject: "Hijacked" } },
+        SIG(),
+      );
+      expect(theirs.ok).toBe(false);
+      if (!theirs.ok) expect(theirs.error.id).toBe("E_GMAIL_014");
+
+      const missing = await patchDraft(
+        db,
+        { actor, draftId: crypto.randomUUID(), patch: { subject: "Nowhere" } },
+        SIG(),
+      );
+      expect(missing.ok).toBe(false);
+    });
+  });
+});

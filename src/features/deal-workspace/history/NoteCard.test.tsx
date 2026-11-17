@@ -1,0 +1,172 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, expect, it, vi } from "vitest";
+import {
+  INTERFACE_PREFS_DEFAULT,
+  InterfacePrefsProvider,
+} from "@/features/identity/InterfacePrefsProvider";
+import { NoteCard } from "./NoteCard";
+
+const togglePin = vi.fn<(...args: unknown[]) => Promise<{ ok: true; value: { id: string } }>>(() =>
+  Promise.resolve({ ok: true, value: { id: "n1" } }),
+);
+const updateNote = vi.fn<(...args: unknown[]) => Promise<{ ok: true; value: { id: string } }>>(() =>
+  Promise.resolve({ ok: true, value: { id: "n1" } }),
+);
+const deleteNote = vi.fn<(...args: unknown[]) => Promise<{ ok: true; value: { id: string } }>>(() =>
+  Promise.resolve({ ok: true, value: { id: "n1" } }),
+);
+
+vi.mock("@/features/collaboration/actions", () => ({
+  togglePinAction: (...a: unknown[]) => togglePin(...a),
+  updateNoteAction: (...a: unknown[]) => updateNote(...a),
+  deleteNoteAction: (...a: unknown[]) => deleteNote(...a),
+}));
+vi.mock("@/utils/csrfCookie", () => ({ readCsrfToken: () => "csrf" }));
+vi.mock("@/lib/trpc-client", () => ({
+  trpc: {
+    collaboration: { listComments: { useQuery: () => ({ data: [] }) } },
+    useUtils: () => ({ collaboration: { listComments: { invalidate: () => Promise.resolve() } } }),
+  },
+}));
+const reportError = vi.fn();
+vi.mock("@/features/deal-workspace/DealActionErrorProvider", () => ({
+  useDealActionError: () => reportError,
+}));
+
+afterEach(() => {
+  cleanup();
+  reportError.mockClear();
+});
+
+const base = {
+  id: "n1",
+  body: "Called the buyer",
+  at: new Date("2026-07-02T10:00:00Z"),
+  actorName: "Nick",
+  pinned: false,
+};
+
+it("renders the note body and an inline pin control", () => {
+  render(<NoteCard {...base} />);
+  expect(screen.getByText("Called the buyer")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /pin/i })).toBeInTheDocument();
+});
+
+it("renders a URL in the body as a link that opens in a new tab, punctuation left outside", () => {
+  render(<NoteCard {...base} body="Deck: https://example.com/deck?v=2, see p3." />);
+  const link = screen.getByRole("link", { name: "https://example.com/deck?v=2" });
+  expect(link).toHaveAttribute("href", "https://example.com/deck?v=2");
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  expect(link.className).toMatch(/text-link/);
+  expect(screen.getByText(/, see p3\./)).toBeInTheDocument();
+});
+
+it("renders an email in the body as a mailto link", () => {
+  render(<NoteCard {...base} body="CC ann@example.com" />);
+  expect(screen.getByRole("link", { name: "ann@example.com" })).toHaveAttribute(
+    "href",
+    "mailto:ann@example.com",
+  );
+});
+
+it("opens an email link in a new tab when the interface preference is on", () => {
+  render(
+    <InterfacePrefsProvider value={{ ...INTERFACE_PREFS_DEFAULT, emailLinksNewTab: true }}>
+      <NoteCard {...base} body="CC ann@example.com" />
+    </InterfacePrefsProvider>,
+  );
+  const link = screen.getByRole("link", { name: "ann@example.com" });
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(link).toHaveAttribute("rel", "noopener noreferrer");
+});
+
+it("keeps the raw text in the edit textarea, not link markup", async () => {
+  const user = userEvent.setup();
+  render(<NoteCard {...base} body="see https://example.com." />);
+  await user.click(screen.getByRole("button", { name: /more actions/i }));
+  await user.click(screen.getByRole("menuitem", { name: /edit/i }));
+  expect(screen.getByRole("textbox", { name: /note/i })).toHaveValue("see https://example.com.");
+});
+
+it("pins in one click", async () => {
+  const user = userEvent.setup();
+  render(<NoteCard {...base} onChanged={() => {}} />);
+  await user.click(screen.getByRole("button", { name: /pin/i }));
+  expect(togglePin).toHaveBeenCalledWith({ noteId: "n1", pinned: true }, "csrf");
+});
+
+it("edits the body via the menu", async () => {
+  const user = userEvent.setup();
+  render(<NoteCard {...base} onChanged={() => {}} />);
+  await user.click(screen.getByRole("button", { name: /more actions/i }));
+  await user.click(screen.getByRole("menuitem", { name: /edit/i }));
+  const box = screen.getByRole("textbox", { name: /note/i });
+  await user.clear(box);
+  await user.type(box, "Edited");
+  await user.click(screen.getByRole("button", { name: /save/i }));
+  expect(updateNote).toHaveBeenCalledWith({ noteId: "n1", body: "Edited" }, "csrf");
+});
+
+it("deletes after confirming", async () => {
+  const user = userEvent.setup();
+  render(<NoteCard {...base} onChanged={() => {}} />);
+  await user.click(screen.getByRole("button", { name: /more actions/i }));
+  await user.click(screen.getByRole("menuitem", { name: /delete/i }));
+  // Confirm dialog: the destructive confirm button, not the menu item.
+  await user.click(screen.getByRole("button", { name: /^delete$/i }));
+  expect(deleteNote).toHaveBeenCalledWith({ noteId: "n1" }, "csrf");
+});
+
+it("surfaces the error and keeps editing open when saving an edit is denied", async () => {
+  updateNote.mockResolvedValueOnce({ ok: false as const, error: { id: "E_PERM_001" } } as never);
+  const onChanged = vi.fn();
+  const user = userEvent.setup();
+  render(<NoteCard {...base} onChanged={onChanged} />);
+  await user.click(screen.getByRole("button", { name: /more actions/i }));
+  await user.click(screen.getByRole("menuitem", { name: /edit/i }));
+  await user.click(screen.getByRole("button", { name: /save/i }));
+  await waitFor(() => expect(reportError).toHaveBeenCalledWith("E_PERM_001"));
+  expect(onChanged).not.toHaveBeenCalled();
+  // The editor stays open so the edit is not silently lost.
+  expect(screen.getByRole("textbox", { name: /note/i })).toBeInTheDocument();
+});
+
+it("surfaces the error when deleting is denied (no silent swallow)", async () => {
+  deleteNote.mockResolvedValueOnce({ ok: false as const, error: { id: "E_PERM_001" } } as never);
+  const onChanged = vi.fn();
+  const user = userEvent.setup();
+  render(<NoteCard {...base} onChanged={onChanged} />);
+  await user.click(screen.getByRole("button", { name: /more actions/i }));
+  await user.click(screen.getByRole("menuitem", { name: /delete/i }));
+  await user.click(screen.getByRole("button", { name: /^delete$/i }));
+  await waitFor(() => expect(reportError).toHaveBeenCalledWith("E_PERM_001"));
+  expect(onChanged).not.toHaveBeenCalled();
+});
+
+it("rolls back the pin and surfaces the error when pinning is denied", async () => {
+  togglePin.mockResolvedValueOnce({ ok: false as const, error: { id: "E_PERM_001" } } as never);
+  const user = userEvent.setup();
+  render(<NoteCard {...base} onChanged={() => {}} />);
+  const pinBtn = screen.getByRole("button", { name: /pin note/i });
+  await user.click(pinBtn);
+  await waitFor(() => expect(reportError).toHaveBeenCalledWith("E_PERM_001"));
+  // Optimistic pin was rolled back to the unpinned state.
+  expect(screen.getByRole("button", { name: /pin note/i })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+});
+
+it("offers a comment thread on a note that belongs to a commentable record", () => {
+  render(<NoteCard {...base} entityType="deal" entityId="d1" />);
+  expect(screen.getByRole("button", { name: "Comment" })).toBeInTheDocument();
+});
+
+it("offers no comment thread when the note carries no entity scope", () => {
+  render(<NoteCard {...base} />);
+  expect(screen.queryByRole("button", { name: "Comment" })).not.toBeInTheDocument();
+});

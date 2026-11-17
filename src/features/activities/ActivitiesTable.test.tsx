@@ -1,0 +1,389 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/activities",
+  useRouter: () => ({ push }),
+}));
+
+beforeAll(() => {
+  // Radix Select + the Combobox/DatePicker popovers (ActivitiesFilters) need these in jsdom.
+  Element.prototype.scrollIntoView = vi.fn();
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  global.ResizeObserver = class {
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  };
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+  useRecordPreview.getState().clearPreview();
+});
+
+const refetch = vi.fn();
+const useQuery = vi.fn();
+vi.mock("@/lib/trpc-client", () => ({
+  trpc: {
+    useUtils: () => ({
+      activities: {
+        dayLoad: { invalidate: () => Promise.resolve() },
+        listRows: { invalidate: () => Promise.resolve() },
+      },
+    }),
+    activities: {
+      listRows: { useQuery: (input?: unknown) => useQuery(input) },
+      listTypes: {
+        useQuery: () => ({
+          data: [
+            { id: "t1", key: "call", name: "Call" },
+            { id: "t2", key: "meeting", name: "Meeting" },
+          ],
+        }),
+      },
+    },
+    identity: {
+      assignableUsers: {
+        useQuery: () => ({ data: [{ id: "u1", name: "Ann Owner", avatarUrl: null }] }),
+      },
+    },
+  },
+}));
+vi.mock("./AddActivityModal", () => ({
+  AddActivityModal: () => <div data-testid="activity-modal" />,
+}));
+vi.mock("./ActivityEditModal", () => ({
+  ActivityEditModal: ({
+    activity,
+    onClose,
+  }: {
+    activity: { id: string; typeId: string };
+    onClose: () => void;
+  }) => (
+    <div data-testid="edit-modal">
+      <span data-testid="edit-modal-id">{activity.id}</span>
+      <span data-testid="edit-modal-type">{activity.typeId}</span>
+      <button type="button" onClick={onClose}>
+        Close edit
+      </button>
+    </div>
+  ),
+}));
+
+type ActionResult = { ok: true; value: { id: string } } | { ok: false; error: { id: string } };
+
+const complete = vi.fn<(input: { id: string; done: boolean }) => Promise<ActionResult>>(() =>
+  Promise.resolve({ ok: true, value: { id: "a1" } }),
+);
+const deleteActivity = vi.fn<(input: { id: string }) => Promise<ActionResult>>(() =>
+  Promise.resolve({ ok: true, value: { id: "a1" } }),
+);
+vi.mock("./actions", () => ({
+  completeActivityAction: (input: { id: string; done: boolean }) => complete(input),
+  deleteActivityAction: (input: { id: string }) => deleteActivity(input),
+}));
+vi.mock("@/utils/csrfCookie", () => ({ readCsrfToken: () => "tok" }));
+
+import { useRecordPreview } from "@/features/navigation/recordPreviewStore";
+import { ActivitiesTable } from "./ActivitiesTable";
+
+function row(overrides: Record<string, unknown>) {
+  return {
+    id: "a1",
+    subject: "Call Jane",
+    typeKey: "call",
+    priority: "high",
+    done: false,
+    dueAtIso: null,
+    dealId: null,
+    dealTitle: null,
+    leadId: null,
+    leadTitle: null,
+    personId: "pe1",
+    personName: "Jane Roe",
+    personEmail: "jane@acme.com",
+    personPhone: "+14155550100",
+    orgId: null,
+    orgName: "Acme Inc",
+    durationMinutes: null,
+    assigneeId: "u1",
+    assigneeName: "",
+    ownerName: "",
+    ...overrides,
+  };
+}
+
+describe("ActivitiesTable", () => {
+  it("renders all Pipedrive columns and the type tab strip driven by listTypes", () => {
+    useQuery.mockReturnValue({ data: [row({})], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    for (const h of [
+      "Done",
+      "Subject",
+      "Deal",
+      "Priority",
+      "Contact",
+      "Email",
+      "Phone",
+      "Organization",
+      "Due",
+      "Duration",
+      "Assignee",
+    ]) {
+      expect(screen.getByText(h)).toBeInTheDocument();
+    }
+    // Type tabs come from listTypes (custom + system types), not a hardcoded list.
+    expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Call" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Meeting" })).toBeInTheDocument();
+    // The filter toolbar (owner, status, date range) is present.
+    expect(screen.getByLabelText("Owner")).toBeInTheDocument();
+    expect(screen.getByLabelText("Status")).toBeInTheDocument();
+    expect(screen.getByLabelText("From")).toBeInTheDocument();
+    expect(screen.getByLabelText("To")).toBeInTheDocument();
+    // Enriched cells.
+    expect(screen.getByText("jane@acme.com")).toBeInTheDocument();
+    expect(screen.getByText("+14155550100")).toBeInTheDocument();
+    expect(screen.getByText("High")).toBeInTheDocument();
+  });
+
+  it("renders the row's duration and assignee (not the creator/owner)", () => {
+    useQuery.mockReturnValue({
+      data: [row({ durationMinutes: 45, assigneeName: "Jane Doe", ownerName: "Someone Else" })],
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    expect(screen.getByText("45 min")).toBeInTheDocument();
+    expect(screen.getByText("Jane Doe")).toBeInTheDocument();
+    expect(screen.queryByText("Someone Else")).toBeNull();
+  });
+
+  it("renders no duration text when durationMinutes is null", () => {
+    useQuery.mockReturnValue({ data: [row({ durationMinutes: null })], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    expect(screen.queryByText(/min/)).toBeNull();
+  });
+
+  it("flags an open past-due row as overdue", () => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    useQuery.mockReturnValue({
+      data: [row({ done: false, dueAtIso: yesterday })],
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    expect(screen.getByText("Call Jane").closest("tr")).toHaveClass("text-destructive");
+  });
+
+  it("does not flag a done row as overdue, even with a past due date", () => {
+    useQuery.mockReturnValue({
+      data: [row({ done: true, dueAtIso: new Date(Date.now() - 1000).toISOString() })],
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    expect(screen.getByText("Call Jane").closest("tr")).not.toHaveClass("text-destructive");
+  });
+
+  it("shows an error state with a Retry (not the empty state) when the query fails", () => {
+    // A transient batched-401 leaves rowsQ.data undefined AND isError=true. The table must not
+    // paint that as "No activities in this view." (indistinguishable from a genuinely empty list),
+    // and must offer a way to recover. Regression guard for ACTIVITIES-01 / the F5-1 class.
+    useQuery.mockReturnValue({
+      data: undefined,
+      isError: true,
+      error: { message: "E_AUTH_003" },
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    expect(screen.queryByText("No activities in this view.")).toBeNull();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: /retry/i });
+    fireEvent.click(retry);
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("does not show the empty state while the first load is still pending", () => {
+    useQuery.mockReturnValue({ data: undefined, isPending: true, refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    expect(screen.queryByText("No activities in this view.")).toBeNull();
+  });
+
+  it("opens the Add activity modal from + Activity", () => {
+    useQuery.mockReturnValue({ data: [], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Activity" }));
+    expect(screen.getByTestId("activity-modal")).toBeInTheDocument();
+  });
+
+  it("reopens a completed activity when its checkbox is toggled", () => {
+    useQuery.mockReturnValue({
+      data: [row({ done: true, dueAtIso: new Date().toISOString() })],
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Complete Call Jane" }));
+    expect(complete).toHaveBeenCalledWith({ id: "a1", done: false });
+  });
+
+  it("opens the linked deal on row click, seeding its drawer preview", () => {
+    useQuery.mockReturnValue({
+      data: [row({ dealId: "d1", dealTitle: "Acme renewal" })],
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByText("Call Jane"));
+    expect(push).toHaveBeenCalledWith("/deals/d1");
+    expect(useRecordPreview.getState().preview).toEqual({
+      id: "d1",
+      title: "Acme renewal",
+      subtitle: "Call Jane",
+    });
+    expect(screen.queryByTestId("edit-modal")).toBeNull();
+  });
+
+  it("opens the linked person when the activity has no deal", () => {
+    useQuery.mockReturnValue({ data: [row({})], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByText("Call Jane"));
+    expect(push).toHaveBeenCalledWith("/contacts/people/pe1");
+  });
+
+  it("does not also open the row's record when the Contact cell's own link is clicked", () => {
+    useQuery.mockReturnValue({
+      data: [row({ dealId: "d1", dealTitle: "Acme renewal" })],
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByRole("link", { name: "Jane Roe" }));
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the edit modal only for an activity linked to no record", () => {
+    useQuery.mockReturnValue({
+      data: [row({ typeKey: "call", personId: null, personName: null, orgId: null })],
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    expect(screen.queryByTestId("edit-modal")).toBeNull();
+    fireEvent.click(screen.getByText("Call Jane"));
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.getByTestId("edit-modal-id")).toHaveTextContent("a1");
+    expect(screen.getByTestId("edit-modal-type")).toHaveTextContent("t1");
+    fireEvent.click(screen.getByRole("button", { name: "Close edit" }));
+    expect(screen.queryByTestId("edit-modal")).toBeNull();
+  });
+
+  it("does not open the edit modal when the row's checkbox is clicked", () => {
+    useQuery.mockReturnValue({ data: [row({})], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Complete Call Jane" }));
+    expect(screen.queryByTestId("edit-modal")).toBeNull();
+  });
+
+  it("links the person/org cells and mailto/tel-links the email/phone cells", () => {
+    useQuery.mockReturnValue({
+      data: [row({ orgId: "o1", orgName: "Acme Inc" })],
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    expect(screen.getByRole("link", { name: "Jane Roe" })).toHaveAttribute(
+      "href",
+      "/contacts/people/pe1",
+    );
+    expect(screen.getByRole("link", { name: "Acme Inc" })).toHaveAttribute(
+      "href",
+      "/contacts/orgs/o1",
+    );
+    expect(screen.getByRole("link", { name: "jane@acme.com" })).toHaveAttribute(
+      "href",
+      "mailto:jane@acme.com",
+    );
+    expect(screen.getByRole("link", { name: "+14155550100" })).toHaveAttribute(
+      "href",
+      "tel:+14155550100",
+    );
+  });
+
+  it("renders a dash for person/org/email/phone when the row has none", () => {
+    useQuery.mockReturnValue({
+      data: [
+        row({
+          personId: null,
+          personName: null,
+          personEmail: null,
+          personPhone: null,
+          orgId: null,
+          orgName: null,
+        }),
+      ],
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    expect(screen.queryByRole("link", { name: /Jane|Acme/ })).toBeNull();
+  });
+
+  it("does not open the edit modal when a person/org/email/phone link is clicked", () => {
+    useQuery.mockReturnValue({
+      data: [row({ orgId: "o1", orgName: "Acme Inc" })],
+      refetch,
+    });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByRole("link", { name: "Jane Roe" }));
+    expect(screen.queryByTestId("edit-modal")).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "Acme Inc" }));
+    expect(screen.queryByTestId("edit-modal")).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "jane@acme.com" }));
+    expect(screen.queryByTestId("edit-modal")).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "+14155550100" }));
+    expect(screen.queryByTestId("edit-modal")).toBeNull();
+  });
+});
+
+describe("ActivitiesTable j/k row cursor", () => {
+  const rows = [row({ id: "a1", subject: "Call Jane" }), row({ id: "a2", subject: "Email Bob" })];
+
+  it("j marks the first row as the cursor row", () => {
+    useQuery.mockReturnValue({ data: rows, refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.keyDown(window, { key: "j" });
+    expect(screen.getByText("Call Jane").closest("tr")).toHaveAttribute("data-cursor", "true");
+  });
+
+  it("a second j moves the cursor to the next row", () => {
+    useQuery.mockReturnValue({ data: rows, refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.keyDown(window, { key: "j" });
+    fireEvent.keyDown(window, { key: "j" });
+    expect(screen.getByText("Email Bob").closest("tr")).toHaveAttribute("data-cursor", "true");
+    expect(screen.getByText("Call Jane").closest("tr")).not.toHaveAttribute("data-cursor", "true");
+  });
+
+  it("k moves the cursor back up", () => {
+    useQuery.mockReturnValue({ data: rows, refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.keyDown(window, { key: "j" });
+    fireEvent.keyDown(window, { key: "j" });
+    fireEvent.keyDown(window, { key: "k" });
+    expect(screen.getByText("Call Jane").closest("tr")).toHaveAttribute("data-cursor", "true");
+  });
+
+  it("Enter opens the cursor row's record, like a click on it", () => {
+    useQuery.mockReturnValue({ data: rows, refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.keyDown(window, { key: "j" });
+    fireEvent.keyDown(window, { key: "j" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(push).toHaveBeenCalledWith("/contacts/people/pe1");
+  });
+
+  it("marks no row until j or k is pressed", () => {
+    useQuery.mockReturnValue({ data: rows, refetch });
+    const { container } = render(<ActivitiesTable currentUserId="me" />);
+    expect(container.querySelector("tr[data-cursor='true']")).toBeNull();
+  });
+});

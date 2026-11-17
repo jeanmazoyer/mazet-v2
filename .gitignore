@@ -1,41 +1,24 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-# typescript
+node_modules
+.next
+dist
+.env
+.env.*
+!.env.example
+!.env.example.test.ts
 *.tsbuildinfo
+.harness/ledger.jsonl
+drizzle/meta/_journal.json.bak
 next-env.d.ts
+.smoke/
+.claude/scheduled_tasks.lock
+# Pipedrive parity reference screenshots: contain real account PII (names, emails,
+# billing/card data). Kept local only, never committed. See memory reference-pipedrive-parity-source.
+/pd-*.png
+# Parity capture folders (PD + WD screenshots, may contain real account PII). Local only.
+docs/parity-captures/
+
+# Brainstorming visual companion
+.superpowers/
+
+# Impeccable critique snapshots: internal design audits, never publish
+.impeccable/

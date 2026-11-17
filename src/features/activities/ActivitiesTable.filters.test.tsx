@@ -1,0 +1,185 @@
+// @vitest-environment jsdom
+// Filter-toolbar wiring extracted from ActivitiesTable.test.tsx to keep both files under the
+// project's file-size budget: this file owns "does a toolbar interaction re-query listRows with
+// the right ActivityListFilter", while ActivitiesTable.test.tsx owns rendering, the edit modal,
+// and ActivitiesTable.selection.test.tsx owns selection/bulk actions.
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/activities",
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+beforeAll(() => {
+  // Radix Select + the Combobox/DatePicker popovers (ActivitiesFilters) need these in jsdom.
+  Element.prototype.scrollIntoView = vi.fn();
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  global.ResizeObserver = class {
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  };
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+const refetch = vi.fn();
+const useQuery = vi.fn();
+vi.mock("@/lib/trpc-client", () => ({
+  trpc: {
+    useUtils: () => ({
+      activities: {
+        dayLoad: { invalidate: () => Promise.resolve() },
+        listRows: { invalidate: () => Promise.resolve() },
+      },
+    }),
+    activities: {
+      listRows: { useQuery: (input?: unknown, opts?: unknown) => useQuery(input, opts) },
+      listTypes: {
+        useQuery: () => ({
+          data: [
+            { id: "t1", key: "call", name: "Call" },
+            { id: "t2", key: "meeting", name: "Meeting" },
+          ],
+        }),
+      },
+    },
+    identity: {
+      assignableUsers: {
+        useQuery: () => ({ data: [{ id: "u1", name: "Ann Owner", avatarUrl: null }] }),
+      },
+    },
+  },
+}));
+vi.mock("./AddActivityModal", () => ({
+  AddActivityModal: () => <div data-testid="activity-modal" />,
+}));
+vi.mock("./ActivityEditModal", () => ({
+  ActivityEditModal: () => <div data-testid="edit-modal" />,
+}));
+vi.mock("./actions", () => ({
+  completeActivityAction: vi.fn(() => Promise.resolve({ ok: true, value: { id: "a1" } })),
+  deleteActivityAction: vi.fn(() => Promise.resolve({ ok: true, value: { id: "a1" } })),
+}));
+vi.mock("@/utils/csrfCookie", () => ({ readCsrfToken: () => "tok" }));
+
+import { ActivitiesTable } from "./ActivitiesTable";
+
+function row(overrides: Record<string, unknown>) {
+  return {
+    id: "a1",
+    subject: "Call Jane",
+    typeKey: "call",
+    priority: "high",
+    done: false,
+    dueAtIso: null,
+    dealId: null,
+    dealTitle: null,
+    leadId: null,
+    leadTitle: null,
+    personId: "pe1",
+    personName: "Jane Roe",
+    personEmail: "jane@acme.com",
+    personPhone: "+14155550100",
+    orgId: null,
+    orgName: "Acme Inc",
+    durationMinutes: null,
+    assigneeId: "u1",
+    assigneeName: "",
+    ownerName: "",
+    ...overrides,
+  };
+}
+
+function localYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+describe("ActivitiesTable default filter", () => {
+  it("opens on the current user's activities due today", () => {
+    useQuery.mockReturnValue({ data: [row({})], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    const today = localYmd(new Date());
+    expect(useQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ownerId: "me", from: today, to: today, done: "open" }),
+      expect.anything(),
+    );
+    expect(screen.getByRole("button", { name: "Today" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("never fetches the unbounded to-do list while the local date is still unknown", () => {
+    useQuery.mockReturnValue({ data: [row({})], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    for (const [input, opts] of useQuery.mock.calls as [
+      { from: string | null },
+      { enabled: boolean },
+    ][]) {
+      if (input.from === null) expect(opts.enabled).toBe(false);
+    }
+  });
+});
+
+describe("ActivitiesTable filter toolbar", () => {
+  it("clicking a type tab re-queries listRows with the chosen typeKey", () => {
+    useQuery.mockReturnValue({ data: [row({})], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByRole("button", { name: "Meeting" }));
+    expect(useQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ typeKey: "meeting" }),
+      expect.anything(),
+    );
+  });
+
+  it("clicking the All tab resets typeKey to null", () => {
+    useQuery.mockReturnValue({ data: [row({})], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByRole("button", { name: "Meeting" }));
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(useQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ typeKey: null }),
+      expect.anything(),
+    );
+  });
+
+  it("choosing an owner re-queries listRows with the chosen ownerId", () => {
+    useQuery.mockReturnValue({ data: [row({})], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByLabelText("Owner"));
+    fireEvent.click(screen.getByText("Ann Owner"));
+    expect(useQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ownerId: "u1" }),
+      expect.anything(),
+    );
+  });
+
+  it("changing the Status select re-queries listRows with the new done value", () => {
+    useQuery.mockReturnValue({ data: [row({})], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByLabelText("Status"));
+    fireEvent.click(screen.getByRole("option", { name: "Completed" }));
+    expect(useQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ done: "done" }),
+      expect.anything(),
+    );
+  });
+
+  it("picking a From date re-queries listRows with the new from value", async () => {
+    useQuery.mockReturnValue({ data: [row({})], refetch });
+    render(<ActivitiesTable currentUserId="me" />);
+    fireEvent.click(screen.getByLabelText("From"));
+    // findByText: the calendar is a next/dynamic chunk that loads on open.
+    fireEvent.click(await screen.findByText("15"));
+    expect(useQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ from: expect.any(String) }),
+      expect.anything(),
+    );
+  });
+});

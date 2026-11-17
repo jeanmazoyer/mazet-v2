@@ -1,0 +1,41 @@
+export const DEAL_SIDEBAR_STRINGS = {
+  sections: {
+    summary: "Summary",
+    details: "Details",
+    source: "Source",
+    person: "Person",
+    participants: "Participants",
+    organization: "Organization",
+    overview: "Overview",
+  },
+  menu: {
+    editSection: (section: string) => `Edit ${section} section`,
+    sectionOptions: (section: string) => `${section} options`,
+    fillGaps: "Fill the gaps",
+    switchOrganization: "Switch to another organization",
+    unlinkOrganization: "Unlink this organization",
+    switchPerson: "Switch to another person",
+    unlinkPerson: "Unlink this person",
+    customizeFields: "Customize fields",
+    customizeSummary: "Customize Summary",
+    manageSections: "Manage sidebar sections",
+  },
+  emptyState: {
+    // Shown in the Details section when the deal entity has no custom fields defined, instead of a
+    // blank box (read) or an editor with only Cancel/Save and no fields (bulk edit).
+    details: "No custom fields yet. Add them with Customize fields.",
+  },
+  orgDialog: {
+    title: "Switch organization",
+    organization: "Organization",
+    save: "Save",
+    cancel: "Cancel",
+  },
+  personDialog: {
+    title: "Switch person",
+    person: "Person",
+    loadFailed: "Could not load people to link.",
+    save: "Save",
+    cancel: "Cancel",
+  },
+} as const;

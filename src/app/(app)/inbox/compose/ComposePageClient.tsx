@@ -1,0 +1,83 @@
+"use client";
+
+import { ChevronLeft } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { STRINGS } from "@/constants/strings";
+import { Composer } from "@/features/email/Composer";
+import { ComposeLinkSidebar } from "@/features/email/composer/ComposeLinkSidebar";
+import { toComposerDraft } from "@/features/email/toComposerDraft";
+import { useInboxRealtime } from "@/features/email/useInboxRealtime";
+import { trpc } from "@/lib/trpc-client";
+
+interface ComposePageClientProps {
+  accountId: string;
+  fromAddress: string;
+  selfActorId: string;
+  draftId?: string;
+}
+
+export function ComposePageClient({
+  accountId,
+  fromAddress,
+  selfActorId,
+  draftId,
+}: ComposePageClientProps): React.ReactNode {
+  const router = useRouter();
+  useInboxRealtime({ selfActorId });
+  const draftsQuery = trpc.email.drafts.list.useQuery(undefined, {
+    enabled: draftId !== undefined,
+  });
+  const resumeDraft = draftsQuery.data?.find((d) => d.id === draftId);
+  const waitingForDraft =
+    draftId !== undefined && draftsQuery.data === undefined && !draftsQuery.isError;
+  const [linkedDeal, setLinkedDeal] = useState<{ id: string; title: string } | null>(null);
+
+  function backToInbox(): void {
+    router.push("/inbox");
+  }
+
+  return (
+    <main aria-label={STRINGS.inbox.composeTitle} className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
+        <Link
+          href="/inbox"
+          aria-label={STRINGS.inbox.backToInbox}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground transition-transform hover:bg-accent active:scale-[0.96]"
+        >
+          <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+          {STRINGS.inbox.back}
+        </Link>
+        <h1 className="text-display font-[450] leading-tight tracking-tight">
+          {STRINGS.inbox.composeTitle}
+        </h1>
+      </div>
+      <div className="flex min-h-0 flex-1 items-start gap-6 overflow-y-auto p-4">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {waitingForDraft ? (
+            <p className="p-3 text-sm text-muted-foreground">{STRINGS.inbox.loadingDraft}</p>
+          ) : (
+            <Composer
+              key={resumeDraft?.id ?? "new-email"}
+              accountId={resumeDraft?.accountId ?? accountId}
+              fromAddress={fromAddress}
+              draft={resumeDraft !== undefined ? toComposerDraft(resumeDraft) : undefined}
+              linkDealId={linkedDeal?.id}
+              onSent={backToInbox}
+              onClose={backToInbox}
+            />
+          )}
+        </div>
+        <div className="hidden w-[280px] shrink-0 lg:block">
+          <ComposeLinkSidebar
+            dealId={linkedDeal?.id ?? null}
+            dealTitle={linkedDeal?.title ?? null}
+            onLink={(id, title) => setLinkedDeal({ id, title })}
+            onUnlink={() => setLinkedDeal(null)}
+          />
+        </div>
+      </div>
+    </main>
+  );
+}

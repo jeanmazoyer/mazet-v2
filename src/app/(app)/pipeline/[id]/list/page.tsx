@@ -1,0 +1,91 @@
+import type { Metadata } from "next";
+import { cache } from "react";
+import { STRINGS } from "@/constants/strings";
+import { DealListClient } from "@/features/deals/DealListClient";
+import { loadDealListPageData } from "@/features/deals/dealListPageData";
+import { wonDealsDrillDownSeed } from "@/features/deals/wonDealsDrillDown";
+import { entityTitle } from "@/features/navigation/pageTitle";
+import { resolveVisiblePipeline } from "@/features/navigation/resolvePipeline";
+import { canManagePipelines } from "@/features/pipelines/canManagePipelines";
+import type { SearchParams } from "@/features/stats/drillDown";
+import { createContext } from "@/server/trpc/context";
+import { createCaller } from "@/server/trpc/root";
+
+// Shared per-request loader: generateMetadata (for the tab title) and the page body both call
+// this; React.cache dedupes so createContext + the visible-pipelines read run once per request.
+const load = cache(async () => {
+  const ctx = await createContext();
+  if (ctx.actor === null) {
+    return { kind: "unauth" as const };
+  }
+  const pipelines = await createCaller(ctx).pipeline.list();
+  return { kind: "ok" as const, ctx, pipelines };
+});
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const loaded = await load();
+  const name = loaded.kind === "ok" ? loaded.pipelines.find((p) => p.id === id)?.name : undefined;
+  return { title: entityTitle(name, STRINGS.titles.dealList) };
+}
+
+export default async function PipelineListPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<SearchParams>;
+}): Promise<React.ReactNode> {
+  const [{ id }, query] = await Promise.all([params, searchParams]);
+  const loaded = await load();
+  if (loaded.kind === "unauth") {
+    return <main>Unauthorized</main>;
+  }
+  const { ctx, pipelines } = loaded;
+  if (ctx.actor === null) return <main>Unauthorized</main>;
+
+  // A nonexistent (or hidden) pipeline 404s like the entity detail routes, not a 200 soft-404.
+  const pipeline = resolveVisiblePipeline(pipelines, id);
+
+  const drillDownView = wonDealsDrillDownSeed(query, ctx.actor.id, id);
+  const { list, prefs, customFieldDefs, baseCurrency, initialView, unfilteredTotal } =
+    await loadDealListPageData(
+      { ...ctx, actor: ctx.actor },
+      { pipelineId: id, archived: false, viewOverride: drillDownView },
+    );
+  const stages = pipeline.stages.map((s) => ({ id: s.id, name: s.name }));
+  const pipelineOptions = pipelines.map((p) => ({
+    id: p.id,
+    name: p.name,
+    stages: p.stages.map((s) => ({ id: s.id, name: s.name })),
+  }));
+
+  return (
+    <main aria-label={`Deals ${pipeline.name}`} className="h-full">
+      <DealListClient
+        key={drillDownView === null ? "plain" : JSON.stringify(drillDownView.conditions)}
+        variant="list"
+        initial={{
+          pipelineId: id,
+          rows: list.rows.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString() })),
+          total: list.total,
+          totalValue: list.totalValue,
+          stages,
+          pipelines: pipelineOptions,
+          initialColumns: prefs.ui.dealsListView,
+          customFieldDefs,
+          refLabels: list.refLabels,
+          baseCurrency,
+          canManagePipelines: canManagePipelines(ctx.actor),
+          initialView,
+          fromDrillDown: drillDownView !== null,
+          unfilteredTotal,
+        }}
+      />
+    </main>
+  );
+}

@@ -1,0 +1,167 @@
+# Shared build config: pass NEXT_PUBLIC_WS_URL as a build arg so Next inlines it into the client
+# bundle at build time (F29). A runtime-only env_file does NOT reach the client bundle.
+x-app-build: &app-build
+  context: .
+  args:
+    NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-}
+    # Optional version stamp for the update-check banner. Unset falls back to package.json, then "dev".
+    APP_VERSION: ${APP_VERSION:-}
+
+configs:
+  garage_toml:
+    content: |
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "sqlite"
+      metadata_fsync = true
+      data_fsync = true
+      replication_factor = 1
+      rpc_bind_addr = "[::]:3901"
+      rpc_public_addr = "127.0.0.1:3901"
+      [s3_api]
+      s3_region = "${S3_REGION:-garage}"
+      api_bind_addr = "[::]:3900"
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Substituted into the Caddyfile as {$APP_DOMAIN} / {$ACME_EMAIL}. Compose auto-loads
+      # these from the project .env for interpolation.
+      APP_DOMAIN: ${APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      app:
+        condition: service_healthy
+      ws:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-warpdrive}
+      # Overridable, with the historical value as the fallback so existing boxes keep booting.
+      # Postgres only applies this at initdb, so setting it against an EXISTING pgdata volume
+      # does NOT rotate the password; it just makes DATABASE_URL wrong. Choose it on a fresh
+      # deploy, and keep it identical to the password inside DATABASE_URL.
+      # Not reachable from outside the box today (this service publishes no host port and Caddy
+      # is the only public listener), so the weak default is a defense-in-depth gap rather than a
+      # live hole. It becomes a live hole the moment anyone adds a `ports:` mapping here.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-warpdrive}
+      POSTGRES_DB: ${POSTGRES_DB:-warpdrive}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-warpdrive}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  garage:
+    image: dxflrs/garage:v2.5.0
+    restart: unless-stopped
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
+    configs:
+      - source: garage_toml
+        target: /etc/garage.toml
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?GARAGE_RPC_SECRET is required, generate one with openssl rand -hex 32}
+      GARAGE_DEFAULT_ACCESS_KEY: ${S3_ACCESS_KEY:-${MINIO_ACCESS_KEY:?S3_ACCESS_KEY is required}}
+      GARAGE_DEFAULT_SECRET_KEY: ${S3_SECRET_KEY:-${MINIO_SECRET_KEY:?S3_SECRET_KEY is required}}
+      GARAGE_DEFAULT_BUCKET: ${S3_BUCKET:-${MINIO_BUCKET:-warpdrive}}
+    volumes:
+      - garagemeta:/var/lib/garage/meta
+      - garagedata:/var/lib/garage/data
+
+  storagecors:
+    image: amazon/aws-cli:2.39.3
+    depends_on:
+      garage:
+        condition: service_started
+    environment:
+      AWS_ENDPOINT_URL: http://garage:3900
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-${MINIO_ACCESS_KEY:?S3_ACCESS_KEY is required}}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-${MINIO_SECRET_KEY:?S3_SECRET_KEY is required}}
+      AWS_DEFAULT_REGION: ${S3_REGION:-garage}
+      BUCKET: ${S3_BUCKET:-${MINIO_BUCKET:-warpdrive}}
+      CORS_CONFIGURATION: '{"CORSRules":[{"AllowedOrigins":["${BASE_URL:?BASE_URL is required}"],"AllowedMethods":["GET","HEAD","POST"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3600}]}'
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        for attempt in $$(seq 1 30); do
+        aws s3api put-bucket-cors --bucket "$$BUCKET" --cors-configuration "$$CORS_CONFIGURATION" && exit 0;
+        echo "waiting for garage ($$attempt/30)"; sleep 2;
+        done; exit 1
+
+  # One-shot: apply forward-only Drizzle migrations, then exit. Gates the long-running tier.
+  migrate:
+    build: *app-build
+    command: ["node", "dist/migrate.mjs"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: *app-build
+    restart: unless-stopped
+    command: ["node_modules/.bin/next", "start"]
+    env_file: .env
+    environment:
+      S3_REGION: ${S3_REGION:-garage}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      storagecors:
+        condition: service_completed_successfully
+
+  ws:
+    build: *app-build
+    restart: unless-stopped
+    command: ["node", "dist/ws.mjs"]
+    env_file: .env
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('node:net').connect(8080,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build: *app-build
+    restart: unless-stopped
+    command: ["node", "dist/worker.mjs"]
+    env_file: .env
+    environment:
+      S3_REGION: ${S3_REGION:-garage}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  garagemeta:
+  garagedata:
+  caddydata:
+  caddyconfig:

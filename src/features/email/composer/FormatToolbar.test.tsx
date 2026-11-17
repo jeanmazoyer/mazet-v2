@@ -1,0 +1,247 @@
+// @vitest-environment jsdom
+// FormatToolbar unit tests – command wiring and URL security.
+//
+// FormatToolbar accepts an `editor` prop directly, so we pass a stub editor
+// whose chain().focus().<cmd>().run() methods are spied. No need to mount
+// RichTextBody or leak a test-only onEditorReady callback into production.
+//
+// Fix 2 (SECURITY): Link and Image handlers must reject dangerous URL schemes.
+// Fix 4 (QUALITY): Replaces the onEditorReady-based tests from RichTextBody.test.tsx.
+//
+// Font/size/color controls (Spec 6.5) are tested in FormatToolbar.fontControls.test.tsx.
+
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { Editor } from "@tiptap/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+afterEach(cleanup);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeRunSpy(): ReturnType<typeof vi.fn> {
+  return vi.fn();
+}
+
+function buildStubChain(runSpy: ReturnType<typeof vi.fn>, overrides: Record<string, unknown> = {}) {
+  return {
+    focus: () => ({
+      toggleBold: () => ({ run: runSpy }),
+      toggleItalic: () => ({ run: runSpy }),
+      toggleUnderline: () => ({ run: runSpy }),
+      toggleStrike: () => ({ run: runSpy }),
+      toggleBulletList: () => ({ run: runSpy }),
+      toggleOrderedList: () => ({ run: runSpy }),
+      toggleBlockquote: () => ({ run: runSpy }),
+      sinkListItem: () => ({ run: runSpy }),
+      liftListItem: () => ({ run: runSpy }),
+      undo: () => ({ run: runSpy }),
+      redo: () => ({ run: runSpy }),
+      clearNodes: () => ({ unsetAllMarks: () => ({ run: runSpy }) }),
+      setLink: () => ({ run: runSpy }),
+      insertContent: () => ({ unsetMark: () => ({ run: runSpy }) }),
+      setImage: () => ({ run: runSpy }),
+      setFontFamily: () => ({ run: runSpy }),
+      setFontSize: () => ({ run: runSpy }),
+      setColor: () => ({ run: runSpy }),
+      ...overrides,
+    }),
+  };
+}
+
+async function renderToolbar(
+  // Link insertion branches on whether the selection is collapsed, so the stub must model it.
+  selectionEmpty = false,
+): Promise<{ runSpy: ReturnType<typeof vi.fn> }> {
+  const { FormatToolbar } = await import("./FormatToolbar");
+  const runSpy = makeRunSpy();
+  const editor = {
+    chain: () => buildStubChain(runSpy),
+    state: { selection: { empty: selectionEmpty } },
+    isDestroyed: false,
+    getHTML: () => "",
+  } as unknown as Editor;
+  render(<FormatToolbar editor={editor} />);
+  return { runSpy };
+}
+
+// ---------------------------------------------------------------------------
+// Toolbar button -> editor command wiring
+// ---------------------------------------------------------------------------
+
+describe("FormatToolbar – icon rendering", () => {
+  it("renders icon-only command buttons (svg icon, label via aria-label not text)", async () => {
+    await renderToolbar();
+    const bold = screen.getByRole("button", { name: /bold/i });
+    // Icon present, and no visible text label (accessible name comes from aria-label).
+    expect(bold.querySelector("svg")).not.toBeNull();
+    expect(bold.textContent).toBe("");
+  });
+});
+
+describe("FormatToolbar – editor command wiring", () => {
+  it("opens an accessible URL dialog without calling the browser prompt", async () => {
+    const promptSpy = vi.spyOn(window, "prompt");
+    await renderToolbar();
+    await userEvent.click(screen.getByRole("button", { name: /^link$/i }));
+    expect(promptSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Insert link" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Link URL" })).toBeInTheDocument();
+    promptSpy.mockRestore();
+  });
+
+  it("Bold button calls toggleBold", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /bold/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Italic button calls toggleItalic", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /italic/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Underline button calls toggleUnderline", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /underline/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Strikethrough button calls toggleStrike", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /strikethrough/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Bulleted list button calls toggleBulletList", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /bulleted list/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Ordered list button calls toggleOrderedList", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /ordered list/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Blockquote button calls toggleBlockquote", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /blockquote/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Undo button calls undo", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /^undo$/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Redo button calls redo", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /^redo$/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Clear format button calls clearNodes then unsetAllMarks", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /clear format/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Indent button calls sinkListItem", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /^indent$/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Outdent button calls liftListItem", async () => {
+    const { runSpy } = await renderToolbar();
+    fireEvent.click(screen.getByRole("button", { name: /^outdent$/i }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Link dialog calls setLink for a safe URL", async () => {
+    const { runSpy } = await renderToolbar();
+    await userEvent.click(screen.getByRole("button", { name: /^link$/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Link URL" }), "https://example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Insert link" }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Link dialog still reaches the editor when the selection is collapsed", async () => {
+    const { runSpy } = await renderToolbar(/* selectionEmpty= */ true);
+    await userEvent.click(screen.getByRole("button", { name: /^link$/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Link URL" }), "https://example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Insert link" }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Image dialog calls setImage for a safe URL", async () => {
+    const { runSpy } = await renderToolbar();
+    await userEvent.click(screen.getByRole("button", { name: /^image$/i }));
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Image URL" }),
+      "https://example.com/img.png",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Insert image" }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix 2 (SECURITY): dangerous URL schemes must be rejected before editor call
+// ---------------------------------------------------------------------------
+
+describe("FormatToolbar – URL security (Fix 2)", () => {
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,<h1>x</h1>",
+    "vbscript:MsgBox(1)",
+  ])("Link dialog rejects %s", async (url) => {
+    const { runSpy } = await renderToolbar();
+    await userEvent.click(screen.getByRole("button", { name: /^link$/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Link URL" }), url);
+    await userEvent.click(screen.getByRole("button", { name: "Insert link" }));
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("HTTP, HTTPS, or mailto");
+  });
+
+  it("Link dialog allows mailto: URL", async () => {
+    const { runSpy } = await renderToolbar();
+    await userEvent.click(screen.getByRole("button", { name: /^link$/i }));
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Link URL" }),
+      "mailto:alice@example.com",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Insert link" }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,<script>evil()</script>",
+  ])("Image dialog rejects %s", async (url) => {
+    const { runSpy } = await renderToolbar();
+    await userEvent.click(screen.getByRole("button", { name: /^image$/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Image URL" }), url);
+    await userEvent.click(screen.getByRole("button", { name: "Insert image" }));
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("HTTP, HTTPS, or data image");
+  });
+
+  it("Image dialog allows data:image/ URL", async () => {
+    const { runSpy } = await renderToolbar();
+    await userEvent.click(screen.getByRole("button", { name: /^image$/i }));
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Image URL" }),
+      "data:image/png;base64,abc",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Insert image" }));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+  });
+});
