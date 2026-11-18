@@ -41,6 +41,18 @@ Rules:
 - **Test runner:** Vitest. Co-locate tests inside the feature directory (`src/features/<feature>/*.test.ts`). The suite is split into a container-less `unit` project and a real-Postgres `integration` project (`pnpm test:unit` / `pnpm test:integration`).
 - Never claim something works without running the test and seeing it pass. Evidence before assertions.
 
+### Development site first, tests before production (owner's decision)
+
+The owner iterates on the development site (`DEV_DOMAIN`, see `docs/deploy.md`) and wants a change
+visible there as fast as possible. On the development branch, a change may be pushed without
+writing its test first. The debt is paid before production, never skipped:
+
+- Before any production deploy: write the tests the pushed changes still lack, then run the full
+  unit and integration suites, the linter and the type check. Deploy only when all are green.
+- Still test-first even on the development site: database migrations, sign-in and permissions,
+  payments, and anything that deletes or sends data. A mistake there is costly to undo.
+- Production is deployed only when the owner says so.
+
 ## Engineering Conventions
 
 These patterns exist because they catch the failure modes an AI coder actually produces.
