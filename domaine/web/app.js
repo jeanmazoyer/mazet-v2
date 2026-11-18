@@ -1622,7 +1622,7 @@ window.addEventListener("hashchange", () => { S.menu = null; render(); window.sc
 /* ---------- Server: load, save what changed, follow what others change ---------- */
 // Features drawn by the pages but not plugged in yet: their entry points are taken out of the
 // page before it is shown, so nothing on screen pretends to work.
-const OFF = ['a[href="#messages"]', 'a[href="#openspace"]', '[data-comp="E-mail"]', '[data-comp="WhatsApp"]', '[data-a="doc-mail"]', '[data-a="sig-new"]', '[data-a="sim"]', '[data-msg*="Dans l\'application"]', '.mepop .eyebrow', '.mepop .seg', '[data-a="doc-open"]', '[data-a="remind"]', '[data-a="quote-new"] + [data-a="doc-toast"]'].join(",");
+const OFF = ['a[href="#messages"]', 'a[href="#openspace"]', '[data-comp="E-mail"]', '[data-comp="WhatsApp"]', '[data-a="doc-mail"]', '[data-a="sig-new"]', '[data-a="sim"]', '[data-msg*="Dans l\'application"]', '.mepop .eyebrow', '.mepop .seg', '[data-a="doc-open"]', '[data-a="remind"]', '[data-a="sync"]', '[data-a="sync-all"]', '.pay .bank', '[data-a="quote-new"] + [data-a="doc-toast"]'].join(",");
 const OFF_CARDS = ["Pennylane", "Signature électronique", "Messagerie", "Banque"];
 function paint(html) {
   const tpl = document.createElement("template"); tpl.innerHTML = html;
