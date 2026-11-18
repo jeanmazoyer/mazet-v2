@@ -4,25 +4,18 @@ import type React from "react";
 import { useState } from "react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { ERROR_IDS } from "@/constants/errorIds";
 import { STRINGS } from "@/constants/strings";
 import { CONTRACT_NATURES, PARTY_ROLES } from "@/features/contract-data/contractRules";
 import { BulkEditRow } from "@/features/deal-workspace/sidebar/BulkEditRow";
 import { InlineEditFooter } from "@/features/inline-edit/InlineEditFooter";
 import { trpc } from "@/lib/trpc-client";
 import type { StaySummary } from "../staySummary";
+import { stayErrorMessage } from "./stayErrors";
 
 const S = STRINGS.stay;
 const NATURE_OPTIONS = CONTRACT_NATURES.map((value) => ({ value, label: S.natures[value] }));
 const DEFAULT_ARRIVAL = "16:00";
 const DEFAULT_DEPARTURE = "18:00";
-
-function errorMessage(id: string): string {
-  if (id === ERROR_IDS.RESERVATION_CONFLICT) return S.errors.conflict;
-  if (id === ERROR_IDS.RESERVATION_INVALID) return S.errors.dates;
-  if (id === ERROR_IDS.PERM_DENIED) return S.errors.denied;
-  return S.errors.other;
-}
 
 // Every booking fact of the sidebar open at once behind a single Save, like the other sections'
 // pencil. Payments are not edited here: recording money keeps its own tab and its own checks.
@@ -74,7 +67,7 @@ export function StayEditor({
           router.refresh();
           onExit();
         },
-        onError: (e) => setError(errorMessage(e.message)),
+        onError: (e) => setError(stayErrorMessage(e.message)),
       },
     );
   }

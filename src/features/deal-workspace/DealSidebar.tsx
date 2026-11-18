@@ -196,6 +196,7 @@ export function DealSidebar({
           editing={bulkSection === "stay"}
           onExitEdit={exitBulk}
           initialStay={initialStay}
+          onEditAll={() => setBulkSection("stay")}
         />
       </CollapsibleSection>
     ),

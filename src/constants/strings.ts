@@ -180,12 +180,14 @@ export const STRINGS = {
     endDate: "Departure day",
     tenant: (position: number) => `Tenant ${position}`,
     paymentsHint: "Payments are recorded in the Payments tab.",
+    add: "Add",
     errors: {
       conflict: "These dates are already booked.",
       dates: "Check the arrival and departure days.",
       numbers: "Guests and people sleeping on site must be whole numbers.",
       denied: "You cannot change this booking.",
       other: "Check the times (HH:MM), the numbers and the names, then try again.",
+      termsFirst: "Fill in the type, the times and the people sleeping on site first.",
     },
   },
   payments: {

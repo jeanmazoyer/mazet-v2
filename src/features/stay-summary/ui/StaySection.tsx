@@ -7,6 +7,7 @@ import { formatCents } from "@/features/quotes/documentFormat";
 import { trpc } from "@/lib/trpc-client";
 import type { StaySummary } from "../staySummary";
 import { StayEditor } from "./StayEditor";
+import { StayFields } from "./StayFields";
 
 const S = STRINGS.stay;
 
@@ -26,12 +27,15 @@ export function StaySection({
   editing = false,
   onExitEdit,
   initialStay,
+  onEditAll,
 }: {
   dealId: string;
   editing?: boolean;
   onExitEdit?: () => void;
   // Read on the server with the page: the section is painted with it, then kept fresh by the query.
   initialStay?: StaySummary;
+  // Opens the whole section's editor (the header pencil does the same).
+  onEditAll?: () => void;
 }): React.ReactNode {
   const query = trpc.dealDocuments.stay.useQuery({ dealId }, { initialData: initialStay });
   const stay = query.data;
@@ -50,38 +54,7 @@ export function StaySection({
 
   return (
     <>
-      <FieldRow label={S.dates} empty={dates === null}>
-        {dates !== null && (
-          <>
-            {formatShortDate(dates.startDate)} {S.to} {formatShortDate(dates.endDate)}
-            <span className="block text-xs text-muted-foreground">
-              {S.nights(dates.nights)}, {S.bookingKinds[dates.kind]}
-            </span>
-          </>
-        )}
-      </FieldRow>
-      <FieldRow label={S.type} empty={terms === null}>
-        {terms !== null && S.natures[terms.nature]}
-      </FieldRow>
-      <FieldRow label={S.checkIn} empty={terms === null}>
-        <span className="tabular-nums">{terms?.arrivalTime}</span>
-      </FieldRow>
-      <FieldRow label={S.checkOut} empty={terms === null}>
-        <span className="tabular-nums">{terms?.departureTime}</span>
-      </FieldRow>
-      <FieldRow label={S.guests} empty={stay.headcount === null}>
-        <span className="tabular-nums">{stay.headcount}</span>
-      </FieldRow>
-      <FieldRow label={S.sleeping} empty={terms === null}>
-        <span className="tabular-nums">{terms?.occupants}</span>
-      </FieldRow>
-      <FieldRow label={S.tenants} empty={stay.tenants.length === 0}>
-        {stay.tenants.map((name) => (
-          <span key={name} className="block">
-            {name}
-          </span>
-        ))}
-      </FieldRow>
+      <StayFields dealId={dealId} stay={stay} onEditAll={onEditAll ?? (() => {})} />
       {stay.payments.map((line) => (
         <FieldRow key={line.id} label={STRINGS.payments.kinds[line.kind]}>
           <span className="tabular-nums">{paymentLine(line)}</span>

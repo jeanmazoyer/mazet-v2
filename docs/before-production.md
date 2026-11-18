@@ -23,6 +23,10 @@ before production. Remove a line once it is paid.
   that a deal page with history hydrates without a mismatch in a French browser. Other places
   still format with `toLocaleString()` on the server pass (lead sidebar, contact overview, email
   cards, settings pages) and need the same treatment.
+- Per-field editing in the "Stay" section (`ui/EditableStayRow.tsx`, `ui/StayFields.tsx`):
+  checked by hand in a browser only. Add component tests for each kind of editor (dates, list,
+  time, number, text), for the Save button staying off until the draft differs, and for the
+  error line when the server refuses a change.
 - `scripts/import-dossiers.ts`: only exercised by hand against a local database.
 - `src/features/dossier-import/importDossier.ts` is past 250 lines: split the write step out.
 - Run the full unit and integration suites, the linter and the type check.
