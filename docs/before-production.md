@@ -33,6 +33,8 @@ before production. Remove a line once it is paid.
   schedule compared with the deal's value, a deal with no value) and a component test.
   A line counts as matched with the bank when it is paid and carries a reference: replace that
   with a real link to an imported bank transaction once those exist.
+- Sidebar defaults: the Source and Overview sections now start hidden, and the list gained
+  "stay" and "finance". Update the tests that pin the default section list and its visibility.
 - `scripts/import-dossiers.ts`: only exercised by hand against a local database.
 - `src/features/dossier-import/importDossier.ts` is past 250 lines: split the write step out.
 - Run the full unit and integration suites, the linter and the type check.
