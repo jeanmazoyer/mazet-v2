@@ -1,6 +1,7 @@
 #!/bin/sh
-# Keeps the development checkout on the box in step with its branch. Run every minute by cron:
-#   * * * * * flock -n /tmp/mazet-dev-sync.lock sh ~/mazet-dev/scripts/devserver-sync.sh
+# Keeps the development checkout on the box in step with its branch. Cron cannot fire more often
+# than once a minute, so its line runs this script five times, ten seconds apart:
+#   * * * * * flock -n /tmp/mazet-dev-sync.lock sh -c 'for i in 1 2 3 4 5; do sh ~/mazet-dev/scripts/devserver-sync.sh; sleep 10; done'
 # Source changes need nothing more than the pull: `next dev` reloads them. Dependencies and
 # migrations are only applied when the container starts, so a pull that touches them restarts it.
 set -eu

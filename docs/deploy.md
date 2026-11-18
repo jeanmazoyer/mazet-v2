@@ -152,8 +152,9 @@ change is visible about a minute later with no image rebuild.
   `DATABASE_URL` (a separate database on the same Postgres), `BASE_URL=https://<DEV_DOMAIN>`, and
   the same `DEV_DOMAIN` value as production.
 - Start it with `docker compose -p mazet-dev -f docker-compose.devserver.yml up -d`.
-- `scripts/devserver-sync.sh`, run every minute by cron, fast-forwards the checkout and restarts
-  the container only when dependencies, migrations or the compose file changed.
+- `scripts/devserver-sync.sh`, run every ten seconds from cron (its header has the line),
+  fast-forwards the checkout and restarts the container only when dependencies, migrations or
+  the compose file changed.
 - Sign-in goes through Google as in production: the compose file pins `ALLOW_FIRST_LOGIN_ADMIN`
   off because the site is public. Add `https://<DEV_DOMAIN>/auth/callback` (and the Gmail and
   Drive callbacks if used) to the OAuth client's redirect URIs.
