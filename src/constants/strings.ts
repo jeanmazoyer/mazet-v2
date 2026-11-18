@@ -7,7 +7,7 @@ import { SETTINGS_STRINGS } from "./settingsStrings";
 import { SUPPORT_STRINGS } from "./supportStrings";
 
 export const STRINGS = {
-  app: { name: "Domaine" },
+  app: { name: "Domaine des Jardins de Campagne" },
   nav: {
     pipeline: "Pipeline",
     leads: "Leads",
