@@ -4,6 +4,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { AppError } from "@/constants/errorIds";
+import { syncDealWithBank } from "@/features/bank/bankSync";
 import { listDealPieces } from "@/features/deal-pieces/pieceRepo";
 import { listPaymentLines, recordPayment, reopenPayment } from "@/features/payments/paymentRepo";
 import { listPriceItems, listQuotes } from "@/features/quotes/quoteRepo";
@@ -88,6 +89,13 @@ export const dealDocumentsRouter = router({
     const saved = await reopenPayment(ctx.db, ctx.actor, input.dealId, input.lineId, signal);
     if (!saved.ok) throw new TRPCError({ code: "BAD_REQUEST", message: saved.error.id });
     return saved.value;
+  }),
+  // Looks at the bank statement held by the app for this deal's payments (Finance block).
+  syncBank: protectedProcedure.input(dealInput).mutation(async ({ ctx, input }) => {
+    const signal = AbortSignal.timeout(READ_TIMEOUT_MS);
+    const synced = await syncDealWithBank(ctx.db, ctx.actor, input.dealId, signal);
+    if (!synced.ok) throw new TRPCError({ code: "BAD_REQUEST", message: synced.error.id });
+    return synced.value;
   }),
   documents: documentsRouter.documents,
   templates: documentsRouter.templates,

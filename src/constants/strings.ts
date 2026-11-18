@@ -216,6 +216,21 @@ export const STRINGS = {
     },
     bankMatched: (reference: string) => `Bank: ${reference}`,
     bankUnmatched: "Not matched with the bank statement yet",
+    sync: {
+      button: "Sync with bank",
+      running: "Checking the bank statement...",
+      matched: (count: number) =>
+        count === 1
+          ? "1 payment found on the statement."
+          : `${count} payments found on the statement.`,
+      confirmed: (count: number) =>
+        count === 1
+          ? "1 payment confirmed by the statement."
+          : `${count} payments confirmed by the statement.`,
+      nothing: "Nothing new on the bank statement.",
+      noStatement: "No bank statement has been imported yet.",
+      failed: "The bank statement could not be checked.",
+    },
     actions: {
       markReceived: "Mark as received",
       markNotReceived: "Mark as not received",

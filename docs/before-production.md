@@ -41,8 +41,11 @@ before production. Remove a line once it is paid.
 - Document cards above Focus (`src/features/deal-documents/documentKind.ts`,
   `ui/DocumentCards.tsx`): add unit tests for `documentKind` (each family, the null type of a
   templated Google Doc, the fallback on the file extension) and a component test for the cards.
-- Migration 0094 adds `bank_transactions` and the link from a payment line: no feature reads it
-  yet. Finish the bank import and matching, with their tests, before it ships.
+- Bank matching (`src/features/bank`): the import, the matching rule, the per-deal sync and the
+  CSV reader are covered by tests. Still checked by hand only: `scripts/import-bank.ts`, the
+  `syncBank` route, and the "Sync with bank" button of `ui/FinanceSection.tsx`. The statement
+  is imported by a script today: replace it with the bank's API once the connector exists, so
+  the button fetches new lines before matching.
 - `scripts/import-dossiers.ts`: only exercised by hand against a local database.
 - `src/features/dossier-import/importDossier.ts` is past 250 lines: split the write step out.
 - Run the full unit and integration suites, the linter and the type check.

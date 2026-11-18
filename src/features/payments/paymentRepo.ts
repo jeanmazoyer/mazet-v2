@@ -27,6 +27,8 @@ export interface PaymentLineRow {
   dueOn: string;
   paidOn: string | null;
   reference: string | null;
+  // The bank statement line that settles this payment, when one was matched with it.
+  bankTransactionId: string | null;
 }
 
 export interface NewPaymentLine {
@@ -194,6 +196,7 @@ function toRow(row: LineRow): PaymentLineRow {
     dueOn: row.dueOn,
     paidOn: row.paidOn,
     reference: row.reference,
+    bankTransactionId: row.bankTransactionId,
   };
 }
 
@@ -230,7 +233,15 @@ export async function reopenPayment(
 
     const [after] = await tx
       .update(paymentLines)
-      .set({ status: next, paidOn: null, reference: null, updatedAt: sql`now()` })
+      // The statement line it was matched with is released too, so it can settle the right
+      // payment next time.
+      .set({
+        status: next,
+        paidOn: null,
+        reference: null,
+        bankTransactionId: null,
+        updatedAt: sql`now()`,
+      })
       .where(eq(paymentLines.id, lineId))
       .returning();
     if (after === undefined) {

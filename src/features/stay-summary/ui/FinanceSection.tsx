@@ -1,16 +1,29 @@
 "use client";
+import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type React from "react";
+import { Button } from "@/components/ui/Button";
 import { Progress } from "@/components/ui/Progress";
 import { STRINGS } from "@/constants/strings";
+import type { BankSyncResult } from "@/features/bank/bankSync";
 import { formatCents } from "@/features/quotes/documentFormat";
 import { trpc } from "@/lib/trpc-client";
+import { cn } from "@/lib/utils";
 import { buildFinanceOverview } from "../financeOverview";
 import type { StaySummary } from "../staySummary";
 import { FinanceLineRow } from "./FinanceLineRow";
 
 const F = STRINGS.finance;
 const money = (cents: number): string => formatCents(cents, "fr");
+
+function syncResultMessage(result: BankSyncResult): string {
+  if (result.transactionsOnFile === 0) return F.sync.noStatement;
+  const parts = [
+    result.matched > 0 ? F.sync.matched(result.matched) : null,
+    result.confirmed > 0 ? F.sync.confirmed(result.confirmed) : null,
+  ].filter((part) => part !== null);
+  return parts.length === 0 ? F.sync.nothing : parts.join(" ");
+}
 
 // The money side of a booking at a glance: how much has come in, where each payment stands, and
 // whether what was received has been found on the bank statement. Read-only: payments are
@@ -32,6 +45,7 @@ export function FinanceSection({
     void utils.dealDocuments.invalidate();
     router.refresh();
   };
+  const sync = trpc.dealDocuments.syncBank.useMutation({ onSuccess: refresh });
   if (query.data === undefined) {
     return <p className="py-1.5 text-muted-foreground text-sm">{F.loading}</p>;
   }
@@ -41,6 +55,13 @@ export function FinanceSection({
   if (overview.lines.length === 0) {
     return <p className="py-1.5 text-muted-foreground text-sm">{F.empty}</p>;
   }
+  const syncMessage = sync.isPending
+    ? F.sync.running
+    : sync.isError
+      ? F.sync.failed
+      : sync.data === undefined
+        ? ""
+        : syncResultMessage(sync.data);
   const percent =
     overview.expectedCents === 0
       ? 0
@@ -60,6 +81,24 @@ export function FinanceSection({
         className="mt-1.5 mb-2"
         indicatorClassName={percent === 100 ? "bg-success" : undefined}
       />
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="min-w-0 text-muted-foreground text-xs" aria-live="polite">
+          {syncMessage}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          disabled={sync.isPending}
+          onClick={() => sync.mutate({ dealId })}
+        >
+          <RefreshCw
+            aria-hidden="true"
+            className={cn("mr-1 h-3 w-3", sync.isPending && "animate-spin")}
+          />
+          {F.sync.button}
+        </Button>
+      </div>
       <ul className="divide-y">
         {overview.lines.map((line) => (
           <FinanceLineRow

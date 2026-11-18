@@ -11,7 +11,8 @@ export interface FinanceLine extends PaymentLineRow {
   // Money owed to the estate (deposit, balance) vs. a caution held against damage, which is
   // never income and usually a card imprint with no bank movement to look for.
   isIncome: boolean;
-  // A received payment carrying the wording of the bank statement it was matched with.
+  // A received payment tied to the line of the bank statement that proves it. A reference
+  // typed by hand is not proof: only the link to a stored statement line counts.
   bankMatched: boolean;
 }
 
@@ -41,12 +42,11 @@ export function buildFinanceOverview(
 ): FinanceOverview {
   const lines = payments.map((line) => {
     const isIncome = line.kind !== "hold";
-    const hasReference = line.reference !== null && line.reference.trim() !== "";
     return {
       ...line,
       state: lineState(line, today),
       isIncome,
-      bankMatched: line.status === "paid" && hasReference,
+      bankMatched: line.status === "paid" && line.bankTransactionId !== null,
     };
   });
   const income = lines.filter((line) => line.isIncome);
