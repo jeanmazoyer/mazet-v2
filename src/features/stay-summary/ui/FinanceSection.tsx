@@ -1,5 +1,4 @@
 "use client";
-import { CircleAlert, CircleCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { Progress } from "@/components/ui/Progress";
@@ -12,19 +11,6 @@ import { FinanceLineRow } from "./FinanceLineRow";
 
 const F = STRINGS.finance;
 const money = (cents: number): string => formatCents(cents, "fr");
-
-function Check({ ok, label }: { ok: boolean; label: string }): React.ReactNode {
-  return (
-    <li className="flex items-start gap-2 py-0.5 text-xs">
-      {ok ? (
-        <CircleCheck aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
-      ) : (
-        <CircleAlert aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
-      )}
-      <span className={ok ? "text-muted-foreground" : "text-destructive"}>{label}</span>
-    </li>
-  );
-}
 
 // The money side of a booking at a glance: how much has come in, where each payment stands, and
 // whether what was received has been found on the bank statement. Read-only: payments are
@@ -59,7 +45,6 @@ export function FinanceSection({
     overview.expectedCents === 0
       ? 0
       : Math.round((overview.receivedCents / overview.expectedCents) * 100);
-  const { checks } = overview;
 
   return (
     <div className="text-sm">
@@ -85,23 +70,6 @@ export function FinanceSection({
             onChanged={refresh}
           />
         ))}
-      </ul>
-      <p className="mt-2 mb-0.5 font-medium text-muted-foreground text-xs">{F.checksTitle}</p>
-      <ul>
-        {checks.scheduleMatchesDeal !== null && (
-          <Check
-            ok={checks.scheduleMatchesDeal}
-            label={checks.scheduleMatchesDeal ? F.checks.scheduleOk : F.checks.scheduleOff}
-          />
-        )}
-        <Check
-          ok={checks.nothingOverdue}
-          label={checks.nothingOverdue ? F.checks.noOverdue : F.checks.overdue}
-        />
-        <Check
-          ok={checks.receivedAllMatched}
-          label={checks.receivedAllMatched ? F.checks.bankOk : F.checks.bankMissing}
-        />
       </ul>
     </div>
   );
