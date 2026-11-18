@@ -19,6 +19,10 @@ before production. Remove a line once it is paid.
   pencil only). Add tests: row click opens the editor, a click on a link or a button inside the
   value does not, a click that ends a text selection does not. Update the tests and the spec
   note that still describe the value as never being a click target.
+- Dates written in the reader's language (`ViewerTime`, the sidebar "Created" row): add a test
+  that a deal page with history hydrates without a mismatch in a French browser. Other places
+  still format with `toLocaleString()` on the server pass (lead sidebar, contact overview, email
+  cards, settings pages) and need the same treatment.
 - `scripts/import-dossiers.ts`: only exercised by hand against a local database.
 - `src/features/dossier-import/importDossier.ts` is past 250 lines: split the write step out.
 - Run the full unit and integration suites, the linter and the type check.

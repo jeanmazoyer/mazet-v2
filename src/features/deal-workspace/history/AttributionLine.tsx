@@ -1,7 +1,7 @@
 import type React from "react";
 import { ACTOR_UNKNOWN, SOURCE_WEB_APP } from "@/constants/timelineSource";
-import { formatTimelineEmailDate } from "@/features/email/inboxDate";
 import { formatUserName } from "@/features/identity/formatUserName";
+import { ViewerTime } from "./ViewerTime";
 
 // Pipedrive's per-row attribution: "<time> · Name (Web App)". The visible time uses the same
 // relative timeline format the email cards in this feed use, so one history no longer mixes
@@ -18,7 +18,7 @@ export function AttributionLine({
 }): React.ReactNode {
   return (
     <p className="mt-0.5 text-xs text-muted-foreground">
-      <time dateTime={at.toISOString()}>{formatTimelineEmailDate(at.toISOString())}</time>
+      <ViewerTime iso={at.toISOString()} />
       {actorName !== null
         ? ` · ${formatUserName(actorName)} (${SOURCE_WEB_APP})`
         : ` · ${ACTOR_UNKNOWN}`}

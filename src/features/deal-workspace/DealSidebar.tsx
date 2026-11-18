@@ -12,6 +12,7 @@ import { STRINGS } from "@/constants/strings";
 import type { PersonMatchCandidate } from "@/features/contacts/personOptionsRepo";
 import { useDealActionError } from "@/features/deal-workspace/DealActionErrorProvider";
 import { updateDealAction } from "@/features/deals/updateAction";
+import { formatShortDate } from "@/features/document-templates/fieldValues";
 import type { StaySummary } from "@/features/stay-summary/staySummary";
 import { StaySection } from "@/features/stay-summary/ui/StaySection";
 import { err, ok } from "@/types/result";
@@ -280,7 +281,11 @@ export function DealSidebar({
           <span className="tabular-nums">{overview.inactiveDays}</span> days
         </FieldRow>
         <FieldRow label="Created">
-          <span className="tabular-nums">{deal.createdAt.toLocaleDateString()}</span>
+          {/* A fixed format, not the reader's own: the server and a French browser would otherwise
+              write this date differently, and React then rebuilds the whole page in the browser. */}
+          <span className="tabular-nums">
+            {formatShortDate(new Date(deal.createdAt).toISOString().slice(0, 10))}
+          </span>
         </FieldRow>
       </CollapsibleSection>
     ),
