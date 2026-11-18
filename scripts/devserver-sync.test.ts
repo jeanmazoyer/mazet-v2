@@ -101,14 +101,14 @@ describe("devserver-sync.sh", () => {
   });
 
   test.each([
-    ["the lockfile", "pnpm-lock.yaml"],
-    ["a migration", "drizzle/0100_next.sql"],
-    ["the compose file", "docker-compose.devserver.yml"],
+    ["the lockfile", "domaine/package-lock.json"],
+    ["the dependencies", "domaine/package.json"],
+    ["the compose file", "domaine/docker-compose.yml"],
   ])("restarts the container when %s changes", (_label, file) => {
     publish(file, "changed");
     sync();
     expect(dockerCalls()).toEqual([
-      "compose -p mazet-dev -f docker-compose.devserver.yml up -d --force-recreate",
+      "compose -p mazet-dev -f domaine/docker-compose.yml up -d --force-recreate",
     ]);
   });
 

@@ -1,0 +1,44 @@
+# The app on the Oracle box, behind the Caddy that is already there. Started from the
+# development checkout, in place of the previous development container:
+#   docker compose -p mazet-dev -f domaine/docker-compose.yml up -d --remove-orphans
+# The service keeps the name `devapp` because that is where Caddy already sends DEV_DOMAIN.
+# Pages are served straight from the checkout and the server restarts itself when its own files
+# change (node --watch), so a `git pull` is a deploy. Only a change of dependencies needs the
+# container recreated: scripts/devserver-sync.sh does it.
+services:
+  devapp:
+    image: node:24-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: ["sh", "-c", "npm ci --omit=dev --no-audit --no-fund && exec node --watch server/main.ts"]
+    # The box's own .env: BASE_URL, DATABASE_URL, GOOGLE_OAUTH_CLIENT_ID / _SECRET, ALLOWED_EMAILS.
+    env_file: ../.env
+    # These outrank env_file, so a copied .env cannot weaken them.
+    environment:
+      PORT: "3000"
+      DATA_DIR: /data
+      # Its own schema inside the database the box already has: nothing else is touched.
+      DB_SCHEMA: domaine
+      # Sign-in without Google exists for a laptop only and must stay off on a public site.
+      DEV_LOGIN: "false"
+    volumes:
+      - ./:/app
+      - domainemodules:/app/node_modules
+      # Uploaded files. Kept outside the checkout so a pull never meets them.
+      - domainedata:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks: [default, prod]
+
+volumes:
+  domainemodules:
+  domainedata:
+
+networks:
+  prod:
+    external: true
+    name: mazet-v2_default

@@ -13,6 +13,7 @@
       "!**/.claude",
       "!site",
       "!docs-site",
+      "!domaine",
       "!**/drizzle",
       "!**/.next",
       "!**/dist",

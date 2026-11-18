@@ -18,7 +18,7 @@ export default defineConfig({
     hookTimeout: 120_000,
     // Per-file environment overrides via @vitest-environment docblock in .test.tsx files.
     environment: "node",
-    exclude: ["**/node_modules/**", "**/testHarness.test.ts"],
+    exclude: ["**/node_modules/**", "**/testHarness.test.ts", "domaine/**"],
     projects: [
       // Unit lane: no globalSetup, so `vitest run --project unit` needs no Postgres/Docker at all.
       {

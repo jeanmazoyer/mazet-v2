@@ -22,3 +22,6 @@ docs/parity-captures/
 
 # Impeccable critique snapshots: internal design audits, never publish
 .impeccable/
+
+# The new app: uploaded files on a laptop
+domaine/data/

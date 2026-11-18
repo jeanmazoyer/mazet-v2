@@ -19,6 +19,7 @@ export default tseslint.config(
     // the standalone marketing site (its own package + toolchain), so the app's type-aware config
     // does not apply to it. See docs/superpowers/specs/2026-07-18-landing-cloudflare-pages-design.md.
     ignores: [
+      "domaine/**",
       "drizzle/**",
       ".next/**",
       "dist/**",
