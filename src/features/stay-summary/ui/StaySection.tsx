@@ -25,12 +25,15 @@ export function StaySection({
   dealId,
   editing = false,
   onExitEdit,
+  initialStay,
 }: {
   dealId: string;
   editing?: boolean;
   onExitEdit?: () => void;
+  // Read on the server with the page: the section is painted with it, then kept fresh by the query.
+  initialStay?: StaySummary;
 }): React.ReactNode {
-  const query = trpc.dealDocuments.stay.useQuery({ dealId });
+  const query = trpc.dealDocuments.stay.useQuery({ dealId }, { initialData: initialStay });
   const stay = query.data;
   if (stay === undefined) {
     return (

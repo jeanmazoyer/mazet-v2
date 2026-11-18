@@ -13,6 +13,7 @@ import { DealHeader } from "@/features/deal-workspace/header/DealHeader";
 import { useBlockVisibility } from "@/features/deal-workspace/header/useBlockVisibility";
 import type { DealWorkspace } from "@/features/deal-workspace/summaryRepo";
 import type { DraftSummary } from "@/features/email/draftRepo";
+import type { StaySummary } from "@/features/stay-summary/staySummary";
 import { trpc } from "@/lib/trpc-client";
 import { WorkspaceTabs } from "./tabs";
 
@@ -46,6 +47,8 @@ interface DealWorkspaceClientProps {
   // and Person sections drop the same rows the standalone detail pages do.
   hiddenOrgFields: ReadonlySet<string>;
   hiddenPersonFields: ReadonlySet<string>;
+  // The booking read with the page, so the sidebar's Stay section never starts empty.
+  initialStay?: StaySummary;
 }
 
 export function DealWorkspaceClient({
@@ -62,6 +65,7 @@ export function DealWorkspaceClient({
   scheduleFollowUpAfterWon,
   hiddenOrgFields,
   hiddenPersonFields,
+  initialStay,
 }: DealWorkspaceClientProps) {
   const { deal, person, org } = workspace;
   const [tab, setTab] = useState<Tab>("all");
@@ -128,6 +132,7 @@ export function DealWorkspaceClient({
             onSidebarSectionsChange={setSidebarSections}
             hiddenOrgFields={hiddenOrgFields}
             hiddenPersonFields={hiddenPersonFields}
+            initialStay={initialStay}
           />
 
           <div className="min-w-0">

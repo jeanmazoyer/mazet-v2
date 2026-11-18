@@ -12,6 +12,7 @@ import { STRINGS } from "@/constants/strings";
 import type { PersonMatchCandidate } from "@/features/contacts/personOptionsRepo";
 import { useDealActionError } from "@/features/deal-workspace/DealActionErrorProvider";
 import { updateDealAction } from "@/features/deals/updateAction";
+import type { StaySummary } from "@/features/stay-summary/staySummary";
 import { StaySection } from "@/features/stay-summary/ui/StaySection";
 import { err, ok } from "@/types/result";
 import { readCsrfToken } from "@/utils/csrfCookie";
@@ -50,6 +51,7 @@ export function DealSidebar({
   onSidebarSectionsChange,
   hiddenOrgFields = NONE,
   hiddenPersonFields = NONE,
+  initialStay,
 }: {
   workspace: DealWorkspace;
   now: Date;
@@ -65,6 +67,7 @@ export function DealSidebar({
   // sidebar sections drop the same rows the standalone detail pages do.
   hiddenOrgFields?: ReadonlySet<string>;
   hiddenPersonFields?: ReadonlySet<string>;
+  initialStay?: StaySummary;
 }): React.ReactNode {
   const {
     deal,
@@ -187,7 +190,12 @@ export function DealSidebar({
         title={sections.stay}
         headerActions={sectionActions(sections.stay, [], { bulkSectionId: "stay" })}
       >
-        <StaySection dealId={deal.id} editing={bulkSection === "stay"} onExitEdit={exitBulk} />
+        <StaySection
+          dealId={deal.id}
+          editing={bulkSection === "stay"}
+          onExitEdit={exitBulk}
+          initialStay={initialStay}
+        />
       </CollapsibleSection>
     ),
 

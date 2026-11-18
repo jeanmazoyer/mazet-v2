@@ -14,6 +14,7 @@ import { listAssignableUsers } from "@/features/identity/users.service";
 import { cachedDetailLoad } from "@/features/navigation/cachedDetailLoad";
 import { can } from "@/features/permissions/can";
 import { readBaseCurrency } from "@/features/settings/readBaseCurrency";
+import { getStaySummary } from "@/features/stay-summary/staySummary";
 import { DealWorkspaceClient } from "./DealWorkspaceClient";
 
 // Shared deal-workspace loader. Exported so the full page ([dealId]/page.tsx), the intercepted
@@ -41,6 +42,7 @@ export async function DealDetailView({ dealId }: { dealId: string }): Promise<Re
     orgOptions,
     personOptions,
     hiddenBuiltins,
+    stay,
     refLabels,
   ] = await Promise.all([
     getActorMailbox(db, loaded.actor.id, AbortSignal.timeout(10_000)),
@@ -77,6 +79,10 @@ export async function DealDetailView({ dealId }: { dealId: string }): Promise<Re
     // Built-in fields hidden in Settings > Data fields, so the sidebar Organization/Person
     // sections drop the same rows the standalone detail pages do (bucketed per entity).
     listHiddenBuiltins(db, AbortSignal.timeout(10_000)),
+
+    // The booking shown in the sidebar's Stay section. Read here, with the page, so the section
+    // is painted with its data instead of asking for it after the page has loaded.
+    getStaySummary(db, loaded.actor, loaded.value.deal.id, AbortSignal.timeout(8000)),
 
     resolveCustomFieldRefLabelsFor(
       db,
@@ -129,6 +135,7 @@ export async function DealDetailView({ dealId }: { dealId: string }): Promise<Re
         scheduleFollowUpAfterWon={prefs.ui.scheduleFollowUpAfterWon ?? false}
         hiddenOrgFields={hiddenBuiltins.organization}
         hiddenPersonFields={hiddenBuiltins.person}
+        initialStay={stay.ok ? stay.value : undefined}
       />
     </CustomFieldRefLabelsProvider>
   );
