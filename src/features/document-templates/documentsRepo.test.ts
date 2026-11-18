@@ -12,6 +12,7 @@ import type { HydratedActor } from "@/server/hydrateActor";
 import {
   createDealDocument,
   createTemplateFromFile,
+  getDocumentForDownload,
   listDealDocuments,
   listTemplates,
 } from "./documentsRepo";
@@ -289,6 +290,73 @@ describe("Smart Docs: templates and the documents made from them (base réelle, 
         "Contrats (administrateurs)",
       );
       expect(drive.folderOf(asEditor.value.document.driveFileId)?.[0]).toBe("Deals");
+    });
+  });
+
+  it("a document with an ID number is hidden from, and cannot be downloaded by, someone who is not an administrator", async () => {
+    await withTestDb(async (db) => {
+      const s = await setup(db);
+      await saveContractParty(
+        db,
+        s.admin,
+        s.dealId,
+        "tenant_1",
+        {
+          fullName: "Johanna Hung",
+          email: null,
+          phone: null,
+          address: null,
+          idNumber: "ABC123456",
+        },
+        SIGNAL(),
+      );
+      const drive = createFakeDrive();
+      const templateId = await addTemplate(db, s, drive, "CNI : {{tenant1IdNumber}}");
+      const sensitive = await createDealDocument(
+        db,
+        s.admin,
+        drive,
+        s.dealId,
+        { templateId, title: "Contrat admin" },
+        SIGNAL(),
+      );
+      const plain = await createDealDocument(
+        db,
+        s.editor,
+        drive,
+        s.dealId,
+        { title: "Note libre" },
+        SIGNAL(),
+      );
+      if (!sensitive.ok || !plain.ok) throw new Error("creation failed");
+
+      const asEditor = await listDealDocuments(db, s.editor, s.dealId, SIGNAL());
+      if (!asEditor.ok) throw new Error("list failed");
+      expect(asEditor.value.map((d) => d.title)).toEqual(["Note libre"]);
+      const asAdmin = await listDealDocuments(db, s.admin, s.dealId, SIGNAL());
+      expect(asAdmin.ok && asAdmin.value.map((d) => d.title).sort()).toEqual([
+        "Contrat admin",
+        "Note libre",
+      ]);
+
+      const hidden = await getDocumentForDownload(
+        db,
+        s.editor,
+        s.dealId,
+        sensitive.value.document.id,
+        SIGNAL(),
+      );
+      expect(hidden.ok).toBe(false);
+      if (!hidden.ok) expect(hidden.error.id).toBe(ERROR_IDS.DOCUMENT_NOT_FOUND);
+      const allowed = await getDocumentForDownload(
+        db,
+        s.editor,
+        s.dealId,
+        plain.value.document.id,
+        SIGNAL(),
+      );
+      if (!allowed.ok) throw new Error("download lookup failed");
+      expect(allowed.value.driveFileId).toBe(plain.value.document.driveFileId);
     });
   });
 

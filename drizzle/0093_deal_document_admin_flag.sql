@@ -1,0 +1,1 @@
+ALTER TABLE "deal_documents" ADD COLUMN "carries_admin_data" boolean DEFAULT false NOT NULL;

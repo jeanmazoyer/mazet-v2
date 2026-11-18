@@ -1,6 +1,9 @@
 import { sql } from "drizzle-orm";
-import { check, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { DOCUMENT_STATUSES, TEMPLATE_CATEGORIES } from "@/features/document-templates/templateRules";
+import { boolean, check, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  DOCUMENT_STATUSES,
+  TEMPLATE_CATEGORIES,
+} from "@/features/document-templates/templateRules";
 import { deals } from "./deals";
 import { users } from "./identity";
 
@@ -35,6 +38,8 @@ export const dealDocuments = pgTable("deal_documents", {
   templateId: uuid("template_id").references(() => documentTemplates.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   status: documentStatusEnum("status").notNull().default("draft"),
+  // Set when the document carries an identity number: only administrators see or download it.
+  carriesAdminData: boolean("carries_admin_data").notNull().default(false),
   driveFileId: text("drive_file_id").notNull().unique(),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
