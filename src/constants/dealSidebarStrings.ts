@@ -1,6 +1,7 @@
 export const DEAL_SIDEBAR_STRINGS = {
   sections: {
     summary: "Summary",
+    stay: "Stay",
     details: "Details",
     source: "Source",
     person: "Person",

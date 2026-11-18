@@ -7,6 +7,7 @@ import type { AppError } from "@/constants/errorIds";
 import { listDealPieces } from "@/features/deal-pieces/pieceRepo";
 import { listPaymentLines } from "@/features/payments/paymentRepo";
 import { listPriceItems, listQuotes } from "@/features/quotes/quoteRepo";
+import { getStaySummary } from "@/features/stay-summary/staySummary";
 import { protectedProcedure, router } from "@/server/trpc/trpc";
 import type { Result } from "@/types/result";
 import { contractRouter, documentsRouter, eventRouter } from "./documentsRouter";
@@ -48,6 +49,14 @@ export const dealDocumentsRouter = router({
     const items = await listPriceItems(ctx.db, ctx.actor, signal);
     return { quotes, items };
   }),
+  // Everything the sidebar shows about the booking, in one round trip.
+  stay: protectedProcedure
+    .input(dealInput)
+    .query(async ({ ctx, input }) =>
+      unwrap(
+        await getStaySummary(ctx.db, ctx.actor, input.dealId, AbortSignal.timeout(READ_TIMEOUT_MS)),
+      ),
+    ),
   documents: documentsRouter.documents,
   templates: documentsRouter.templates,
   contract: contractRouter,

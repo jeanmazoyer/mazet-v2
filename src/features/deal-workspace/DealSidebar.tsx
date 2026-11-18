@@ -12,6 +12,7 @@ import { STRINGS } from "@/constants/strings";
 import type { PersonMatchCandidate } from "@/features/contacts/personOptionsRepo";
 import { useDealActionError } from "@/features/deal-workspace/DealActionErrorProvider";
 import { updateDealAction } from "@/features/deals/updateAction";
+import { StaySection } from "@/features/stay-summary/ui/StaySection";
 import { err, ok } from "@/types/result";
 import { readCsrfToken } from "@/utils/csrfCookie";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -179,6 +180,16 @@ export function DealSidebar({
         />
       </CollapsibleSection>
     ) : null,
+
+    stay: (
+      <CollapsibleSection
+        key="stay"
+        title={sections.stay}
+        headerActions={sectionActions(sections.stay, [], { noEdit: true })}
+      >
+        <StaySection dealId={deal.id} />
+      </CollapsibleSection>
+    ),
 
     source: (
       <CollapsibleSection
