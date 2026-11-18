@@ -27,6 +27,12 @@ before production. Remove a line once it is paid.
   checked by hand in a browser only. Add component tests for each kind of editor (dates, list,
   time, number, text), for the Save button staying off until the draft differs, and for the
   error line when the server refuses a change.
+- Deal sidebar "Finance" block (`src/features/stay-summary/financeOverview.ts`,
+  `ui/FinanceSection.tsx`): add unit tests for `buildFinanceOverview` (totals leave the caution
+  out, overdue vs. due on the boundary day, a paid line with and without a bank reference, the
+  schedule compared with the deal's value, a deal with no value) and a component test.
+  A line counts as matched with the bank when it is paid and carries a reference: replace that
+  with a real link to an imported bank transaction once those exist.
 - `scripts/import-dossiers.ts`: only exercised by hand against a local database.
 - `src/features/dossier-import/importDossier.ts` is past 250 lines: split the write step out.
 - Run the full unit and integration suites, the linter and the type check.

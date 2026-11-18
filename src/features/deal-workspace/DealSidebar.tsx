@@ -14,6 +14,7 @@ import { useDealActionError } from "@/features/deal-workspace/DealActionErrorPro
 import { updateDealAction } from "@/features/deals/updateAction";
 import { formatShortDate } from "@/features/document-templates/fieldValues";
 import type { StaySummary } from "@/features/stay-summary/staySummary";
+import { FinanceSection } from "@/features/stay-summary/ui/FinanceSection";
 import { StaySection } from "@/features/stay-summary/ui/StaySection";
 import { err, ok } from "@/types/result";
 import { readCsrfToken } from "@/utils/csrfCookie";
@@ -197,6 +198,21 @@ export function DealSidebar({
           onExitEdit={exitBulk}
           initialStay={initialStay}
           onEditAll={() => setBulkSection("stay")}
+        />
+      </CollapsibleSection>
+    ),
+
+    finance: (
+      <CollapsibleSection
+        key="finance"
+        title={sections.finance}
+        showFilter={false}
+        headerActions={sectionActions(sections.finance, [], { noEdit: true })}
+      >
+        <FinanceSection
+          dealId={deal.id}
+          dealValueCents={deal.value !== null ? Math.round(Number(deal.value) * 100) : null}
+          initialStay={initialStay}
         />
       </CollapsibleSection>
     ),

@@ -1,9 +1,6 @@
 "use client";
 import type React from "react";
 import { STRINGS } from "@/constants/strings";
-import { FieldRow } from "@/features/deal-workspace/sidebar/FieldRow";
-import { formatShortDate } from "@/features/document-templates/fieldValues";
-import { formatCents } from "@/features/quotes/documentFormat";
 import { trpc } from "@/lib/trpc-client";
 import type { StaySummary } from "../staySummary";
 import { StayEditor } from "./StayEditor";
@@ -11,17 +8,9 @@ import { StayFields } from "./StayFields";
 
 const S = STRINGS.stay;
 
-function paymentLine(line: StaySummary["payments"][number]): string {
-  const amount = formatCents(line.amountCents, "fr");
-  const when =
-    line.paidOn === null
-      ? `${S.dueOn} ${formatShortDate(line.dueOn)}`
-      : formatShortDate(line.paidOn);
-  return `${amount}, ${STRINGS.payments.statuses[line.status].toLowerCase()} ${when}`;
-}
-
-// The booking at a glance, in the deal's sidebar. Nothing is edited here: each fact has its own
-// tab (Documents, Payments, Event), and this is where they are read together.
+// The booking at a glance, in the deal's sidebar: each fact is read here and edited in place
+// (see StayFields), or all at once from the header pencil (StayEditor). The money side has its
+// own block (FinanceSection).
 export function StaySection({
   dealId,
   editing = false,
@@ -52,14 +41,5 @@ export function StaySection({
     dates === null && terms === null && stay.tenants.length === 0 && stay.payments.length === 0;
   if (empty) return <p className="py-1.5 text-sm text-muted-foreground">{S.empty}</p>;
 
-  return (
-    <>
-      <StayFields dealId={dealId} stay={stay} onEditAll={onEditAll ?? (() => {})} />
-      {stay.payments.map((line) => (
-        <FieldRow key={line.id} label={STRINGS.payments.kinds[line.kind]}>
-          <span className="tabular-nums">{paymentLine(line)}</span>
-        </FieldRow>
-      ))}
-    </>
-  );
+  return <StayFields dealId={dealId} stay={stay} onEditAll={onEditAll ?? (() => {})} />;
 }
