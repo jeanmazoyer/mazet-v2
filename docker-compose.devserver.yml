@@ -1,22 +1,42 @@
 # Development server on the production box. The source code is mounted and Next.js reloads it on
-# save, so a change shows up after a `git pull` with no image rebuild. Started on its own:
+# save, so a change shows up after a `git pull` with no image rebuild. Started on its own, from
+# its own checkout (never the production one):
 #   docker compose -p mazet-dev -f docker-compose.devserver.yml up -d
-# It joins the production network (for Postgres and the Caddy proxy) and reads its own .env,
-# which points at its own database. Realtime (WebSocket) is not run here.
+# It joins the production network (for Postgres, storage and the Caddy proxy) and reads its own
+# .env, which points at its own database. Realtime (WebSocket) and background jobs are not run
+# here. Dependencies and migrations are applied when the container starts: see
+# scripts/devserver-sync.sh, which restarts it when a pull changes either.
 services:
   devapp:
-    image: node:24-bookworm
+    image: node:24-alpine
     restart: unless-stopped
     working_dir: /app
-    command: sh -c "corepack enable && pnpm install && pnpm db:migrate && pnpm dev -H 0.0.0.0 -p 3000"
+    command:
+      - sh
+      - -c
+      - corepack enable && pnpm install --frozen-lockfile && pnpm db:migrate && pnpm dev -H 0.0.0.0 -p 3000
     env_file: .env
+    # These outrank env_file, so a .env copied from production cannot weaken them.
+    environment:
+      NODE_ENV: development
+      # This site is public. With the flag on, /auth/dev-login signs in any address with no
+      # Google round trip, so it stays off here and sign-in goes through Google like production.
+      ALLOW_FIRST_LOGIN_ADMIN: "false"
+      # No terminal in the container: an unanswered download prompt would hang the start.
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      CI: "true"
     volumes:
       - ./:/app
+      # Kept out of the checkout so the container (root) never leaves files the pull trips over.
       - devnodemodules:/app/node_modules
+      - devnext:/app/.next
+      - devpnpmstore:/root/.local/share/pnpm
     networks: [default, prod]
 
 volumes:
   devnodemodules:
+  devnext:
+  devpnpmstore:
 
 networks:
   prod:

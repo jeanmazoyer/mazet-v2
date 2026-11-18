@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import nextConfig, { CONSENT_PATH } from "./next.config";
 import { MAX_IMPORT_CSV_BYTES } from "./src/features/import/importFields";
 
@@ -158,5 +158,31 @@ describe("next.config consent-screen form-action exemption", () => {
 
   it("exempts the consent path in its trailing-slash form too", async () => {
     expect(await cspForPath(`${CONSENT_PATH}/`)).not.toContain("form-action");
+  });
+});
+
+// `next dev` answers 403 on its own dev resources (the hot-reload socket included) for any Origin
+// it was not told about. The development site is reached through a public name, so that name has
+// to be listed or a page loads once and then never refreshes.
+describe("next.config development origins", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  async function loadConfig(devDomain: string | undefined) {
+    vi.resetModules();
+    vi.stubEnv("DEV_DOMAIN", devDomain);
+    return (await import("./next.config")).default;
+  }
+
+  it("allows the development site's own name", async () => {
+    const config = await loadConfig("dev.example.test");
+    expect(config.allowedDevOrigins).toEqual(["dev.example.test"]);
+  });
+
+  it("allows nothing extra when no development site is configured", async () => {
+    expect((await loadConfig(undefined)).allowedDevOrigins).toEqual([]);
+    expect((await loadConfig("  ")).allowedDevOrigins).toEqual([]);
   });
 });

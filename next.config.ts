@@ -57,7 +57,16 @@ function securityHeaders(directives: string[]): { key: string; value: string }[]
   ];
 }
 
+// `next dev` answers 403 on its own dev resources (the hot-reload socket included) for any Origin
+// it was not told about. The development site is reached through a public name (DEV_DOMAIN, see
+// docker-compose.devserver.yml), so that name is listed. Ignored by production builds.
+function devOrigins(): string[] {
+  const host = (process.env.DEV_DOMAIN ?? "").trim();
+  return host.length === 0 ? [] : [host];
+}
+
 const nextConfig: NextConfig = {
+  allowedDevOrigins: devOrigins(),
   serverExternalPackages: ["pg", "pg-boss", "@xdevplatform/chat-xdk-server", "juicebox-sdk"],
   // HSTS is set by Caddy, not here: it terminates TLS and so is the layer that knows the
   // response actually went out over HTTPS. See Caddyfile.

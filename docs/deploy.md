@@ -142,3 +142,20 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 Then the app is at `http://localhost:3000`, the Garage S3 API at `http://localhost:9000` (`S3_ENDPOINT`), and Postgres
 at `localhost:5433`. Set `BASE_URL=http://localhost:3000` and `NEXT_PUBLIC_WS_URL=ws://localhost:8080`
 in `.env` for this mode.
+
+## Development site on the same box
+
+A second site (`DEV_DOMAIN`) can run the code in development mode next to production, so a pushed
+change is visible about a minute later with no image rebuild.
+
+- It lives in its own checkout (for example `~/mazet-dev`) with its own `.env`: its own
+  `DATABASE_URL` (a separate database on the same Postgres), `BASE_URL=https://<DEV_DOMAIN>`, and
+  the same `DEV_DOMAIN` value as production.
+- Start it with `docker compose -p mazet-dev -f docker-compose.devserver.yml up -d`.
+- `scripts/devserver-sync.sh`, run every minute by cron, fast-forwards the checkout and restarts
+  the container only when dependencies, migrations or the compose file changed.
+- Sign-in goes through Google as in production: the compose file pins `ALLOW_FIRST_LOGIN_ADMIN`
+  off because the site is public. Add `https://<DEV_DOMAIN>/auth/callback` (and the Gmail and
+  Drive callbacks if used) to the OAuth client's redirect URIs.
+- Realtime and background jobs are not run there. `DEV_DOMAIN` must be set in the production
+  `.env` too, or Caddy will not start.
