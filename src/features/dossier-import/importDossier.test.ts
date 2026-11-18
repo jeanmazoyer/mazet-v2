@@ -8,6 +8,7 @@ import { withTestDb } from "@/db/testing";
 import { seedPipelineWithStages, seedUser } from "@/db/testing/factories";
 import { getContractData } from "@/features/contract-data/contractRepo";
 import { listDealPieces } from "@/features/deal-pieces/pieceRepo";
+import { listDealDocuments } from "@/features/document-templates/documentsRepo";
 import { getEventSheet } from "@/features/event-sheet/eventSheetRepo";
 import { listPaymentLines } from "@/features/payments/paymentRepo";
 import { listReservations } from "@/features/reservations/reservationRepo";
@@ -88,6 +89,20 @@ const DOSSIER = {
   ],
   note: "Importé depuis le dossier Drive.",
 };
+
+const DOCUMENTS = [
+  {
+    title: "Contrat signé",
+    driveFileId: "drive-file-contract",
+    mimeType: "application/pdf",
+    adminOnly: true,
+  },
+  {
+    title: "Facture d'acompte n° 65",
+    driveFileId: "drive-file-invoice",
+    mimeType: "application/pdf",
+  },
+];
 
 describe("importDossier: one signed file becomes a complete deal", () => {
   it("creates the deal, its contact, the booking, the contract data and the schedule", async () => {
@@ -212,6 +227,52 @@ describe("importDossier: one signed file becomes a complete deal", () => {
       expect(second.ok && second.value.created).toBe(false);
       expect(await db.select().from(deals)).toHaveLength(1);
       expect(await db.select().from(persons)).toHaveLength(1);
+    });
+  });
+
+  it("attaches the file's Drive documents, and keeps the signed contract for administrators", async () => {
+    await withTestDb(async (db) => {
+      const s = await setup(db);
+      const result = await importDossier(
+        db,
+        s.admin,
+        { ...DOSSIER, documents: DOCUMENTS },
+        SIGNAL(),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const forAdmin = await listDealDocuments(db, s.admin, result.value.dealId, SIGNAL());
+      expect(forAdmin.ok && forAdmin.value.map((d) => [d.title, d.mimeType]).sort()).toEqual([
+        ["Contrat signé", "application/pdf"],
+        ["Facture d'acompte n° 65", "application/pdf"],
+      ]);
+
+      // The signed contract carries identity numbers: a colleague sees the invoice only.
+      await db
+        .update(deals)
+        .set({ visibilityLevel: "all" })
+        .where(eq(deals.id, result.value.dealId));
+      const forOthers = await listDealDocuments(db, s.regular, result.value.dealId, SIGNAL());
+      expect(forOthers.ok && forOthers.value.map((d) => d.title)).toEqual([
+        "Facture d'acompte n° 65",
+      ]);
+    });
+  });
+
+  it("adds documents to a file imported earlier without them, once", async () => {
+    await withTestDb(async (db) => {
+      const s = await setup(db);
+      const first = await importDossier(db, s.admin, DOSSIER, SIGNAL());
+      const withDocuments = { ...DOSSIER, documents: DOCUMENTS };
+      const second = await importDossier(db, s.admin, withDocuments, SIGNAL());
+      const third = await importDossier(db, s.admin, withDocuments, SIGNAL());
+      expect(first.ok && second.ok && third.ok).toBe(true);
+      expect(second.ok && second.value.created).toBe(false);
+      if (!first.ok) return;
+      const listed = await listDealDocuments(db, s.admin, first.value.dealId, SIGNAL());
+      expect(listed.ok && listed.value).toHaveLength(2);
+      expect(await db.select().from(deals)).toHaveLength(1);
     });
   });
 

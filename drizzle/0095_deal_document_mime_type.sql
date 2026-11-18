@@ -1,0 +1,1 @@
+ALTER TABLE "deal_documents" ADD COLUMN "mime_type" text;

@@ -1,6 +1,17 @@
 import { sql } from "drizzle-orm";
-import { check, date, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  date,
+  integer,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { PAYMENT_KINDS, PAYMENT_STATUSES } from "@/features/payments/paymentRules";
+import { bankTransactions } from "./bankTransactions";
 import { deals } from "./deals";
 
 export const paymentKindEnum = pgEnum("payment_line_kind", PAYMENT_KINDS);
@@ -21,10 +32,17 @@ export const paymentLines = pgTable(
     dueOn: date("due_on", { mode: "string" }).notNull(),
     paidOn: date("paid_on", { mode: "string" }),
     reference: text("reference"),
+    // The bank statement line that settles this payment, when one was found. Cleared (not
+    // cascaded) if that transaction is ever removed: the payment itself stays as recorded.
+    bankTransactionId: uuid("bank_transaction_id").references(() => bankTransactions.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    // One transaction settles one payment at most: the same money is never counted twice.
+    uniqueIndex("payment_lines_bank_transaction_key").on(t.bankTransactionId),
     check("payment_lines_amount_positive", sql`${t.amountCents} > 0`),
     check(
       "payment_lines_settled_has_day",

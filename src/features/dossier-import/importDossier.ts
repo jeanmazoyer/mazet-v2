@@ -21,6 +21,7 @@ import type { HydratedActor } from "@/server/hydrateActor";
 import type { DbOrTx } from "@/server/realtime/channelVersions";
 import { err, ok, type Result } from "@/types/result";
 import { findOrCreateContact } from "./dossierContact";
+import { attachDossierDocuments } from "./dossierDocuments";
 import { type Dossier, dossierSchema } from "./dossierSchema";
 
 export interface ImportedDossier {
@@ -180,6 +181,7 @@ async function writeDossier(
   for (const piece of dossier.pieces) {
     must(await updateDealPiece(tx, actor, dealId, { ...piece, expiresOn: null }, signal));
   }
+  await attachDossierDocuments(tx, dealId, dossier.documents, actor.id, signal);
   return dealId;
 }
 
@@ -212,7 +214,12 @@ export async function importDossier(
     .where(and(eq(deals.sourceChannelId, dossier.externalId), isNull(deals.deletedAt)))
     .limit(1);
   signal.throwIfAborted();
-  if (already !== undefined) return ok({ dealId: already.id, created: false });
+  if (already !== undefined) {
+    // The deal is left as it is, but Drive files named now and not attached yet are added: a
+    // dossier imported before its documents were listed can be completed by importing it again.
+    await attachDossierDocuments(db, already.id, dossier.documents, actor.id, signal);
+    return ok({ dealId: already.id, created: false });
+  }
 
   const stage = await targetStage(db, dossier.status, signal);
   if (!stage.ok) return stage;

@@ -659,6 +659,20 @@
       "when": 1794980489177,
       "tag": "0093_deal_document_admin_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1795015017442,
+      "tag": "0094_bank_transactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1795015110991,
+      "tag": "0095_deal_document_mime_type",
+      "breakpoints": true
     }
   ]
 }

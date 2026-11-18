@@ -40,6 +40,9 @@ export const dealDocuments = pgTable("deal_documents", {
   status: documentStatusEnum("status").notNull().default("draft"),
   // Set when the document carries an identity number: only administrators see or download it.
   carriesAdminData: boolean("carries_admin_data").notNull().default(false),
+  // What kind of file the Drive id points at. Null for a Google Doc made from a template, the
+  // only kind this table held before signed PDFs and invoices could be attached to a deal.
+  mimeType: text("mime_type"),
   driveFileId: text("drive_file_id").notNull().unique(),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

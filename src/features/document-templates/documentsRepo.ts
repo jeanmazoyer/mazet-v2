@@ -28,6 +28,8 @@ export interface DealDocumentRow {
   status: string;
   driveFileId: string;
   templateTitle: string | null;
+  // Null for a Google Doc made from a template; set for a Drive file attached as it is.
+  mimeType: string | null;
   createdAt: Date;
 }
 
@@ -188,6 +190,7 @@ export async function createDealDocument(
       status: row.status,
       driveFileId: row.driveFileId,
       templateTitle,
+      mimeType: row.mimeType,
       createdAt: row.createdAt,
     },
     unfilled,
@@ -212,6 +215,7 @@ export async function listDealDocuments(
       createdAt: dealDocuments.createdAt,
       templateTitle: documentTemplates.title,
       carriesAdminData: dealDocuments.carriesAdminData,
+      mimeType: dealDocuments.mimeType,
     })
     .from(dealDocuments)
     .leftJoin(documentTemplates, eq(documentTemplates.id, dealDocuments.templateId))

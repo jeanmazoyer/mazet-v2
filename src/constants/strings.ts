@@ -190,6 +190,18 @@ export const STRINGS = {
       termsFirst: "Fill in the type, the times and the people sleeping on site first.",
     },
   },
+  documentCards: {
+    title: "Documents",
+    badges: { pdf: "PDF", doc: "DOC", sheet: "XLS", slides: "PPT", image: "IMG", other: "FILE" },
+    kinds: {
+      pdf: "PDF",
+      doc: "Document",
+      sheet: "Spreadsheet",
+      slides: "Slides",
+      image: "Image",
+      other: "File",
+    },
+  },
   finance: {
     loading: "Loading...",
     empty: "No payment planned yet. Add the schedule in the Payments tab.",

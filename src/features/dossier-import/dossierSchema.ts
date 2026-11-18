@@ -59,6 +59,18 @@ export const dossierSchema = z.object({
       }),
     )
     .default([]),
+  // Files of the dossier that already live in Drive, attached to the deal by reference.
+  documents: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(255),
+        driveFileId: z.string().trim().min(1).max(200),
+        mimeType: z.string().trim().min(1).max(120),
+        // True for a file showing identity numbers (the signed contract): administrators only.
+        adminOnly: z.boolean().default(false),
+      }),
+    )
+    .default([]),
   note: z.string().trim().min(1).max(5000).nullable().default(null),
 });
 

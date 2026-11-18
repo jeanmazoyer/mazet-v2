@@ -38,6 +38,11 @@ before production. Remove a line once it is paid.
 - Manual "received / not received" in the Finance block: `reopenPayment` is covered by
   real-Postgres tests, but the two routes (`markReceived`, `markNotReceived`) and
   `ui/FinanceLineRow.tsx` were only checked by hand in a browser. Add component tests.
+- Document cards above Focus (`src/features/deal-documents/documentKind.ts`,
+  `ui/DocumentCards.tsx`): add unit tests for `documentKind` (each family, the null type of a
+  templated Google Doc, the fallback on the file extension) and a component test for the cards.
+- Migration 0094 adds `bank_transactions` and the link from a payment line: no feature reads it
+  yet. Finish the bank import and matching, with their tests, before it ships.
 - `scripts/import-dossiers.ts`: only exercised by hand against a local database.
 - `src/features/dossier-import/importDossier.ts` is past 250 lines: split the write step out.
 - Run the full unit and integration suites, the linter and the type check.

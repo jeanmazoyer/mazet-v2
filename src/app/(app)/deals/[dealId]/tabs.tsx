@@ -2,6 +2,7 @@
 import { useCallback, useMemo } from "react";
 import type { Deal } from "@/db/schema";
 import type { CalendarActivity } from "@/features/activities/calendar";
+import { DocumentCards } from "@/features/deal-documents/ui/DocumentCards";
 import { HistoryFeed } from "@/features/deal-workspace/HistoryFeed";
 import type { HistoryTab } from "@/features/deal-workspace/HistoryTypeTabs";
 import { HistoryTypeTabs } from "@/features/deal-workspace/HistoryTypeTabs";
@@ -154,6 +155,8 @@ export function WorkspaceTabs({
           Couldn't load emails for this deal. Please try again.
         </p>
       )}
+
+      <DocumentCards dealId={deal.id} />
 
       <section aria-label="focus">
         <SectionHeading>Focus</SectionHeading>
