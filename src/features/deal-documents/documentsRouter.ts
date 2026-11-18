@@ -20,6 +20,14 @@ import { type DriveConfig, driveForUser } from "@/features/document-templates/dr
 import { getDriveConnection } from "@/features/document-templates/driveConnectionRepo";
 import type { DriveProvider } from "@/features/document-templates/driveProvider";
 import { TEMPLATE_CATEGORIES } from "@/features/document-templates/templateRules";
+import {
+  addAccommodation,
+  addProvider,
+  getEventSheet,
+  removeAccommodation,
+  removeProvider,
+  saveEventSheet,
+} from "@/features/event-sheet/eventSheetRepo";
 import { protectedProcedure, router } from "@/server/trpc/trpc";
 import type { Result } from "@/types/result";
 
@@ -115,6 +123,104 @@ export const contractRouter = router({
       ),
     );
   }),
+});
+
+export const eventRouter = router({
+  get: protectedProcedure
+    .input(dealInput)
+    .query(async ({ ctx, input }) =>
+      unwrap(
+        await getEventSheet(ctx.db, ctx.actor, input.dealId, AbortSignal.timeout(READ_TIMEOUT_MS)),
+      ),
+    ),
+  saveSheet: protectedProcedure
+    .input(
+      z.object({
+        dealId: z.string().uuid(),
+        headcount: z.number().int().nullable(),
+        notes: z.string().max(2000).nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      unwrap(
+        await saveEventSheet(
+          ctx.db,
+          ctx.actor,
+          input.dealId,
+          { headcount: input.headcount, notes: input.notes },
+          AbortSignal.timeout(READ_TIMEOUT_MS),
+        ),
+      ),
+    ),
+  addProvider: protectedProcedure
+    .input(
+      z.object({
+        dealId: z.string().uuid(),
+        name: z.string().max(120),
+        role: z.string().max(80),
+        contact: z.string().max(200).nullable(),
+        arrivalTime: z.string().max(5).nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { dealId, ...provider } = input;
+      return unwrap(
+        await addProvider(
+          ctx.db,
+          ctx.actor,
+          dealId,
+          provider,
+          AbortSignal.timeout(READ_TIMEOUT_MS),
+        ),
+      );
+    }),
+  removeProvider: protectedProcedure
+    .input(z.object({ dealId: z.string().uuid(), providerId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) =>
+      unwrap(
+        await removeProvider(
+          ctx.db,
+          ctx.actor,
+          input.dealId,
+          input.providerId,
+          AbortSignal.timeout(READ_TIMEOUT_MS),
+        ),
+      ),
+    ),
+  addAccommodation: protectedProcedure
+    .input(
+      z.object({
+        dealId: z.string().uuid(),
+        name: z.string().max(120),
+        beds: z.number().int().nullable(),
+        notes: z.string().max(500).nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { dealId, ...accommodation } = input;
+      return unwrap(
+        await addAccommodation(
+          ctx.db,
+          ctx.actor,
+          dealId,
+          accommodation,
+          AbortSignal.timeout(READ_TIMEOUT_MS),
+        ),
+      );
+    }),
+  removeAccommodation: protectedProcedure
+    .input(z.object({ dealId: z.string().uuid(), accommodationId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) =>
+      unwrap(
+        await removeAccommodation(
+          ctx.db,
+          ctx.actor,
+          input.dealId,
+          input.accommodationId,
+          AbortSignal.timeout(READ_TIMEOUT_MS),
+        ),
+      ),
+    ),
 });
 
 export const documentsRouter = router({

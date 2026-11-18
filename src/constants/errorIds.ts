@@ -40,6 +40,8 @@ export const ERROR_IDS = {
   DOCUMENT_NOT_FOUND: "E_DOCUMENT_002", // template or Drive file does not exist or cannot be read
   DRIVE_NOT_CONNECTED: "E_DOCUMENT_003", // no Google Drive is connected yet, so nothing can be stored
   DRIVE_REQUEST_FAILED: "E_DOCUMENT_004", // Google refused or failed a Drive or Docs request
+  EVENT_INVALID: "E_EVENT_001", // headcount, provider or accommodation rejected by the event rules
+  EVENT_NOT_FOUND: "E_EVENT_002", // provider or accommodation does not exist on this booking
   DEAL_ARCHIVED_NO_ACTIVITY: "E_DEAL_006", // cannot link a new activity to an archived deal
   DEAL_SAVED_FILTER_NOT_FOUND: "E_DEAL_007", // saved filter not found or not owned by the actor (delete guard)
   DEAL_FILTER_INVALID: "E_DEAL_008", // saved-filter input failed Zod validation (bad field/op pairing or value)

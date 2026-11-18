@@ -11,6 +11,7 @@ import {
   ActivityIcon,
   DocumentsIcon,
   EmailIcon,
+  EventIcon,
   FilesIcon,
   NotesIcon,
   PaymentsIcon,
@@ -21,6 +22,7 @@ import { preloadRichTextBody } from "@/features/email/composer/RichTextBodyLazy"
 import type { DraftSummary } from "@/features/email/draftRepo";
 import { invalidateRecordTimelines } from "@/features/email/invalidateRecordTimelines";
 import { toComposerDraft } from "@/features/email/toComposerDraft";
+import { EventSheetPanel } from "@/features/event-sheet/ui/EventSheetPanel";
 import { FileAttachments } from "@/features/files/FileAttachments";
 import { DealQuotesPanel } from "@/features/quotes/ui/DealQuotesPanel";
 import { trpc } from "@/lib/trpc-client";
@@ -37,7 +39,15 @@ import {
   noteEntityType,
 } from "./composeScope";
 
-type ComposeTab = "activity" | "notes" | "email" | "files" | "documents" | "quotes" | "payments";
+type ComposeTab =
+  | "activity"
+  | "notes"
+  | "email"
+  | "files"
+  | "documents"
+  | "quotes"
+  | "payments"
+  | "event";
 
 interface TabDef {
   id: ComposeTab;
@@ -53,6 +63,7 @@ const ALL_TABS: TabDef[] = [
   { id: "documents", label: "Documents", Icon: DocumentsIcon },
   { id: "quotes", label: "Quotes", Icon: QuotesIcon },
   { id: "payments", label: "Payments", Icon: PaymentsIcon },
+  { id: "event", label: "Event", Icon: EventIcon },
 ];
 
 // Pipedrive's per-tab "default state" prompts. Only Activity and Notes collapse to a
@@ -69,7 +80,7 @@ function tabsForScope(scope: ComposeScope): TabDef[] {
   const enabled = ALL_TABS.filter((t) => {
     if (t.id === "email") return emailTabEnabled(scope);
     if (t.id === "files") return fileTabEnabled(scope);
-    if (t.id === "documents" || t.id === "quotes" || t.id === "payments") {
+    if (t.id === "documents" || t.id === "quotes" || t.id === "payments" || t.id === "event") {
       return dealRecordTabsEnabled(scope);
     }
     return true;
@@ -297,6 +308,11 @@ export function SharedComposeBar({
           {activeTab === "payments" && (
             <div className="p-1.5">
               <DealPaymentsPanel dealId={scope.entityId} />
+            </div>
+          )}
+          {activeTab === "event" && (
+            <div className="p-1.5">
+              <EventSheetPanel dealId={scope.entityId} />
             </div>
           )}
         </div>

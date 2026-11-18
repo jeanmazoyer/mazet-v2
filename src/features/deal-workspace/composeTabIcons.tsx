@@ -1,5 +1,6 @@
 import {
   CalendarDays,
+  ClipboardList,
   FileSignature,
   FileText,
   Mail,
@@ -39,4 +40,8 @@ export const QuotesIcon = (): React.ReactNode => (
 
 export const PaymentsIcon = (): React.ReactNode => (
   <Wallet aria-hidden="true" className={TAB_ICON_CLASS} />
+);
+
+export const EventIcon = (): React.ReactNode => (
+  <ClipboardList aria-hidden="true" className={TAB_ICON_CLASS} />
 );

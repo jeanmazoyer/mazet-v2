@@ -42,6 +42,7 @@ export * from "./paymentLines";
 export * from "./contractData";
 export * from "./dealDocuments";
 export * from "./driveConnections";
+export * from "./eventSheets";
 export * from "./persons";
 export * from "./pipelines";
 export * from "./prospects";
