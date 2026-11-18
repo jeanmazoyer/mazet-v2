@@ -30,7 +30,7 @@
 	reverse_proxy app:3000
 }
 
-s3.{$APP_DOMAIN} {
+{$S3_DOMAIN} {
 	tls {$ACME_EMAIL}
 
 	# This host serves user-uploaded bytes from a sibling origin of the app. Session cookies are

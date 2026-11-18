@@ -31,7 +31,7 @@ describe("Caddyfile app vhost", () => {
 });
 
 describe("Caddyfile storage vhost", () => {
-  const s3 = vhost("s3.{$APP_DOMAIN} {");
+  const s3 = vhost("{$S3_DOMAIN} {");
 
   test("stops MIME sniffing on user-uploaded objects", () => {
     expect(s3).toMatch(/X-Content-Type-Options "nosniff"/);

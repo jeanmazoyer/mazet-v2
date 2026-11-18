@@ -30,9 +30,10 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      # Substituted into the Caddyfile as {$APP_DOMAIN} / {$ACME_EMAIL}. Compose auto-loads
+      # Substituted into the Caddyfile as {$APP_DOMAIN} / {$S3_DOMAIN} / {$ACME_EMAIL}. Compose auto-loads
       # these from the project .env for interpolation.
       APP_DOMAIN: ${APP_DOMAIN}
+      S3_DOMAIN: ${S3_DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
