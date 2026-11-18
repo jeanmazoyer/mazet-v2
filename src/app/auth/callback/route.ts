@@ -16,6 +16,7 @@ import { env } from "@/config/env";
 import { db } from "@/db/client";
 import { upsertUserOnLogin } from "@/features/auth/bootstrap";
 import { CSRF_COOKIE, mintCsrfToken } from "@/features/auth/csrf";
+import { parseAllowedEmails } from "@/features/auth/loginPolicy";
 import { LOGIN_RETURN_COOKIE, safeLoginReturnPath } from "@/features/auth/loginReturn";
 import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/features/auth/session";
 import { verifyGoogleIdToken } from "@/features/auth/verifyGoogleIdToken";
@@ -109,6 +110,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     clientId: env.GOOGLE_OAUTH_CLIENT_ID,
     nonce: nonceCookie,
     workspaceDomain: env.GOOGLE_WORKSPACE_DOMAIN,
+    allowedEmails: parseAllowedEmails(env.ALLOWED_LOGIN_EMAILS),
     signal,
   });
   if (verifyResult.ok === false) return loginError("id token verification failed");

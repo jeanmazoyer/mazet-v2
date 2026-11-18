@@ -19,6 +19,8 @@ export interface VerifyGoogleIdTokenDeps {
   clientId: string;
   nonce: string;
   workspaceDomain: string;
+  // Addresses allowed to sign in with a personal Google account (no hosted domain).
+  allowedEmails?: ReadonlySet<string>;
   signal: AbortSignal;
 }
 
@@ -57,8 +59,12 @@ export async function verifyGoogleIdToken(
 
   if (c.email_verified !== true) return err("rejected");
   if (c.nonce !== deps.nonce) return err("rejected");
-  if (c.hd === undefined) return err("rejected");
-  if (c.hd.toLowerCase() !== deps.workspaceDomain.toLowerCase()) return err("rejected");
+  if (c.hd === undefined) {
+    // A personal Google account has no hosted domain: it is accepted only when listed by name.
+    if (deps.allowedEmails?.has(c.email.trim().toLowerCase()) !== true) return err("rejected");
+  } else if (c.hd.toLowerCase() !== deps.workspaceDomain.toLowerCase()) {
+    return err("rejected");
+  }
 
   return ok({
     email: c.email.trim().toLowerCase(),
