@@ -53,9 +53,7 @@ export function DealWorkspaceClient({
   selfActorId,
   emailAccountId,
   emailAddress,
-  canChangeOwner,
   canDelete,
-  assignableUsers,
   initialHiddenBlocks,
   baseCurrency,
   orgOptions = [],
@@ -73,7 +71,7 @@ export function DealWorkspaceClient({
   );
   // Block-visibility state is owned here so the hidden set can gate both the header controls and the
   // sibling sections (sidebar + body); the hook persists toggles to the server pref on change.
-  const { isHidden, toggle } = useBlockVisibility(initialHiddenBlocks);
+  const { isHidden } = useBlockVisibility(initialHiddenBlocks);
 
   const router = useRouter();
   const activities =
@@ -114,11 +112,7 @@ export function DealWorkspaceClient({
         <DealHeader
           workspace={workspace}
           selfActorId={selfActorId}
-          canChangeOwner={canChangeOwner}
           canDelete={canDelete}
-          assignableUsers={assignableUsers}
-          isHidden={isHidden}
-          toggle={toggle}
           scheduleFollowUpAfterWon={scheduleFollowUpAfterWon}
         />
 

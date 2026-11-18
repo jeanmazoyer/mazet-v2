@@ -12,6 +12,9 @@ before production. Remove a line once it is paid.
   one go, dates moved (old booking cancelled, new one created), dates already booked rolls the
   whole edit back, invalid time refused, tenant contact details and identity number preserved
   when only the name changes, a viewer without edit rights refused.
+- Deal header: the owner block, the followers button, the block-visibility eye and the pipeline
+  breadcrumb were removed from `DealHeader`. Update `DealHeader.test.tsx` and the workspace tests
+  that still expect them.
 - `scripts/import-dossiers.ts`: only exercised by hand against a local database.
 - `src/features/dossier-import/importDossier.ts` is past 250 lines: split the write step out.
 - Run the full unit and integration suites, the linter and the type check.
