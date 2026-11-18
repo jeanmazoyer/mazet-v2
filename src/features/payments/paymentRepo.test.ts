@@ -6,7 +6,7 @@ import { deals } from "@/db/schema/deals";
 import { withTestDb } from "@/db/testing";
 import { seedPipelineWithStages, seedUser } from "@/db/testing/factories";
 import type { HydratedActor } from "@/server/hydrateActor";
-import { addPaymentLine, listPaymentLines, recordPayment } from "./paymentRepo";
+import { addPaymentLine, listPaymentLines, recordPayment, reopenPayment } from "./paymentRepo";
 
 // Données entièrement fictives.
 const SIGNAL = (): AbortSignal => AbortSignal.timeout(10_000);
@@ -216,6 +216,88 @@ describe("payment schedule: échéancier d'un deal (base réelle)", () => {
         SIGNAL(),
       );
       expect(r.ok).toBe(false);
+    });
+  });
+
+  // A payment recorded by mistake, or matched with the wrong bank line, has to be undoable by a
+  // person: the schedule is only useful if it can be made to say what really happened.
+  it("puts a payment recorded by mistake back to due, and keeps a trace of it", async () => {
+    await withTestDb(async (db) => {
+      const s = await setup(db);
+      const added = await addPaymentLine(
+        db,
+        s.owner,
+        s.dealId,
+        { kind: "deposit", amountCents: 270_000, dueOn: "2026-01-10" },
+        SIGNAL(),
+      );
+      if (!added.ok) throw new Error("setup: add failed");
+      const paid = { paidOn: "2026-01-12", reference: "VIR EXEMPLE" };
+      expect((await recordPayment(db, s.owner, s.dealId, added.value.id, paid, SIGNAL())).ok).toBe(
+        true,
+      );
+
+      const reopened = await reopenPayment(db, s.owner, s.dealId, added.value.id, SIGNAL());
+      expect(reopened.ok && [reopened.value.status, reopened.value.paidOn]).toEqual(["due", null]);
+      expect(reopened.ok && reopened.value.reference).toBeNull();
+
+      const trail = await db.select().from(changeLogs);
+      const last = trail.filter((row) => row.field === `payment:${added.value.id}`).at(-1);
+      expect((last?.newValue as { status?: string } | null)?.status).toBe("due");
+    });
+  });
+
+  it("gives a released caution back its held state", async () => {
+    await withTestDb(async (db) => {
+      const s = await setup(db);
+      const added = await addPaymentLine(
+        db,
+        s.owner,
+        s.dealId,
+        { kind: "hold", amountCents: 250_000, dueOn: "2026-05-14" },
+        SIGNAL(),
+      );
+      if (!added.ok) throw new Error("setup: add failed");
+      const released = { paidOn: "2026-05-20", reference: null };
+      await recordPayment(db, s.owner, s.dealId, added.value.id, released, SIGNAL());
+      const reopened = await reopenPayment(db, s.owner, s.dealId, added.value.id, SIGNAL());
+      expect(reopened.ok && reopened.value.status).toBe("held");
+    });
+  });
+
+  it("refuses to reopen a line that was never settled", async () => {
+    await withTestDb(async (db) => {
+      const s = await setup(db);
+      const added = await addPaymentLine(
+        db,
+        s.owner,
+        s.dealId,
+        { kind: "balance", amountCents: 630_000, dueOn: "2026-03-14" },
+        SIGNAL(),
+      );
+      if (!added.ok) throw new Error("setup: add failed");
+      const reopened = await reopenPayment(db, s.owner, s.dealId, added.value.id, SIGNAL());
+      expect(!reopened.ok && reopened.error.id).toBe(ERROR_IDS.PAYMENT_INVALID);
+    });
+  });
+
+  it("refuses to reopen a payment for someone who cannot edit the deal", async () => {
+    await withTestDb(async (db) => {
+      const s = await setup(db);
+      const added = await addPaymentLine(
+        db,
+        s.owner,
+        s.dealId,
+        { kind: "deposit", amountCents: 270_000, dueOn: "2026-01-10" },
+        SIGNAL(),
+      );
+      if (!added.ok) throw new Error("setup: add failed");
+      const paid = { paidOn: "2026-01-12", reference: null };
+      await recordPayment(db, s.owner, s.dealId, added.value.id, paid, SIGNAL());
+      const reopened = await reopenPayment(db, s.stranger, s.dealId, added.value.id, SIGNAL());
+      expect(reopened.ok).toBe(false);
+      const lines = await listPaymentLines(db, s.owner, s.dealId, SIGNAL());
+      expect(lines.ok && lines.value[0]?.status).toBe("paid");
     });
   });
 });

@@ -5,7 +5,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { AppError } from "@/constants/errorIds";
 import { listDealPieces } from "@/features/deal-pieces/pieceRepo";
-import { listPaymentLines } from "@/features/payments/paymentRepo";
+import { listPaymentLines, recordPayment, reopenPayment } from "@/features/payments/paymentRepo";
 import { listPriceItems, listQuotes } from "@/features/quotes/quoteRepo";
 import { saveStay, stayInput } from "@/features/stay-summary/saveStay";
 import { getStaySummary } from "@/features/stay-summary/staySummary";
@@ -14,6 +14,8 @@ import type { Result } from "@/types/result";
 import { contractRouter, documentsRouter, eventRouter } from "./documentsRouter";
 
 const dealInput = z.object({ dealId: z.string().uuid() });
+const lineInput = dealInput.extend({ lineId: z.string().uuid() });
+const receivedInput = lineInput.extend({ paidOn: z.string().max(10) });
 const READ_TIMEOUT_MS = 10_000;
 
 function unwrap<T>(result: Result<T, AppError>): T {
@@ -62,6 +64,28 @@ export const dealDocumentsRouter = router({
   // which rule refused the change (dates already booked, invalid time, and so on).
   saveStay: protectedProcedure.input(stayInput).mutation(async ({ ctx, input }) => {
     const saved = await saveStay(ctx.db, ctx.actor, input, AbortSignal.timeout(READ_TIMEOUT_MS));
+    if (!saved.ok) throw new TRPCError({ code: "BAD_REQUEST", message: saved.error.id });
+    return saved.value;
+  }),
+  // A person's own word on a payment, from the Finance block: the money came in (or the caution
+  // was released) on that day, or it did not after all. The error id travels as the message.
+  markReceived: protectedProcedure.input(receivedInput).mutation(async ({ ctx, input }) => {
+    const settlement = { paidOn: input.paidOn, reference: null };
+    const signal = AbortSignal.timeout(READ_TIMEOUT_MS);
+    const saved = await recordPayment(
+      ctx.db,
+      ctx.actor,
+      input.dealId,
+      input.lineId,
+      settlement,
+      signal,
+    );
+    if (!saved.ok) throw new TRPCError({ code: "BAD_REQUEST", message: saved.error.id });
+    return saved.value;
+  }),
+  markNotReceived: protectedProcedure.input(lineInput).mutation(async ({ ctx, input }) => {
+    const signal = AbortSignal.timeout(READ_TIMEOUT_MS);
+    const saved = await reopenPayment(ctx.db, ctx.actor, input.dealId, input.lineId, signal);
     if (!saved.ok) throw new TRPCError({ code: "BAD_REQUEST", message: saved.error.id });
     return saved.value;
   }),

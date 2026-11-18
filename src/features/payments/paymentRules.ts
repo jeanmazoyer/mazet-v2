@@ -30,6 +30,13 @@ export function settledStatus(kind: PaymentKind, current: PaymentStatus): Paymen
   return rule.from === current ? rule.to : null;
 }
 
+// The way back: the status a settled line returns to when a person says the money did not
+// actually arrive (or the caution was not actually released). Null for a line never settled.
+export function reopenedStatus(kind: PaymentKind, current: PaymentStatus): PaymentStatus | null {
+  const rule = SETTLEMENT[kind];
+  return rule.to === current ? rule.from : null;
+}
+
 export const MAX_PAYMENT_REFERENCE_LENGTH = 200;
 
 // Typed amounts follow French habits ("1 250,00", with a space or narrow no-break space as the

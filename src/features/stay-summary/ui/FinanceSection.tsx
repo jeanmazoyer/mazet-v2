@@ -1,66 +1,17 @@
 "use client";
-import { CircleAlert, CircleCheck, Clock, Landmark, ShieldCheck } from "lucide-react";
+import { CircleAlert, CircleCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type React from "react";
 import { Progress } from "@/components/ui/Progress";
 import { STRINGS } from "@/constants/strings";
-import { formatShortDate } from "@/features/document-templates/fieldValues";
 import { formatCents } from "@/features/quotes/documentFormat";
 import { trpc } from "@/lib/trpc-client";
-import { cn } from "@/lib/utils";
-import { buildFinanceOverview, type FinanceLine } from "../financeOverview";
+import { buildFinanceOverview } from "../financeOverview";
 import type { StaySummary } from "../staySummary";
+import { FinanceLineRow } from "./FinanceLineRow";
 
 const F = STRINGS.finance;
-const ICON = "mt-0.5 h-4 w-4 shrink-0";
 const money = (cents: number): string => formatCents(cents, "fr");
-
-const STATE_ICON: Record<FinanceLine["state"], React.ReactNode> = {
-  paid: <CircleCheck aria-hidden="true" className={cn(ICON, "text-success")} />,
-  overdue: <CircleAlert aria-hidden="true" className={cn(ICON, "text-destructive")} />,
-  due: <Clock aria-hidden="true" className={cn(ICON, "text-muted-foreground")} />,
-  held: <ShieldCheck aria-hidden="true" className={cn(ICON, "text-muted-foreground")} />,
-  released: <ShieldCheck aria-hidden="true" className={cn(ICON, "text-success")} />,
-};
-
-function stateText(line: FinanceLine): string {
-  const day = formatShortDate(line.paidOn ?? line.dueOn);
-  return F.states[line.state](day);
-}
-
-function LineRow({ line }: { line: FinanceLine }): React.ReactNode {
-  return (
-    <li className="flex gap-2 py-1.5">
-      {STATE_ICON[line.state]}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="font-medium">{STRINGS.payments.kinds[line.kind]}</span>
-          <span className="shrink-0 tabular-nums">{money(line.amountCents)}</span>
-        </div>
-        <p
-          className={cn(
-            "text-xs",
-            line.state === "overdue" ? "text-destructive" : "text-muted-foreground",
-          )}
-        >
-          {stateText(line)}
-        </p>
-        {line.isIncome && line.state === "paid" && (
-          <p
-            className={cn(
-              "mt-0.5 flex items-start gap-1 text-xs",
-              line.bankMatched ? "text-success" : "text-warning-foreground",
-            )}
-          >
-            <Landmark aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
-            <span className="min-w-0 break-words">
-              {line.bankMatched ? F.bankMatched(line.reference ?? "") : F.bankUnmatched}
-            </span>
-          </p>
-        )}
-      </div>
-    </li>
-  );
-}
 
 function Check({ ok, label }: { ok: boolean; label: string }): React.ReactNode {
   return (
@@ -87,7 +38,14 @@ export function FinanceSection({
   dealValueCents: number | null;
   initialStay?: StaySummary;
 }): React.ReactNode {
+  const router = useRouter();
+  const utils = trpc.useUtils();
   const query = trpc.dealDocuments.stay.useQuery({ dealId }, { initialData: initialStay });
+  // A change made here also shows in the Payments tab and in the history, so both are refreshed.
+  const refresh = (): void => {
+    void utils.dealDocuments.invalidate();
+    router.refresh();
+  };
   if (query.data === undefined) {
     return <p className="py-1.5 text-muted-foreground text-sm">{F.loading}</p>;
   }
@@ -119,7 +77,13 @@ export function FinanceSection({
       />
       <ul className="divide-y">
         {overview.lines.map((line) => (
-          <LineRow key={line.id} line={line} />
+          <FinanceLineRow
+            key={line.id}
+            dealId={dealId}
+            line={line}
+            today={today}
+            onChanged={refresh}
+          />
         ))}
       </ul>
       <p className="mt-2 mb-0.5 font-medium text-muted-foreground text-xs">{F.checksTitle}</p>

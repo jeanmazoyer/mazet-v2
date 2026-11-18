@@ -204,6 +204,17 @@ export const STRINGS = {
     },
     bankMatched: (reference: string) => `Bank: ${reference}`,
     bankUnmatched: "Not matched with the bank statement yet",
+    actions: {
+      markReceived: "Mark as received",
+      markNotReceived: "Mark as not received",
+      markReleased: "Mark as released",
+      markHeld: "Mark as held again",
+      receivedOn: "Received on",
+      releasedOn: "Released on",
+      confirmUndo: "Confirm",
+      cancel: "Cancel",
+      error: "The change was refused. Check the date and try again.",
+    },
     checksTitle: "Checks",
     checks: {
       scheduleOk: "The schedule adds up to the deal's value",

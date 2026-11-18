@@ -13,6 +13,7 @@ import {
   INITIAL_STATUS,
   type PaymentKind,
   type PaymentStatus,
+  reopenedStatus,
   settledStatus,
   validateNewLine,
   validatePayment,
@@ -194,4 +195,59 @@ function toRow(row: LineRow): PaymentLineRow {
     paidOn: row.paidOn,
     reference: row.reference,
   };
+}
+
+// Undoes recordPayment: a payment recorded by mistake, or matched with the wrong bank line,
+// goes back to being owed (a released caution goes back to held). The day and the reference
+// are cleared with it, and the change is written to the deal's history like any other.
+export async function reopenPayment(
+  db: DbOrTx,
+  actor: PermSetUser,
+  dealId: string,
+  lineId: string,
+  signal: AbortSignal,
+): Promise<Result<PaymentLineRow, AppError>> {
+  const editable = await loadEditableDeal(db, actor, dealId, signal);
+  if (!editable.ok) return err(editable.error);
+
+  return db.transaction(async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(paymentLines)
+      .where(and(eq(paymentLines.id, lineId), eq(paymentLines.dealId, dealId)))
+      .for("update");
+    if (before === undefined) {
+      return err(new AppError(ERROR_IDS.PAYMENT_NOT_FOUND, "Payment line not found", { lineId }));
+    }
+    const next = reopenedStatus(before.kind, before.status);
+    if (next === null) {
+      return err(
+        new AppError(ERROR_IDS.PAYMENT_INVALID, "This line is not settled", {
+          status: before.status,
+        }),
+      );
+    }
+
+    const [after] = await tx
+      .update(paymentLines)
+      .set({ status: next, paidOn: null, reference: null, updatedAt: sql`now()` })
+      .where(eq(paymentLines.id, lineId))
+      .returning();
+    if (after === undefined) {
+      throw new AppError(ERROR_IDS.DB_INSERT_FAILED, "payment line update returned no row");
+    }
+    await recordChange(
+      tx,
+      {
+        entityType: "deal",
+        entityId: dealId,
+        field: `payment:${lineId}`,
+        oldValue: lineState(before),
+        newValue: lineState(after),
+        actorId: actor.id,
+      },
+      signal,
+    );
+    return ok(toRow(after));
+  });
 }
