@@ -57,6 +57,12 @@ export function DocumentsList({ dealId }: { dealId: string }): React.ReactNode {
               >
                 {t.preview}
               </Button>
+              <a
+                href={`/api/deals/${dealId}/documents/${doc.id}/pdf`}
+                className="text-sm underline underline-offset-4"
+              >
+                {t.downloadPdf}
+              </a>
             </div>
           </li>
         ))}

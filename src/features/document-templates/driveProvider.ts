@@ -27,4 +27,6 @@ export interface DriveProvider {
     input: { name: string; folderPath: readonly string[] },
     signal: AbortSignal,
   ): Promise<Result<DriveFile, AppError>>;
+  // The document as a PDF, read with the connected account that owns it.
+  exportPdf(fileId: string, signal: AbortSignal): Promise<Result<Uint8Array, AppError>>;
 }

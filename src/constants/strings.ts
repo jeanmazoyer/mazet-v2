@@ -134,6 +134,7 @@ export const STRINGS = {
     connectDrive: "Connect Google Drive",
     preview: "Preview",
     openInDocs: "Open in Google Docs",
+    downloadPdf: "PDF",
     addTemplate: "Add a template",
     templateTitle: "Template name",
     templateCategory: "Category",

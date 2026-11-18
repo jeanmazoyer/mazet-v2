@@ -102,4 +102,18 @@ describe("Google Drive provider", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.id).toBe(ERROR_IDS.DRIVE_REQUEST_FAILED);
   });
+
+  it("exports a document as a PDF, with the connected account's token", async () => {
+    const { fetchFn, calls } = scriptedFetch([
+      {
+        match: (u) => u.startsWith(`${DRIVE_API_URL}/files/doc-9/export`),
+        text: "%PDF-1.4 contenu",
+      },
+    ]);
+    const r = await provider(fetchFn).exportPdf("doc-9", signal());
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(new TextDecoder().decode(r.value).startsWith("%PDF")).toBe(true);
+    expect(calls[0]?.url).toContain("mimeType=application%2Fpdf");
+    expect(calls[0]?.auth).toBe(`Bearer ${TOKEN}`);
+  });
 });

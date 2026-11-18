@@ -8,3 +8,4 @@ export const DOCS_API_URL = "https://docs.googleapis.com/v1";
 export const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 export const GOOGLE_FOLDER_MIME = "application/vnd.google-apps.folder";
 export const PLAIN_TEXT_MIME = "text/plain";
+export const PDF_MIME = "application/pdf";

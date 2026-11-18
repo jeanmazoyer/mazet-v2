@@ -30,6 +30,9 @@ afterEach(cleanup);
 
 it("opens a document's preview inside the app, from the list", () => {
   render(<DocumentsList dealId="deal-1" />);
+  expect(
+    screen.getByRole("link", { name: STRINGS.documentsTab.downloadPdf }).getAttribute("href"),
+  ).toBe("/api/deals/deal-1/documents/d1/pdf");
   fireEvent.click(
     screen.getByRole("button", { name: `${STRINGS.documentsTab.preview}: Contrat Bravo` }),
   );

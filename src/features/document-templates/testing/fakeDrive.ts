@@ -51,6 +51,11 @@ export function createFakeDrive(): FakeDrive {
       }
       return Promise.resolve(ok(add(input.name, text, input.folderPath)));
     },
+    exportPdf(fileId) {
+      const file = files.get(fileId);
+      if (file === undefined) return Promise.resolve(missing(fileId));
+      return Promise.resolve(ok(new TextEncoder().encode(`%PDF-1.4 ${file.name}\n${file.text}`)));
+    },
     createBlank(input) {
       return Promise.resolve(ok(add(input.name, "", input.folderPath)));
     },

@@ -8,6 +8,7 @@ import {
   DRIVE_API_URL,
   GOOGLE_DOC_MIME,
   GOOGLE_FOLDER_MIME,
+  PDF_MIME,
   PLAIN_TEXT_MIME,
 } from "@/constants/googleDrive";
 import { err, ok, type Result } from "@/types/result";
@@ -149,6 +150,16 @@ export function createGoogleDriveProvider(options: GoogleDriveOptions): DrivePro
         if (!filled.ok) return filled;
       }
       return ok({ fileId: copy.value.id, name: input.name });
+    },
+
+    async exportPdf(fileId, signal): Promise<Result<Uint8Array, AppError>> {
+      const res = await send(
+        signal,
+        `${DRIVE_API_URL}/files/${encodeURIComponent(fileId)}/export?${new URLSearchParams({ mimeType: PDF_MIME })}`,
+        "GET",
+      );
+      if (!res.ok) return res;
+      return ok(new Uint8Array(await res.value.arrayBuffer()));
     },
 
     async createBlank(input, signal): Promise<Result<DriveFile, AppError>> {

@@ -14,4 +14,5 @@ export const notConnectedDrive: DriveProvider = {
   readText: () => notConnected<string>(),
   createFromTemplate: () => notConnected<DriveFile>(),
   createBlank: () => notConnected<DriveFile>(),
+  exportPdf: () => notConnected<Uint8Array>(),
 };
