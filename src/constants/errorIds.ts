@@ -98,6 +98,8 @@ export const ERROR_IDS = {
   IMPORT_MAPPING_ENTITY_INVALID: "E_IMPORT_008", // mapped column targets an entity this import cannot write
   IMPORT_LINKED_RECORD_UNAVAILABLE: "E_IMPORT_009",
   IMPORT_EXTERNAL_ID_UNMAPPED: "E_IMPORT_010",
+  IMPORT_DOSSIER_INVALID: "E_IMPORT_011", // a signed file to import is incomplete or malformed
+  IMPORT_DOSSIER_NO_STAGE: "E_IMPORT_012", // no active pipeline with a stage to put the file in
   USER_NOT_FOUND: "E_USER_001", // referenced user not found or inactive
   USER_PROFILE_INVALID: "E_USER_002", // profile update input failed Zod validation
   USER_AVATAR_INVALID: "E_USER_003", // avatar upload input/object metadata failed validation
