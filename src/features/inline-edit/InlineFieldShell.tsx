@@ -30,10 +30,11 @@ interface InlineFieldShellProps {
 
 // Pipedrive's sidebar-field view mechanism, matched to the live capture (see
 // docs/superpowers/specs/2026-07-08-pd-inline-edit-mechanism.md):
-// - the value is plain selectable text (cursor:text), never a click target;
 // - hovering the row paints PD's gray (--color-field-hover, 4px radius) and reveals a
 //   bordered pencil icon button at the right edge (visibility toggle, no animation);
-// - ONLY the pencil enters edit mode;
+// - a click anywhere on the row enters edit mode. This departs from PD, where only the pencil
+//   does: the estate's users click the value and expect the editor. A click on a link or a
+//   button inside the value keeps its own meaning, and so does selecting text to copy it;
 // - empty fields render a link-blue prompt whose click opens the editor directly;
 // - while editing, the editor replaces the value in the same row (no popover).
 export function InlineFieldShell({
@@ -73,13 +74,23 @@ export function InlineFieldShell({
   // Negative margins cancel the hover-box padding so the row keeps PD's 32px pitch: the
   // gray hover background bleeds past the content without adding layout height.
   const ValueElement = valueElement;
+  function startEditFromRow(event: React.MouseEvent<HTMLDivElement>): void {
+    const target = event.target as HTMLElement;
+    // The pencil has its own handler, and a link or a control inside the value does its own job.
+    if (target.closest("a, button, input, select, textarea") !== null) return;
+    // Dragging across the value to copy it ends with a click too: that is not a request to edit.
+    if ((window.getSelection()?.toString() ?? "") !== "") return;
+    onStartEdit();
+  }
   return (
-    <div className="group -mx-1 -my-1 relative flex min-w-0 items-center rounded px-1 py-1 pr-8 hover:bg-field-hover">
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the pencil button below is the keyboard path
+    // biome-ignore lint/a11y/noStaticElementInteractions: a pointer shortcut for that same button
+    <div
+      onClick={startEditFromRow}
+      className="group -mx-1 -my-1 relative flex min-w-0 cursor-pointer items-center rounded px-1 py-1 pr-8 hover:bg-field-hover"
+    >
       <ValueElement
-        className={cn(
-          "min-w-0 cursor-text select-text break-words text-left text-sm",
-          valueClassName,
-        )}
+        className={cn("min-w-0 select-text break-words text-left text-sm", valueClassName)}
       >
         {value}
       </ValueElement>

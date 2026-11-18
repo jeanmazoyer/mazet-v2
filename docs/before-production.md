@@ -15,6 +15,10 @@ before production. Remove a line once it is paid.
 - Deal header: the owner block, the followers button, the block-visibility eye and the pipeline
   breadcrumb were removed from `DealHeader`. Update `DealHeader.test.tsx` and the workspace tests
   that still expect them.
+- `InlineFieldShell`: a click anywhere on a field row now opens its editor (it used to be the
+  pencil only). Add tests: row click opens the editor, a click on a link or a button inside the
+  value does not, a click that ends a text selection does not. Update the tests and the spec
+  note that still describe the value as never being a click target.
 - `scripts/import-dossiers.ts`: only exercised by hand against a local database.
 - `src/features/dossier-import/importDossier.ts` is past 250 lines: split the write step out.
 - Run the full unit and integration suites, the linter and the type check.
