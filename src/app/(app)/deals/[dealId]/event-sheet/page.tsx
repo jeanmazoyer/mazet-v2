@@ -60,7 +60,7 @@ export default async function EventSheetPage({
         <PrintButton label={t.print} />
       </div>
       <header className="border-b pb-3">
-        <h1 className="text-2xl font-semibold">{model.title}</h1>
+        <h1 className="text-display font-[450] leading-tight tracking-tight">{model.title}</h1>
         <p className="text-muted-foreground">{t.title}</p>
       </header>
       <dl className="grid grid-cols-[10rem_minmax(0,1fr)] gap-x-4 gap-y-2">

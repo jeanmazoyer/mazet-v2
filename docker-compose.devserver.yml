@@ -1,0 +1,24 @@
+# Development server on the production box. The source code is mounted and Next.js reloads it on
+# save, so a change shows up after a `git pull` with no image rebuild. Started on its own:
+#   docker compose -p mazet-dev -f docker-compose.devserver.yml up -d
+# It joins the production network (for Postgres and the Caddy proxy) and reads its own .env,
+# which points at its own database. Realtime (WebSocket) is not run here.
+services:
+  devapp:
+    image: node:24-bookworm
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install && pnpm db:migrate && pnpm dev -H 0.0.0.0 -p 3000"
+    env_file: .env
+    volumes:
+      - ./:/app
+      - devnodemodules:/app/node_modules
+    networks: [default, prod]
+
+volumes:
+  devnodemodules:
+
+networks:
+  prod:
+    external: true
+    name: mazet-v2_default

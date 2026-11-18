@@ -49,3 +49,16 @@ describe("Caddyfile storage vhost", () => {
     expect(s3).toMatch(/reverse_proxy garage:3900\s*$/);
   });
 });
+
+describe("Caddyfile development vhost", () => {
+  const dev = vhost("{$DEV_DOMAIN} {");
+
+  test("serves the development app on its own name, with HSTS", () => {
+    expect(dev).toMatch(/Strict-Transport-Security "max-age=31536000/);
+  });
+
+  test("proxies to the development container, never to production", () => {
+    expect(dev).toMatch(/reverse_proxy devapp:3000\s*$/);
+    expect(dev).not.toMatch(/reverse_proxy app:3000/);
+  });
+});

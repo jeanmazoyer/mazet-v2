@@ -48,3 +48,20 @@
 
 	reverse_proxy garage:3900
 }
+
+# Development site on the same box: the hot-reloading dev server (docker-compose.devserver.yml)
+# answers here. Its name must be set in DEV_DOMAIN, or Caddy will not start.
+{$DEV_DOMAIN} {
+	tls {$ACME_EMAIL}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	request_body {
+		max_size 80MB
+	}
+
+	reverse_proxy devapp:3000
+}
