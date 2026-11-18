@@ -270,7 +270,7 @@ function viewAffaires() {
   return topbar("Affaires et réservations", `<button class="btn" data-a="new">${ico("doc", "s")}Nouvelle affaire</button>`) + `<div class="content">${banner}
     <div class="tabs" role="tablist">${tab("all", "Toutes les affaires", open.length)}${tab("signed", "Affaires signées", signed.length)}${tab("lost", "Perdues", lostDeals.length)}</div>
     <div class="kpis">${kpi("euro", "Chiffre signé", eur(signedSum), "", `${signed.length} affaire${signed.length > 1 ? "s" : ""} signée${signed.length > 1 ? "s" : ""}`, "kpi-signed")}
-      ${kpi("bank", "Encaissé", eur(cashed), "", `<span class="live" aria-hidden="true"></span>Banque : <b class="num">${linked} sur ${paidLines.length}</b> rapprochés`, "", "tone-ok", `<button class="iconbtn ksync" data-a="sync-all" title="Synchroniser avec la banque (dernière fois ${S.lastBank})" aria-label="Synchroniser avec la banque, dernière fois ${S.lastBank}">${ico("sync", "s")}</button>`)}
+      ${kpi("bank", "Encaissé", eur(cashed), "", `<span class="live" aria-hidden="true"></span>Banque : <b class="num">${linked} sur ${paidLines.length}</b> rapprochés`, "", "tone-ok", `<button class="iconbtn ksync" data-a="sync-all" title="Rapprocher avec le relevé importé (${S.lastBank})" aria-label="Rapprocher avec le relevé importé">${ico("sync", "s")}</button>`)}
       ${kpi("alert", "En retard", eur(lateSum), "", lateCount ? `${lateCount} échéance${lateCount > 1 ? "s" : ""} à relancer` : "Aucune échéance dépassée", lateCount ? "kpi-late" : "", lateCount ? "tone-bad" : "")}
       ${kpi("home", coming.length > 1 ? "Séjours à venir" : "Séjour à venir", String(coming.length), "", coming.length ? `Prochain : ${rangeShort(coming[0].start, coming[0].end)}` : "Aucun séjour réservé", coming.length ? "kpi-coming" : "")}
       ${kpi("cal", free.length > 1 ? "Week-ends libres" : "Week-end libre", String(free.length), "", free.length ? `Sur 3 mois · dès le ${rangeShort(free[0].start, free[0].start)}` : "Aucun sur 3 mois", "free")}</div>
@@ -589,9 +589,12 @@ function viewSettings() {
     ${card("Échéancier par défaut", "Appliqué à la signature. Les affaires déjà signées gardent leur échéancier.", srow("Acompte à la signature", `${TERMS.deposit} % du montant`, stepper("dep-minus", "dep-plus", `${TERMS.deposit} %`, TERMS.deposit <= 10, TERMS.deposit >= 50))
       + srow("Solde", "Deux mois avant l'arrivée", `<span class="mini">Fixe</span>`) + srow("Caution", "Empreinte de carte, levée après le départ", stepper("hold-minus", "hold-plus", eur(TERMS.hold), TERMS.hold <= 0, TERMS.hold >= 5000)))}
     ${card("Ménage entre deux séjours", "Une réservation plus rapprochée reste possible, avec une confirmation notée dans l'historique.", srow("Délai minimal", "Entre un départ et l'arrivée suivante", stepper("buf-minus", "buf-plus", `${S.buffer} jours`, S.buffer <= 0, S.buffer >= 7)))}
-    ${card("Calendriers importés", "Leurs réservations bloquent les dates, ménage compris.", S.sources.map((s) => srow(`${esc(s.kind)}, ${esc(s.name)}`, `${s.last ? "Lu le " + esc(when(s.last)) : "Pas encore lu"} · ${esc(s.url)}`, `<button class="link" data-a="src-sync" data-id="${s.id}">Synchroniser</button><button class="iconbtn" data-a="src-del" data-id="${s.id}" aria-label="Retirer le calendrier ${esc(s.name)}">${ico("trash", "s")}</button>`)).join("") + `<button class="btn alt sm" data-a="ics-new">Ajouter un calendrier</button>` + sim("Exporter mon calendrier (lien iCal)", "Dans l'application : un lien iCal est copié. Collé dans Airbnb ou Booking, il y bloque les dates réservées ici."))}
-    ${card("Banque", "Les paiements reçus sont rapprochés des lignes du relevé : même montant, nom du locataire dans le libellé.", srow("Connexion bancaire", "Connecteur en attente : les relevés sont importés en CSV", `<span class="mini t-orange">En attente</span>`)
-      + srow("Dernier relevé", `${S.bankStatement.length} lignes, synchronisé ${esc(S.lastBank)}`, `<button class="btn alt sm" data-a="sync-all">${ico("sync", "s")}Synchroniser</button>`) + sim("Importer un relevé CSV", "Dans l'application : vous choisissez le fichier CSV du relevé, puis les paiements sont rapprochés."))}
+    ${card("Calendriers importés", "Leurs réservations bloquent les dates, ménage compris.", S.sources.map((s) => srow(`${esc(s.kind)}, ${esc(s.name)}`, `${s.last ? "Lu le " + esc(when(s.last)) : "Pas encore lu"} · ${esc(s.url)}`, `<button class="link" data-a="src-sync" data-id="${s.id}">Synchroniser</button><button class="iconbtn" data-a="src-del" data-id="${s.id}" aria-label="Retirer le calendrier ${esc(s.name)}">${ico("trash", "s")}</button>`)).join("") + `<button class="btn alt sm" data-a="ics-new">Ajouter un calendrier</button>`
+      + srow("Mon calendrier, pour Airbnb ou Booking", "Collez ce lien dans la plateforme : elle bloquera chez elle les dates réservées ici. Il ne montre que « Réservé » et les dates.", `<button class="btn alt sm" data-a="ical-copy">${ico("copy", "s")}Copier le lien</button>`))}
+    ${card("Banque", "Importez le relevé de votre banque (CSV avec les colonnes Date, Description, Amount). Seuls les encaissements sont gardés, puis rapprochés des échéances : même montant, nom du locataire dans le libellé.",
+      srow("Relevé importé", S.bankStatement.length ? `${S.bankStatement.length} encaissement${S.bankStatement.length > 1 ? "s" : ""}, du ${fr(S.bankStatement.reduce((m, t) => (t.on < m ? t.on : m), "9999"))} au ${fr(S.bankStatement.reduce((m, t) => (t.on > m ? t.on : m), "0000"))} · importé ${esc(S.lastBank)}` : "Aucun relevé pour l'instant", S.bankStatement.length ? `<button class="btn alt sm" data-a="sync-all">${ico("sync", "s")}Rapprocher</button>` : "")
+      + `<label class="fld"><span>Importer un relevé</span><input id="bank-file" class="inp filein" type="file" accept=".csv,text/csv"></label>`)}
+    ${card("Sauvegarde", "Une copie de toutes les données est faite chaque jour sur le serveur, et les 30 dernières sont gardées. Téléchargez-en une de temps en temps pour la ranger ailleurs.", srow("Dernière copie automatique", S.admin && S.admin.lastBackup ? `le ${fr(S.admin.lastBackup)}` : "pas encore faite", `<a class="btn alt sm" href="/api/backup" download>${ico("down", "s")}Télécharger</a>`))}
     ${card("Modèles de documents", "Le bouton « Créer » d'un document manquant part de ces modèles.", SLOTS.map((s) => srow(s.label, KLBL[s.k], sim("Ouvrir le modèle", `Dans l'application : le modèle « ${s.label} » s'ouvre dans Google Docs.`))).join(""))}
     ${card("Importer un planning", "Un fichier JSON, une ligne par séjour : titre, type, dates, invités. Chaque ligne devient une affaire.", `<label class="fld"><span>Fichier</span><input id="imp-file" class="inp filein" type="file" accept=".json,application/json"></label>`)}
     ${card("Utilisateurs", "L'équipe ne voit ni les documents confidentiels ni les réglages.", S.users.map((u, i) => srow(esc(u.name) + (i === 0 ? " (vous)" : ""), esc(u.email) + (u.pending ? " · invitation envoyée" : ""), i === 0 ? `<span class="mini t-blue">Admin</span>`
@@ -1109,7 +1112,7 @@ function agentFinds(a) {
   if (a.kind === "dossiers") live().filter((d) => d.stage >= 2 && d.stage <= 4).forEach((d) => { const miss = slotsFor(d).filter((sl) => sl.k !== "pdf" && !d.docs.some((x) => x.slot === sl.key)); if (!miss.length) return;
     push("docs" + d.id + d.stage, `Préparer ${miss.length} document${miss.length > 1 ? "s" : ""} pour ${d.title}`, miss.map((s) => s.label).join(", "), () => { miss.forEach((sl) => { if (!d.docs.some((x) => x.slot === sl.key)) d.docs.push(newSlotDoc(sl)); }); log(d, "Document", `Brouillons préparés par l'agent ${a.name} : ${miss.map((s) => s.label).join(", ")}`); return `a préparé ${miss.length} brouillon${miss.length > 1 ? "s" : ""} pour ${d.title}`; }); });
   if (a.kind === "banque") { const n = live().flatMap((d) => income(d).filter((p) => !p.bank && S.bankStatement.some((t) => !t.used && t.amount === p.amount))).length;
-    if (n) push("bank" + n, `Rapprocher ${n} paiement${n > 1 ? "s" : ""} avec le relevé`, "Même montant et nom du locataire dans le libellé du virement", () => { live().filter((d) => d.payments.length).forEach(syncBank); S.sync = ""; S.lastBank = "à l'instant"; return "a relu le relevé et rapproché les paiements retrouvés"; }); }
+    if (n) push("bank" + n, `Rapprocher ${n} paiement${n > 1 ? "s" : ""} avec le relevé`, "Même montant et nom du locataire dans le libellé du virement", () => { live().filter((d) => d.payments.length).forEach(syncBank); S.sync = ""; return "a relu le relevé et rapproché les paiements retrouvés"; }); }
   if (a.kind === "options") live().filter((d) => (d.stage === 2 || d.stage === 3) && dayDiff(TODAY, d.optionUntil) <= 21).forEach((d) => push("opt" + d.id + d.optionUntil, `Demander à ${d.contact.name} de confirmer son option`, `${d.title} · option jusqu'au ${fr(d.optionUntil)}`, () => { const body = `Bonjour ${firstName(d)}, votre option pour le ${range(d.start, d.end)} se termine le ${fr(d.optionUntil)}. Souhaitez-vous la confirmer ?`; d.wa.push({ from: "me", body, at: stamp().slice(-5) }); log(d, "WhatsApp", `WhatsApp envoyé par l'agent ${a.name}`, body); return `a écrit à ${d.contact.name} pour son option`; }));
   return out;
 }
@@ -1359,6 +1362,8 @@ document.addEventListener("click", (e) => {
     if (cur && cur.d) { S.preview = null; S.composer = "E-mail"; S.draft["mail-att"] = cur.x.t; S.focus = "mail-body"; if (location.hash !== "#affaire-" + cur.d.id) { location.hash = "affaire-" + cur.d.id; return; } } }
   if (ds.a === "sheet" && d) { S.preview = { sheet: d.id }; S.toast = ""; }
 
+  if (ds.a === "ical-copy") { const url = S.admin ? S.admin.icalUrl : ""; S.flash = { text: "Lien copié : collez-le dans Airbnb ou Booking, à l'endroit « importer un calendrier »." };
+    try { navigator.clipboard.writeText(url).catch(() => { S.flash = null; S.notice = "Copie impossible ici. Le lien : " + url; render(); }); } catch (_) { S.flash = null; S.notice = "Copie impossible ici. Le lien : " + url; } }
   if (ds.a === "rail") { S.railOpen = !S.railOpen; try { localStorage.setItem("rail", S.railOpen ? "1" : "0"); } catch (_) { /* the preference is simply not kept */ } }
   if (ds.a === "doc-reset") { S.dq = ""; S.dKind = ALL.kind; S.dYear = ALL.year; S.dDeal = ALL.deal; S.dStatus = ALL.status; S.exportMsg = ""; }
   if (ds.a === "doc-toast") S.toast = ds.msg;
@@ -1522,7 +1527,7 @@ document.addEventListener("click", (e) => {
     else if (gap > 0) { d.payments.push({ id: "p" + Date.now(), kind: "Complément", amount: gap, due: d.start < TODAY ? TODAY : d.start, status: "due", paidOn: null, bank: null }); log(d, "Paiement", `Échéancier ajusté : complément de ${eur(gap)}`); }
     else S.notice = `Le montant reçu dépasse le nouveau montant de ${eur(-gap)} : un remboursement est à prévoir, à saisir à la main.`; }
   if (ds.a === "sync" && d) syncBank(d);
-  if (ds.a === "sync-all") { S.deals.filter((x) => x.payments.length).forEach(syncBank); S.sync = ""; S.lastBank = "à l'instant"; if (r.name === "reglages") S.flash = { text: "Relevé relu : les paiements retrouvés sont rapprochés." }; }
+  if (ds.a === "sync-all") { S.deals.filter((x) => x.payments.length).forEach(syncBank); S.sync = ""; if (r.name === "reglages") S.flash = { text: "Relevé relu : les paiements retrouvés sont rapprochés." }; }
 
   /* Deal: quote and event sheet */
   const qd = (previewed() && previewed().d) || d;
@@ -1622,8 +1627,8 @@ window.addEventListener("hashchange", () => { S.menu = null; render(); window.sc
 /* ---------- Server: load, save what changed, follow what others change ---------- */
 // Features drawn by the pages but not plugged in yet: their entry points are taken out of the
 // page before it is shown, so nothing on screen pretends to work.
-const OFF = ['a[href="#messages"]', 'a[href="#openspace"]', '[data-comp="E-mail"]', '[data-comp="WhatsApp"]', '[data-a="doc-mail"]', '[data-a="sig-new"]', '[data-a="sim"]', '[data-msg*="Dans l\'application"]', '.mepop .eyebrow', '.mepop .seg', '[data-a="doc-open"]', '[data-a="remind"]', '[data-a="sync"]', '[data-a="sync-all"]', '.pay .bank', '[data-a="quote-new"] + [data-a="doc-toast"]'].join(",");
-const OFF_CARDS = ["Pennylane", "Signature électronique", "Messagerie", "Banque"];
+const OFF = ['a[href="#messages"]', 'a[href="#openspace"]', '[data-comp="E-mail"]', '[data-comp="WhatsApp"]', '[data-a="doc-mail"]', '[data-a="sig-new"]', '[data-a="sim"]', '[data-msg*="Dans l\'application"]', '.mepop .eyebrow', '.mepop .seg', '[data-a="doc-open"]', '[data-a="remind"]', '[data-a="quote-new"] + [data-a="doc-toast"]'].join(",");
+const OFF_CARDS = ["Pennylane", "Signature électronique", "Messagerie"];
 function paint(html) {
   const tpl = document.createElement("template"); tpl.innerHTML = html;
   tpl.content.querySelectorAll(OFF).forEach((el) => el.remove());
@@ -1656,7 +1661,7 @@ const usersOut = () => S.users.map((u) => ({ email: u.email, name: u.name, role:
 function applySettings(st) {
   const p = st.settings.prefs ?? {}, bank = st.settings.bank ?? {};
   S.buffer = p.buffer ?? 0; TERMS.deposit = p.deposit ?? 30; TERMS.hold = p.hold ?? 2500; S.plSeq = p.plSeq ?? { D: 0, F: 0 }; S.sources = p.sources ?? [];
-  S.library = st.settings.library ?? []; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? [];
+  S.library = st.settings.library ?? []; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null;
   const mine = st.user.email;
   S.users = [...st.users].sort((a, b) => Number(b.email === mine) - Number(a.email === mine)).map((u) => ({ email: u.email, name: u.name || u.email.split("@")[0], role: u.role === "admin" ? "Admin" : "Équipe", pending: u.pending }));
   for (const k of Object.keys(SETTINGS)) savedSettings[k] = JSON.stringify(SETTINGS[k]());
@@ -1690,7 +1695,7 @@ async function persist() {
     }
     const live = new Set(S.deals.map((d) => d.id));
     for (const id of [...saved.keys()]) if (!live.has(id)) { wrote = true; const r = await api("DELETE", "/api/deals/" + encodeURIComponent(id)); if (r.status !== 200) throw new Error(r.data.error || "suppression refusée"); saved.delete(id); }
-    for (const k of Object.keys(SETTINGS)) { const json = JSON.stringify(SETTINGS[k]()); if (json === savedSettings[k]) continue; if (k === "prefs" && !isAdmin()) continue;
+    for (const k of Object.keys(SETTINGS)) { const json = JSON.stringify(SETTINGS[k]()); if (json === savedSettings[k]) continue; if ((k === "prefs" || k === "bank") && !isAdmin()) continue;
       wrote = true; const r = await api("PUT", "/api/settings/" + k, { value: JSON.parse(json) }); if (r.status !== 200) throw new Error(r.data.error || "réglage refusé"); savedSettings[k] = json; }
     if (isAdmin()) { const json = JSON.stringify(usersOut()); if (json !== savedSettings.users) { wrote = true; const r = await api("PUT", "/api/users", { users: JSON.parse(json) }); if (r.status !== 200) throw new Error(r.data.error || "utilisateurs refusés"); savedSettings.users = json; } }
     if (wrote) { saveState("Enregistré"); setTimeout(() => { if (!saving) saveState(""); }, 1500); }
@@ -1728,6 +1733,37 @@ function follow() {
     }
   };
 }
+// The bank's CSV export: columns Date (DD/MM/YYYY), Description, Amount. All or nothing: a file
+// with one unreadable line is refused, since a statement read in part would silently miss payments.
+function parseStatement(text) {
+  const rows = []; let row = [], cell = "", quoted = false;
+  for (let i = 0; i < text.length; i++) { const ch = text[i];
+    if (quoted) { if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') quoted = false; else cell += ch; }
+    else if (ch === '"') quoted = true; else if (ch === ",") { row.push(cell); cell = ""; } else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); cell = ""; if (row.some((c) => c !== "")) rows.push(row); row = []; } else cell += ch; }
+  row.push(cell); if (row.some((c) => c !== "")) rows.push(row);
+  const head = (rows.shift() ?? []).map((h) => h.replace(/^\ufeff/, "").trim()), col = { on: head.indexOf("Date"), label: head.indexOf("Description"), amount: head.indexOf("Amount") };
+  if (col.on < 0 || col.label < 0 || col.amount < 0) return { error: "colonnes attendues : Date, Description, Amount" };
+  const lines = [];
+  for (const [i, r] of rows.entries()) { const day = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((r[col.on] ?? "").trim()), amt = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec((r[col.amount] ?? "").trim()), label = (r[col.label] ?? "").trim();
+    if (!day) return { error: `ligne ${i + 2} : la date n'est pas écrite JJ/MM/AAAA` }; if (!amt) return { error: `ligne ${i + 2} : le montant n'est pas un nombre` }; if (!label) return { error: `ligne ${i + 2} : la description est vide` };
+    // Cents are built from the digits, never by multiplying a decimal number.
+    const cents = Number(amt[2]) * 100 + Number((amt[3] ?? "").padEnd(2, "0")); if (amt[1] !== "-" && cents > 0) lines.push({ on: `${day[3]}-${day[2]}-${day[1]}`, label, amount: cents / 100 }); }
+  return { lines, total: rows.length };
+}
+function importStatement(text) {
+  const out = parseStatement(text);
+  if (out.error) { S.notice = "Relevé refusé, rien n'a été importé : " + out.error + "."; render(); return; }
+  // A line already known keeps its state (matched or not): importing the same file twice changes nothing.
+  const key = (t, n) => `${t.on}|${t.label}|${t.amount}|${n}`, seen = new Map(), have = new Map();
+  S.bankStatement.forEach((t) => { const n = (seen.get(key(t, "")) ?? 0) + 1; seen.set(key(t, ""), n); have.set(key(t, n), t); });
+  seen.clear(); let added = 0;
+  out.lines.forEach((t) => { const n = (seen.get(key(t, "")) ?? 0) + 1; seen.set(key(t, ""), n); if (!have.has(key(t, n))) { S.bankStatement.push(t); added++; } });
+  S.bankStatement.sort((a, b) => (a.on < b.on ? 1 : -1)); S.lastBank = "le " + fr(TODAY);
+  const before = S.deals.flatMap((d) => d.payments).filter((p) => p.bank).length;
+  S.deals.filter((d) => d.payments.length).forEach(syncBank); S.sync = "";
+  const matched = S.deals.flatMap((d) => d.payments).filter((p) => p.bank).length - before;
+  S.flash = { text: `${out.total} lignes lues, ${added} nouvel${added > 1 ? "s" : ""} encaissement${added > 1 ? "s" : ""}, ${matched} paiement${matched > 1 ? "s" : ""} rapproché${matched > 1 ? "s" : ""}.` }; render();
+}
 // A planning file: one line per stay becomes a deal. Lines without a title or valid dates are skipped.
 function importPlanning(text) {
   let rows; try { rows = JSON.parse(text); } catch (_) { S.notice = "Ce fichier n'est pas un JSON lisible."; render(); return; }
@@ -1744,7 +1780,9 @@ function importPlanning(text) {
   });
   S.flash = { text: `${n} séjour${n > 1 ? "s" : ""} importé${n > 1 ? "s" : ""}${skipped ? `, ${skipped} ligne${skipped > 1 ? "s" : ""} ignorée${skipped > 1 ? "s" : ""}` : ""}.` }; render();
 }
-document.addEventListener("change", (e) => { if (e.target.id === "imp-file" && e.target.files[0]) e.target.files[0].text().then(importPlanning); });
+document.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (!f) return;
+  if (e.target.id === "imp-file") f.text().then(importPlanning);
+  if (e.target.id === "bank-file") f.text().then((t) => { importStatement(t); e.target.value = ""; }); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") persist(); });
 async function boot() {
   const refus = /refus=([^&]+)/.exec(location.hash);
@@ -1756,5 +1794,5 @@ async function boot() {
   render(); follow();
 }
 // For the journey checks only: lets a test read the state it is looking at.
-window.__app = { S, TERMS, bookings, clean, persist };
+window.__app = { S, TERMS, bookings, clean, persist, mk, SEL, parseStatement };
 boot();

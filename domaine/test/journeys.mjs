@@ -62,7 +62,9 @@ await a.click("#close-preview"); await a.goto(`${BASE}/#reglages`); await a.wait
 await a.reload(); await a.waitForSelector(".setgrid");
 ok("a setting survives a reload", (await S(a, "TERMS.deposit")) === 35);
 ok("cards of features not plugged in are not shown", !(await a.locator(".setgrid").innerText()).includes("Pennylane"));
-const team = await person("carol@test.local", "team"); await team.goto(`${BASE}/#reglages`); await team.waitForSelector(".lockcard");
+const team = await person("carol@test.local", "team");
+ok("the team does not receive the bank statement or the calendar secret", await team.evaluate(() => fetch("/api/state").then((r) => r.json()).then((s) => !("bank" in s.settings) && !("ical_token" in s.settings) && s.admin === null)));
+ok("the team cannot download a backup", (await team.evaluate(() => fetch("/api/backup").then((r) => r.status))) === 403); await team.goto(`${BASE}/#reglages`); await team.waitForSelector(".lockcard");
 ok("the team sees the settings locked", (await team.locator(".lockcard").count()) === 1);
 ok("the server refuses a setting or a deletion from the team", (await team.evaluate(() => fetch("/api/settings/prefs", { method: "PUT", headers: { "content-type": "application/json" }, body: '{"value":{}}' }).then((r) => r.status))) === 403
   && (await team.evaluate((i) => fetch("/api/deals/" + i, { method: "DELETE" }).then((r) => r.status), id)) === 403);

@@ -1,3 +1,8 @@
+/* The typeface is served by the site itself: no request leaves for another company. */
+@font-face { font-family: "Lato"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/lato-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Lato"; font-style: italic; font-weight: 400; font-display: swap; src: url("/fonts/lato-latin-400-italic.woff2") format("woff2"); }
+@font-face { font-family: "Lato"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/lato-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Lato"; font-style: normal; font-weight: 900; font-display: swap; src: url("/fonts/lato-latin-900-normal.woff2") format("woff2"); }
 /* Layout: a 74px icon rail, a 76px top bar, then the page on a cool grey ground. Flat surfaces
    with hairline borders and no shadows; colour is carried by soft tint pills. One deliberate
    light look, taken from the product's own Figma screens.

@@ -2,7 +2,9 @@
   "name": "domaine",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.18" },
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "start": "node server/main.ts",
     "dev": "node --watch server/main.ts",
@@ -14,6 +16,7 @@
     "postgres": "^3.4.5"
   },
   "devDependencies": {
+    "@fontsource/lato": "^5.3.0",
     "idiomorph": "^0.7.3"
   }
 }

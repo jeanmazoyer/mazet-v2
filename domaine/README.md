@@ -51,7 +51,23 @@ BASE=http://localhost:3300 node test/journeys.mjs
 | `ALLOWED_EMAILS` | Administrators' Google addresses, comma separated |
 | `DATA_DIR` | Folder for uploaded files |
 
+The browser journeys need Playwright (`npm install --no-save playwright`, then
+`npx playwright install chromium`): `test/journeys.mjs` covers sign-in, saving, live updates,
+conflicts, uploads and rights; `test/screens.mjs` opens every screen with made-up deals.
+
+## Backups
+
+Once a day the server writes everything it holds (people, deals, settings, the list of files)
+to `DATA_DIR/backups/domaine-YYYY-MM-DD.json.gz` and keeps the last 30. An administrator can
+download the same thing from the settings page. To put one back into an empty database:
+
+```bash
+node server/restore.ts domaine-2027-01-31.json.gz
+```
+
+Uploaded files are not inside the backup: they live in `DATA_DIR/files`. Not set up yet: a copy
+of both to another machine, which is what protects against losing the server itself.
+
 ## On the server
 
-See `docker-compose.yml`. Not set up yet: a nightly backup of the database and of the uploaded
-files to another place.
+See `docker-compose.yml`.

@@ -1,11 +1,14 @@
 import { randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { gzipSync } from "node:zlib";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { compress } from "hono/compress";
+import { etag } from "hono/etag";
 import { streamSSE } from "hono/streaming";
 import { cookie, decideAccess, readCookie, readIdToken, signIn, signOut, userFromCookie, type Role, type User } from "./auth.ts";
 import { config } from "./config.ts";
@@ -16,7 +19,9 @@ import { fetchIcal, type Source, type Stay } from "./ical.ts";
 const app = new Hono<{ Variables: { user: User } }>();
 const CHANNEL = "domaine_changes";
 // Settings anyone signed in may write, and those only an administrator may.
-const SHARED_KEYS = ["library", "bank", "feeds", "agents"], ADMIN_KEYS = ["prefs"];
+const SHARED_KEYS = ["library", "feeds", "agents"], ADMIN_KEYS = ["prefs", "bank"];
+// Settings the team does not even receive: the bank statement, and the secret of the calendar link.
+const PRIVATE_KEYS = ["bank", "ical_token"];
 const UPLOAD_MIME = ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/csv",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
 const MAX_UPLOAD = 25 * 1024 * 1024, MAX_JSON = 3 * 1024 * 1024;
@@ -27,10 +32,35 @@ app.use("*", async (c, next) => {
   c.header("Referrer-Policy", "same-origin");
   // Scripts only from this site and no inline script: text that slipped through unescaped
   // somewhere in a page still cannot run.
-  if (!c.res.headers.has("Content-Security-Policy")) c.header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; frame-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  if (!c.res.headers.has("Content-Security-Policy")) c.header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; frame-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
 });
 
+// Pages and data travel compressed; a live stream and files already compressed do not.
+const zip = compress();
+app.use("*", (c, next) => (c.req.path === "/api/events" || c.req.path.startsWith("/api/files") ? next() : zip(c, next)));
+
 app.get("/healthz", async (c) => { await sql`select 1`; return c.text("ok"); });
+
+/* ---------- The estate's stays as a calendar other sites can read (Airbnb, Booking) ---------- */
+// No sign-in here: those sites cannot sign in. The link carries a long secret instead, and the
+// calendar says only "Réservé" with the dates, never a name.
+async function icalToken(): Promise<string> {
+  const [row] = await sql`select value from settings where key = 'ical_token'`;
+  if (row) return String(row.value);
+  const token = randomBytes(24).toString("base64url");
+  await sql`insert into settings (key, value) values ('ical_token', ${sql.json(token)}) on conflict (key) do nothing`;
+  return icalToken();
+}
+app.get("/ical/:file", async (c) => {
+  const given = c.req.param("file").replace(/\.ics$/, "");
+  if (given.length < 20 || given !== (await icalToken())) return c.text("introuvable", 404);
+  const rows = await sql`select id, doc->>'start' as start, doc->>'end' as end from deals where (doc->>'stage')::int >= 2 and coalesce(doc->>'status', '') <> 'Perdu'`;
+  const day = (iso: string, plus = 0) => { const d = new Date(Date.parse(iso) + plus * 86400000); return d.toISOString().slice(0, 10).replace(/-/g, ""); };
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
+  // DTEND is exclusive in iCal: the departure day stays blocked, as on the estate's own planning.
+  const events = rows.filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.start ?? "") && /^\d{4}-\d{2}-\d{2}$/.test(r.end ?? "")).map((r) => `BEGIN:VEVENT\r\nUID:${r.id}@domaine\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${day(r.start)}\r\nDTEND;VALUE=DATE:${day(r.end, 1)}\r\nSUMMARY:Réservé\r\nEND:VEVENT`);
+  return c.body(["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Le Domaine//FR", "CALSCALE:GREGORIAN", ...events, "END:VCALENDAR"].join("\r\n") + "\r\n", 200, { "content-type": "text/calendar; charset=utf-8", "cache-control": "no-store" });
+});
 
 /* ---------- Sign-in ---------- */
 const deny = (reason: string) => new Response(null, { status: 302, headers: { location: `/#connexion?refus=${encodeURIComponent(reason)}` } });
@@ -84,9 +114,10 @@ const dealOut = (row: { id: string; doc: Doc; version: number }, role: Role) => 
 app.get("/api/state", async (c) => {
   const u = c.get("user");
   const deals = await sql`select id, doc, version from deals order by updated_at desc`;
-  const settings = Object.fromEntries((await sql`select key, value from settings`).map((r) => [r.key, r.value]));
+  const settings = Object.fromEntries((await sql`select key, value from settings`).filter((r) => adminOnly(u) ? r.key !== "ical_token" : !PRIVATE_KEYS.includes(r.key)).map((r) => [r.key, r.value]));
   const users = adminOnly(u) ? await sql`select email, name, role, last_login is null as pending from users order by created_at` : [];
-  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users });
+  const admin = adminOnly(u) ? { icalUrl: `${config.baseUrl}/ical/${await icalToken()}.ics`, lastBackup: await lastBackup() } : null;
+  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin });
 });
 app.get("/api/deals/:id", async (c) => {
   const [row] = await sql`select id, doc, version from deals where id = ${c.req.param("id")}`;
@@ -134,6 +165,7 @@ app.put("/api/settings/:key", async (c) => {
   return c.json({ ok: true });
 });
 app.get("/api/settings/:key", async (c) => {
+  if (PRIVATE_KEYS.includes(c.req.param("key")) && !adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);
   const [row] = await sql`select value from settings where key = ${c.req.param("key")}`;
   return c.json({ value: row ? row.value : null });
 });
@@ -195,6 +227,27 @@ async function syncFeeds(): Promise<{ feeds: Stay[]; errors: string[] }> {
 }
 app.post("/api/feeds/sync", async (c) => c.json(await syncFeeds()));
 
+/* ---------- Backup: everything the app holds, as one file ---------- */
+// Uploaded files are listed, not embedded: they live on their own volume.
+async function snapshot(): Promise<string> {
+  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings`, sql`select id, deal_id, name, mime, size, created_at from files`]);
+  return JSON.stringify({ format: "domaine-backup-1", at: new Date().toISOString(), users, deals, settings, files });
+}
+const backupDir = join(config.dataDir, "backups");
+async function lastBackup(): Promise<string> { const names = (await readdir(backupDir).catch(() => [])).filter((n) => n.endsWith(".json.gz")).sort(); return names.length ? names[names.length - 1].slice(8, 18) : ""; }
+// One file per day, the last 30 kept. Run at start and every six hours, so a day is never missed.
+async function dailyBackup(): Promise<void> {
+  await mkdir(backupDir, { recursive: true });
+  const today = new Date().toISOString().slice(0, 10);
+  if ((await lastBackup()) !== today) await writeFile(join(backupDir, `domaine-${today}.json.gz`), gzipSync(await snapshot()));
+  const names = (await readdir(backupDir)).filter((n) => n.endsWith(".json.gz")).sort();
+  for (const old of names.slice(0, Math.max(0, names.length - 30))) await unlink(join(backupDir, old));
+}
+app.get("/api/backup", async (c) => {
+  if (!adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);
+  return c.body(await snapshot(), 200, { "content-type": "application/json", "content-disposition": `attachment; filename="domaine-${new Date().toISOString().slice(0, 10)}.json"`, "cache-control": "no-store" });
+});
+
 /* ---------- Live updates: one listener on the database, fanned out to every open page ---------- */
 const pages = new Set<(data: string) => void>();
 app.get("/api/events", (c) => streamSSE(c, async (stream) => {
@@ -205,10 +258,14 @@ app.get("/api/events", (c) => streamSSE(c, async (stream) => {
   pages.delete(send);
 }));
 
-app.use("/*", serveStatic({ root: "./web", onFound: (_path, c) => { c.header("Cache-Control", "no-cache"); } }));
+// Pages are revalidated at each visit and re-sent only when they changed; fonts never change.
+app.use("/fonts/*", async (c, next) => { await next(); c.header("Cache-Control", "public, max-age=31536000, immutable"); });
+app.use("/*", etag(), serveStatic({ root: "./web", onFound: (path, c) => { if (!path.includes("/fonts/")) c.header("Cache-Control", "no-cache"); } }));
 
 await migrate();
 await mkdir(join(config.dataDir, "files"), { recursive: true });
 await sql.listen(CHANNEL, (payload) => { for (const send of pages) send(payload); });
 setInterval(() => { syncFeeds().catch((e) => console.error("calendar sync failed", e)); }, 30 * 60 * 1000).unref();
+const backup = () => { dailyBackup().catch((e) => console.error("backup failed", e)); };
+backup(); setInterval(backup, 6 * 60 * 60 * 1000).unref();
 serve({ fetch: app.fetch, port: config.port, hostname: "0.0.0.0" }, (info) => console.warn(`domaine listening on :${info.port} (${config.baseUrl})`));
