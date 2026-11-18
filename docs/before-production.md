@@ -7,6 +7,11 @@ before production. Remove a line once it is paid.
   unit tests render `DealSidebar` without a tRPC provider and now fail, because the new section
   reads through tRPC. Give those tests a provider (or stub the section), and add tests for
   `getStaySummary` (visibility, empty deal, option vs. confirmed booking) and for `StaySection`.
+- Editing the "Stay" section (`src/features/stay-summary/saveStay.ts`, `ui/StayEditor.tsx`):
+  checked by hand in a browser only. Add real-Postgres tests for `saveStay`: all parts saved in
+  one go, dates moved (old booking cancelled, new one created), dates already booked rolls the
+  whole edit back, invalid time refused, tenant contact details and identity number preserved
+  when only the name changes, a viewer without edit rights refused.
 - `scripts/import-dossiers.ts`: only exercised by hand against a local database.
 - `src/features/dossier-import/importDossier.ts` is past 250 lines: split the write step out.
 - Run the full unit and integration suites, the linter and the type check.

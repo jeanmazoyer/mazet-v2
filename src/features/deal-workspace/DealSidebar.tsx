@@ -185,9 +185,9 @@ export function DealSidebar({
       <CollapsibleSection
         key="stay"
         title={sections.stay}
-        headerActions={sectionActions(sections.stay, [], { noEdit: true })}
+        headerActions={sectionActions(sections.stay, [], { bulkSectionId: "stay" })}
       >
-        <StaySection dealId={deal.id} />
+        <StaySection dealId={deal.id} editing={bulkSection === "stay"} onExitEdit={exitBulk} />
       </CollapsibleSection>
     ),
 

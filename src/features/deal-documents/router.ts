@@ -7,6 +7,7 @@ import type { AppError } from "@/constants/errorIds";
 import { listDealPieces } from "@/features/deal-pieces/pieceRepo";
 import { listPaymentLines } from "@/features/payments/paymentRepo";
 import { listPriceItems, listQuotes } from "@/features/quotes/quoteRepo";
+import { saveStay, stayInput } from "@/features/stay-summary/saveStay";
 import { getStaySummary } from "@/features/stay-summary/staySummary";
 import { protectedProcedure, router } from "@/server/trpc/trpc";
 import type { Result } from "@/types/result";
@@ -57,6 +58,13 @@ export const dealDocumentsRouter = router({
         await getStaySummary(ctx.db, ctx.actor, input.dealId, AbortSignal.timeout(READ_TIMEOUT_MS)),
       ),
     ),
+  // The sidebar's edit of the booking. The error id travels as the message so the form can say
+  // which rule refused the change (dates already booked, invalid time, and so on).
+  saveStay: protectedProcedure.input(stayInput).mutation(async ({ ctx, input }) => {
+    const saved = await saveStay(ctx.db, ctx.actor, input, AbortSignal.timeout(READ_TIMEOUT_MS));
+    if (!saved.ok) throw new TRPCError({ code: "BAD_REQUEST", message: saved.error.id });
+    return saved.value;
+  }),
   documents: documentsRouter.documents,
   templates: documentsRouter.templates,
   contract: contractRouter,

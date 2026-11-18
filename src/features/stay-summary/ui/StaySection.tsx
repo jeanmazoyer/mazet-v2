@@ -6,6 +6,7 @@ import { formatShortDate } from "@/features/document-templates/fieldValues";
 import { formatCents } from "@/features/quotes/documentFormat";
 import { trpc } from "@/lib/trpc-client";
 import type { StaySummary } from "../staySummary";
+import { StayEditor } from "./StayEditor";
 
 const S = STRINGS.stay;
 
@@ -20,13 +21,24 @@ function paymentLine(line: StaySummary["payments"][number]): string {
 
 // The booking at a glance, in the deal's sidebar. Nothing is edited here: each fact has its own
 // tab (Documents, Payments, Event), and this is where they are read together.
-export function StaySection({ dealId }: { dealId: string }): React.ReactNode {
+export function StaySection({
+  dealId,
+  editing = false,
+  onExitEdit,
+}: {
+  dealId: string;
+  editing?: boolean;
+  onExitEdit?: () => void;
+}): React.ReactNode {
   const query = trpc.dealDocuments.stay.useQuery({ dealId });
   const stay = query.data;
   if (stay === undefined) {
     return (
       <p className="py-1.5 text-sm text-muted-foreground">{query.isError ? S.error : S.loading}</p>
     );
+  }
+  if (editing) {
+    return <StayEditor dealId={dealId} stay={stay} onExit={onExitEdit ?? (() => {})} />;
   }
   const { dates, terms } = stay;
   const empty =

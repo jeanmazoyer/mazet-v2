@@ -176,6 +176,17 @@ export const STRINGS = {
     loading: "Loading...",
     error: "The booking could not be loaded.",
     empty: "No booking recorded yet.",
+    startDate: "Arrival day",
+    endDate: "Departure day",
+    tenant: (position: number) => `Tenant ${position}`,
+    paymentsHint: "Payments are recorded in the Payments tab.",
+    errors: {
+      conflict: "These dates are already booked.",
+      dates: "Check the arrival and departure days.",
+      numbers: "Guests and people sleeping on site must be whole numbers.",
+      denied: "You cannot change this booking.",
+      other: "Check the times (HH:MM), the numbers and the names, then try again.",
+    },
   },
   payments: {
     title: "Payments",
