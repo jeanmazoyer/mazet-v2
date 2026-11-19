@@ -83,6 +83,20 @@ await a.setInputFiles("#imp-file", "/tmp/domaine-plan.json"); await settle(a);
 ok("a planning file becomes deals, bad lines are skipped", (await S(a, "S.deals.some(d => d.title === 'Séjour importé' && d.stage === 4)")) && (await a.locator(".flash").innerText()).includes("1 ligne ignorée"), await a.locator(".flash").innerText().catch(() => ""));
 await a.goto(`${BASE}/#reservations`); await a.waitForSelector(".cmonth"); await a.click('[data-calview="season"]'); await a.click('[data-year="1"]');
 ok("the season line shows the imported stay", (await a.locator(".sbar").count()) >= 1);
+// A request noted in a hurry: nothing is required, and every page copes with a deal that has no dates yet
+await a.goto(`${BASE}/#affaires`); await a.click('.topbar [data-a="new"]'); await a.fill("#n-note", "Appel de Mme Test\nMariage été 2028, rappeler jeudi"); await a.click('[data-a="create"]'); await a.waitForSelector(".dealhead"); await settle(a);
+const quick = await S(a, "S.deals.find(d => d.title === 'Appel de Mme Test')");
+ok("a deal is created from a note alone", Boolean(quick) && quick.start === "" && quick.pinned[0].body.includes("rappeler jeudi") && (await a.locator(".dealhead").innerText()).includes("Dates à définir"), JSON.stringify(quick ?? null).slice(0, 200));
+await a.click('.step[data-stage="2"]'); await settle(a);
+ok("no option can be held without dates", (await S(a, "S.deals.find(d => d.title === 'Appel de Mme Test').stage")) === 0 && (await a.locator(".notice, .banner, [role=alert]").first().innerText().catch(() => "")).includes("dates"));
+const errsBefore = errors.length;
+for (const h of ["#affaires", "#reservations", "#contacts", "#documents", "#audit", "#taches", "#statistiques", "#reglages", `#contact-${quick.id}`, `#affaire-${quick.id}`]) { await a.goto(`${BASE}/${h}`); await a.waitForSelector(".topbar h1"); await a.waitForTimeout(150); }
+await a.click('[data-comp="Événement"]'); await a.click('[data-a="sheet"]'); await a.waitForSelector(".drawer"); await a.click("#close-preview");
+await a.goto(`${BASE}/#affaires`); await a.click('[data-view="list"]').catch(() => {}); await a.waitForTimeout(150);
+await a.goto(`${BASE}/#reservations`); for (const v of ["year", "season"]) { await a.click(`[data-calview="${v}"]`); await a.waitForTimeout(150); }
+ok("every page shows a deal without dates", errors.length === errsBefore && !(await a.locator("#app").innerText()).match(/undefined|NaN|Invalid/), errors.slice(errsBefore).join(" | ").slice(0, 300));
+await a.evaluate(() => { const S = window.__app.S; S.deals = S.deals.filter((d) => d.title !== "Appel de Mme Test"); return window.__app.persist(); }); await settle(a);
+
 // A season file (fictional people): stays with payments, documents and remarks, then the audit page
 const season = { format: "domaine-import-1", season: 2027, mailbox: "accueil@test.local", deals: [
   { id: "t27-ok", title: "Mariage Alba & Noé", kind: "Mariage", stage: 4, status: "Gagné", amount: 8000, start: "2027-08-06", end: "2027-08-09", guests: 60, sleeping: 20, signed: "2027-01-10", contact: { name: "Alba Test", email: "alba@test.local" },

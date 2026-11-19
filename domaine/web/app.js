@@ -50,13 +50,14 @@ const MONTHS_SHORT = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.",
 // Every single day is written in words ("30 sept. 2025"), like the stays, never as digits.
 const fr = (iso) => { if (!iso) return "date inconnue"; const [y, m, d] = iso.split("-").map(Number); return `${d} ${MONTHS_SHORT[m - 1]} ${y}`; };
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
-const longDay = (iso) => { const [y, m, d] = iso.split("-").map(Number); return `${d} ${MONTHS[m - 1]} ${y}`; };
+const longDay = (iso) => { if (!iso) return "date à définir"; const [y, m, d] = iso.split("-").map(Number); return `${d} ${MONTHS[m - 1]} ${y}`; };
 // A stay written the way it is said aloud: "14 au 17 mai 2026", the month and year given once.
-const range = (a, b) => { const [ya, ma, da] = a.split("-").map(Number), [yb, mb, db] = b.split("-").map(Number);
+const NO_DATES = "Dates à définir";
+const range = (a, b) => { if (!a || !b) return NO_DATES; const [ya, ma, da] = a.split("-").map(Number), [yb, mb, db] = b.split("-").map(Number);
   if (ya === yb && ma === mb) return `${da} au ${db} ${MONTHS[ma - 1]} ${ya}`;
   if (ya === yb) return `${da} ${MONTHS[ma - 1]} au ${db} ${MONTHS[mb - 1]} ${ya}`;
   return `${da} ${MONTHS[ma - 1]} ${ya} au ${db} ${MONTHS[mb - 1]} ${yb}`; };
-const nights = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
+const nights = (a, b) => (a && b ? Math.round((Date.parse(b) - Date.parse(a)) / 864e5) : 0);
 const TODAY = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`; })();
 const STAGES = ["Demande", "Visite", "Option", "Devis envoyé", "Signé", "Soldé"];
 const KIND = { Mariage: "t-purple", Séjour: "t-teal", Séminaire: "t-green", Anniversaire: "t-orange", Retraite: "t-orange", Famille: "" };
@@ -125,7 +126,7 @@ const dayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 const addDays = (iso, n) => new Date(Date.parse(iso) + n * 864e5).toISOString().slice(0, 10);
 // Everything that holds dates: deals from the Option stage on, and the imported calendars.
 function bookings(exceptId) {
-  return [...live().filter((d) => d.stage >= 2 && d.id !== exceptId).map((d) => ({ title: d.title, start: d.start, end: d.end, cls: hold(d), go: "affaire-" + d.id })), ...S.feeds.map((f, i) => ({ ...f, cls: "ext", ext: i }))];
+  return [...live().filter((d) => d.stage >= 2 && d.start && d.end && d.id !== exceptId).map((d) => ({ title: d.title, start: d.start, end: d.end, cls: hold(d), go: "affaire-" + d.id })), ...S.feeds.map((f, i) => ({ ...f, cls: "ext", ext: i }))];
 }
 const overlap = (a, b, exceptId) => bookings(exceptId).find((o) => a <= o.end && b >= o.start) ?? null;
 // The house needs S.buffer full days of cleaning between a departure and the next arrival. This
@@ -140,6 +141,8 @@ function setStage(d, i, force = false) {
   if (i === d.stage) return;
   if (d.status === "Perdu") { S.notice = "Cette affaire est perdue : rouvrez-la avant de changer son étape."; return; }
   const from = d.stage;
+  // A request taken down in a hurry may have no dates yet: they are needed before anything is held.
+  if (i >= 2 && (!d.start || !d.end)) { S.notice = "Indiquez d'abord les dates du séjour : elles sont nécessaires pour poser une option."; return; }
   if (i >= 2 && d.stage < 2) {
     const taken = overlap(d.start, d.end, d.id);
     if (taken) { S.notice = `Impossible de réserver : ces dates sont déjà prises par « ${taken.title} ».`; return; }
@@ -234,7 +237,7 @@ const banner = "";
 
 /* ---------- Affaires (board + list) ---------- */
 // "11 au 13 déc.", the year only when it is not the current one: short enough for a figure card.
-const rangeShort = (a, b) => { const [, ma, da] = a.split("-").map(Number), [yb, mb, db] = b.split("-").map(Number), tail = `${db} ${MONTHS_SHORT[mb - 1]}${yb !== Number(TODAY.slice(0, 4)) ? " " + yb : ""}`; return a === b ? tail : `${da}${ma === mb ? "" : " " + MONTHS_SHORT[ma - 1]} au ${tail}`; };
+const rangeShort = (a, b) => { if (!a || !b) return NO_DATES; const [, ma, da] = a.split("-").map(Number), [yb, mb, db] = b.split("-").map(Number), tail = `${db} ${MONTHS_SHORT[mb - 1]}${yb !== Number(TODAY.slice(0, 4)) ? " " + yb : ""}`; return a === b ? tail : `${da}${ma === mb ? "" : " " + MONTHS_SHORT[ma - 1]} au ${tail}`; };
 const SORTS = { title: (d) => d.title.toLowerCase(), kind: (d) => d.kind, start: (d) => d.start, amount: (d) => d.amount, received: (d) => received(d), stage: (d) => d.stage };
 function viewAffaires() {
   const q = S.q.toLowerCase(), open = live(), lostDeals = S.deals.filter((d) => d.status === "Perdu");
@@ -287,7 +290,7 @@ function viewAffaires() {
 // Returned by a field's save when the change waits for a confirmation: the editor stays open.
 const HOLD_EDIT = Symbol("hold");
 const FIELDS = {
-  dates: { label: "Dates", show: (d) => `${range(d.start, d.end)}<small>${nights(d.start, d.end)} nuits, ${HOLD[hold(d)]}</small>`,
+  dates: { label: "Dates", show: (d) => (d.start && d.end ? `${range(d.start, d.end)}<small>${nights(d.start, d.end)} nuits, ${HOLD[hold(d)]}</small>` : `${NO_DATES}<small>à renseigner avant de poser une option</small>`),
     edit: (d) => { const p = S.pending?.id === d.id ? S.pending : null; return `<div class="pair"><input id="e-start" type="date" value="${p ? p.a : d.start}" aria-label="Arrivée"><input id="e-end" type="date" value="${p ? p.b : d.end}" aria-label="Départ"></div>`; },
     save: (d) => { const a = val("e-start"), b = val("e-end"); if (!a || !b || b < a) return "Vérifiez les jours d'arrivée et de départ.";
       if (d.stage >= 2) { const taken = overlap(a, b, d.id); if (taken) return `Ces dates sont déjà réservées (${taken.title}).`;
@@ -406,7 +409,7 @@ function viewAffaire(id) {
   const menu = S.menu === "deal" ? `<div class="pop dealpop" role="menu" aria-label="Autres actions"><button class="mi" role="menuitem" data-a="sheet">${ico("doc", "s")}Fiche événement</button><button class="mi" role="menuitem" data-a="deal-dup">${ico("copy", "s")}Dupliquer l'affaire</button>${lost ? "" : `<button class="mi" role="menuitem" data-a="lose">${ico("close", "s")}Marquer comme perdue</button>`}${isAdmin() ? `<button class="mi danger" role="menuitem" data-a="deal-del">${ico("trash", "s")}Supprimer l'affaire</button>` : ""}</div>` : "";
   return topbar("Détail d'une affaire", `<span class="menuwrap"><button class="btn alt sq" data-menu="deal" aria-label="Autres actions" aria-haspopup="menu" aria-expanded="${S.menu === "deal"}">${ico("dots", "m")}</button>${menu}</span><button class="btn alt" data-a="doc">${ico("doc", "s")}Ajouter un document</button>${!lost && d.stage < 5 ? `<button class="btn" data-a="advance">${d.stage < 4 ? "Passer à l'étape suivante" : "Marquer comme soldé"}</button>` : ""}`, "affaires")
     + `<div class="dealhead"><div class="id"><h2><span class="ic">${ico(KIND_ICON[d.kind], "m")}</span>${esc(d.title)}</h2>
-        <div class="tags">${lost ? `<span class="tag t-red">Perdue</span>` : ""}<span class="tag"><i class="dotk ${KIND[d.kind]}"></i>${d.kind}</span><span class="tag num">${range(d.start, d.end)}</span><span class="tag num">${d.guests} invités</span><span class="tag">Source : ${esc(d.source)}</span></div></div>${alert}
+        <div class="tags">${lost ? `<span class="tag t-red">Perdue</span>` : ""}<span class="tag"><i class="dotk ${KIND[d.kind]}"></i>${d.kind}</span><span class="tag num">${range(d.start, d.end)}</span><span class="tag num">${d.guests ? d.guests + " invités" : "Invités à préciser"}</span><span class="tag">Source : ${esc(d.source)}</span></div></div>${alert}
         <div class="steps" role="group" aria-label="Cycle de l'affaire">${STAGES.map((s, i) => `<button class="step ${i < d.stage ? "done" : i === d.stage ? "cur" : ""}" data-stage="${i}" ${i === d.stage ? `aria-current="step"` : `title="${i < d.stage ? "Revenir à" : "Passer à"} l'étape ${s}"`}><i>${i < d.stage ? ico("check", "xs") : ""}</i><span>${s}</span>${i === d.stage ? `<small>Étape actuelle</small>` : ""}</button>`).join("")}</div>
         ${lost || d.stage >= 5 ? "" : `<p class="stepnote"><b>Pour passer à « ${STAGES[d.stage + 1]} » :</b> ${STEP_NEXT[d.stage]} <span>Cliquez sur une étape pour y aller directement.</span></p>`}</div>
       <div class="split"><aside class="panel">
@@ -890,6 +893,7 @@ function newDealModal() {
       <header><h2 id="m-title">Nouvelle affaire</h2><button class="iconbtn" data-a="close-modal" aria-label="Fermer">${ico("close", "m")}</button></header>
       <div class="mbody">
         <label class="fld full"><span>Nom de l'affaire</span><input id="n-title" class="inp" value="${v("n-title")}" placeholder="Ex. Camille & Louis Martin"></label>
+        <label class="fld full"><span>Note</span><textarea id="n-note" class="inp" rows="3" placeholder="Ce qu'on vous a dit au téléphone, à compléter plus tard. Aucun champ n'est obligatoire.">${v("n-note")}</textarea></label>
         <label class="fld"><span>Type</span><select id="n-kind" class="inp">${opt("n-kind", Object.keys(KIND), "Mariage")}</select></label>
         <label class="fld"><span>Source</span><select id="n-source" class="inp">${opt("n-source", SOURCES, "Site web")}</select></label>
         <label class="fld"><span>Arrivée souhaitée</span><input id="n-start" class="inp" type="date" value="${v("n-start")}"></label>
@@ -909,17 +913,19 @@ function newDealModal() {
     </div>`;
 }
 function createDeal() {
-  const g = (k) => (S.draft[k] ?? "").trim(), title = g("n-title"), start = g("n-start"), end = g("n-end");
-  if (title.length < 2) return "Donnez un nom à l'affaire.";
-  if (!start || !end) return "Indiquez les dates souhaitées.";
-  if (end < start) return "Le départ doit suivre l'arrivée.";
-  const guests = Number(g("n-guests") || 2), sleeping = Math.min(22, Number(g("n-sleeping") || Math.min(guests, 22)));
+  // Nothing is required: a request can be noted in a few seconds and completed later. A single date
+  // given stands for both, and a deal without a name takes the contact's, or the start of the note.
+  const g = (k) => (S.draft[k] ?? "").trim(), start = g("n-start") || g("n-end"), end = g("n-end") || g("n-start");
+  const title = (g("n-title") || g("n-contact") || g("n-note").split("\n")[0].slice(0, 60) || "Nouvelle demande").slice(0, 80);
+  if (start && end && end < start) return "Le départ doit suivre l'arrivée.";
   if (g("n-email") && !/^\S+@\S+\.\S+$/.test(g("n-email"))) return "Adresse e-mail invalide.";
+  const guests = Number(g("n-guests") || 0), sleeping = Math.min(22, Number(g("n-sleeping") || Math.min(guests, 22))), note = g("n-note");
   const id = "n" + Date.now();
   const known = deal(S.draft["n-from"]);
   const contact = known ? known.contact : { name: g("n-contact") || title, email: g("n-email") || "à compléter", phone: g("n-phone") || "à compléter", address: "à compléter" };
   const d = mk(id, title, S.draft["n-kind"] ?? "Mariage", 0, Number(g("n-amount") || 0), start, end, guests, sleeping, S.draft["n-source"] ?? "Site web", contact, { signed: TODAY, emails: [], unread: {} });
   d.history = [{ type: "Modification", t: "Affaire créée", at: stamp(), by: me().name }];
+  if (note) d.pinned.unshift({ t: "Note de la demande", body: note.slice(0, 2000), at: fr(TODAY), by: me().name });
   S.deals.unshift(d);
   S.modal = null; S.draft = {}; location.hash = "affaire-" + id;
   return "";
@@ -1889,9 +1895,9 @@ async function persist() {
 // the stay. Asked for once a deal is saved, and again only when its place or its name changes. A stay
 // that is over gets no folder of its own accord.
 const driveBusy = new Set();
-const driveWant = (d) => ({ client: d.stage >= 4 && d.status !== "Perdu", name: `${d.title} ${range(d.start, d.end)}` });
+const driveWant = (d) => ({ client: d.stage >= 4 && d.status !== "Perdu", name: d.start && d.end ? `${d.title} ${range(d.start, d.end)}` : d.title });
 function driveSync(d) {
-  if (!S.drive.on || driveBusy.has(d.id) || !(d.driveFolder || d.end >= TODAY)) return;
+  if (!S.drive.on || driveBusy.has(d.id) || !(d.driveFolder || !d.end || d.end >= TODAY)) return;
   const w = driveWant(d), place = w.client ? "clients" : "prospects";
   if (d.driveFolder && d.drivePlace === place && d.driveName === w.name) return;
   driveBusy.add(d.id);
