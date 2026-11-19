@@ -76,27 +76,29 @@ const wait = () => AbortSignal.timeout(15_000);
 export class DriveError extends Error { status: number; constructor(status: number, message: string) { super(message); this.status = status; } }
 
 /** The code Google hands back after consent, exchanged for the lasting grant and the account's identity. */
-export async function exchangeCode(code: string, clientId: string, secret: string, baseUrl: string): Promise<{ refresh: string; access: string; idToken: string } | null> {
+export async function exchangeCode(code: string, clientId: string, secret: string, baseUrl: string, needed: string[] = [DRIVE_SCOPE]): Promise<{ refresh: string; access: string; idToken: string } | null> {
   const res = await fetch("https://oauth2.googleapis.com/token", { method: "POST", signal: wait(),
     body: new URLSearchParams({ code, client_id: clientId, client_secret: secret, redirect_uri: `${baseUrl}/auth/callback`, grant_type: "authorization_code" }) });
   if (!res.ok) return null;
   const t = (await res.json()) as { refresh_token?: string; access_token?: string; id_token?: string; scope?: string };
-  if (!t.refresh_token || !t.access_token || !(t.scope ?? "").split(" ").includes(DRIVE_SCOPE)) return null;
+  if (!t.refresh_token || !t.access_token || !needed.every((n) => (t.scope ?? "").split(" ").includes(n))) return null;
   return { refresh: t.refresh_token, access: t.access_token, idToken: t.id_token ?? "" };
 }
 
-let cached: { refresh: string; token: string; until: number } | null = null;
+// One entry per grant: the Drive and the mailbox each have their own.
+const cached = new Map<string, { token: string; until: number }>();
 /** A one-hour token from the lasting grant, kept in memory until a minute before it ends. */
 export async function accessToken(refresh: string, clientId: string, secret: string): Promise<string> {
-  if (cached && cached.refresh === refresh && cached.until > Date.now()) return cached.token;
+  const kept = cached.get(refresh);
+  if (kept && kept.until > Date.now()) return kept.token;
   const res = await fetch("https://oauth2.googleapis.com/token", { method: "POST", signal: wait(),
     body: new URLSearchParams({ refresh_token: refresh, client_id: clientId, client_secret: secret, grant_type: "refresh_token" }) });
-  if (!res.ok) throw new DriveError(res.status === 400 || res.status === 401 ? 401 : 502, "Google Drive n'est plus connecté");
+  if (!res.ok) throw new DriveError(res.status === 400 || res.status === 401 ? 401 : 502, "Google n'est plus connecté");
   const t = (await res.json()) as { access_token: string; expires_in: number };
-  cached = { refresh, token: t.access_token, until: Date.now() + (t.expires_in - 60) * 1000 };
+  cached.set(refresh, { token: t.access_token, until: Date.now() + (t.expires_in - 60) * 1000 });
   return t.access_token;
 }
-export const forgetToken = () => { cached = null; };
+export const forgetToken = () => { cached.clear(); };
 
 type DriveFile = { id: string; name?: string; parents?: string[]; trashed?: boolean; modifiedTime?: string };
 async function driveJson(token: string, url: string, init: RequestInit): Promise<DriveFile> {

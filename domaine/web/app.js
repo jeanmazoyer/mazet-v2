@@ -106,7 +106,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -611,6 +611,9 @@ function viewSettings() {
     ${card("Google Drive", "Une fois connecté, « Créer » sur un contrat ou une caution fabrique un vrai document Google Docs, rempli depuis l'affaire et modifiable dans le panneau. L'application ne voit que les documents qu'elle crée. Ils sont privés : partagez le dossier avec les personnes qui doivent y accéder.",
       S.drive.on ? srow(`Connecté${S.drive.email ? " : " + esc(S.drive.email) : ""}`, "Un dossier par affaire dans « Les jardins de Campagne » : dans « Prospects » dès sa création, déplacé dans « Clients » à la signature.", `${S.drive.folder ? `<a class="btn alt sm" href="https://drive.google.com/drive/folders/${encodeURIComponent(S.drive.folder)}" target="_blank" rel="noopener">Ouvrir le dossier</a>` : ""}<button class="btn alt sm" data-a="drive-off">Déconnecter</button>`)
         : srow("Non connecté", "Les documents créés restent pour l'instant dans l'application.", `<a class="btn sm" href="/auth/drive">Connecter Google Drive</a>`))}
+    ${card("Gmail", "Une fois la boîte du domaine connectée, les échanges avec chaque client se lisent dans sa fiche, onglet « E-mail », et on y répond sans quitter l'application. L'application ne cherche que les conversations avec les adresses de l'affaire ouverte, et n'envoie rien sans un clic sur « Envoyer ».",
+      S.mail.on ? srow(`Connectée${S.mail.email ? " : " + esc(S.mail.email) : ""}`, "Les messages partent de cette boîte et se retrouvent dans ses « Messages envoyés ».", `<button class="btn alt sm" data-a="mail-off">Déconnecter</button>`)
+        : srow("Non connectée", "L'onglet « E-mail » des affaires reste masqué.", `<a class="btn sm" href="/auth/gmail">Connecter la boîte Gmail</a>`))}
     ${card("Sauvegarde", "Une copie de toutes les données est faite chaque jour sur le serveur, et les 30 dernières sont gardées. Téléchargez-en une de temps en temps pour la ranger ailleurs.", srow("Dernière copie automatique", S.admin && S.admin.lastBackup ? `le ${fr(S.admin.lastBackup)}` : "pas encore faite", `<a class="btn alt sm" href="/api/backup" download>${ico("down", "s")}Télécharger</a>`))}
     ${card("Modèles de documents", "Le bouton « Créer » d'un document manquant part de ces modèles.", SLOTS.map((s) => srow(s.label, KLBL[s.k], sim("Ouvrir le modèle", `Dans l'application : le modèle « ${s.label} » s'ouvre dans Google Docs.`))).join(""))}
     ${card("Importer un planning", "Un fichier JSON : une ligne par séjour, ou une saison complète (paiements, documents, e-mails) préparée pour l'audit. Réimporter le même fichier met les séjours à jour.", `<label class="fld"><span>Fichier</span><input id="imp-file" class="inp filein" type="file" accept=".json,application/json"></label>`)}
@@ -1034,7 +1037,59 @@ const MAIL_TPL = {
   "Informations d'arrivée": (d) => [`Votre arrivée au domaine le ${fr(d.start)}`, `<p>Bonjour ${esc(firstName(d))},</p><p>Nous vous attendons le <b>${longDay(d.start)} à partir de ${d.arrival}</b>.</p><ul><li>Remise des clés et état des lieux à l'arrivée.</li><li>Départ le ${longDay(d.end)} au plus tard à ${d.departure}.</li><li>${d.sleeping} couchages préparés.</li></ul>`],
 };
 const MAIL_VARS = { "Prénom": firstName, "Dates du séjour": (d) => range(d.start, d.end), "Montant": (d) => eur(d.amount), "Reste à payer": (d) => eur(owed(d)), "Heure d'arrivée": (d) => d.arrival, "Nombre d'invités": (d) => String(d.guests) };
+/* ---------- E-mail, live: the deal's conversations, read from the estate's mailbox ---------- */
+// Kept in memory only, and read again after two minutes: Gmail stays the one place where mail lives.
+const MAIL_FRESH_MS = 120000, mails = new Map();
+const mailKey = (d) => (d.contact.email ?? "").trim().toLowerCase();
+function loadMails(d, force = false) {
+  const cur = mails.get(d.id), key = mailKey(d);
+  if (cur && cur.key === key && (cur.state === "loading" || (!force && Date.now() - cur.at < MAIL_FRESH_MS))) return cur;
+  const next = { key, state: "loading", threads: cur && cur.key === key ? cur.threads : [], error: "", at: Date.now() };
+  mails.set(d.id, next);
+  const done = (state, threads, error) => { if (mails.get(d.id) === next) { mails.set(d.id, { key, state, threads, error, at: Date.now() }); render(); } };
+  api("GET", "/api/mail?dealId=" + encodeURIComponent(d.id)).then((r) => (r.status === 200 ? done("ok", r.data.threads ?? [], "") : done("err", next.threads, r.data.error ?? "Gmail ne répond pas")), () => done("err", next.threads, "Serveur injoignable"));
+  return next;
+}
+const mailWho = (h) => ((/^\s*"?([^"<]*?)"?\s*<[^>]+>\s*$/.exec(h) ?? [])[1] || h.replace(/[<>]/g, "")).trim();
+const mailCur = (d, m) => (S.mailThread[d.id] === "new" ? null : m.threads.find((t) => t.id === S.mailThread[d.id]) ?? m.threads[0] ?? null);
+const threadLine = (t) => { const last = t.messages[t.messages.length - 1]; return `${t.messages.length} message${t.messages.length > 1 ? "s" : ""} · ${when(last.at)}`; };
+function liveMailTab(d) {
+  const m = loadMails(d), cur = mailCur(d, m), to = mailKey(d), n = m.threads.length;
+  const pick = (id, label, first, list) => `<select id="${id}" class="inp sm auto" aria-label="${label}"><option value="">${first}</option>${list.map((o) => `<option>${o}</option>`).join("")}</select>`;
+  const state = m.state === "loading" ? "Lecture de la boîte…" : m.state === "err" ? esc(m.error) : !to ? "Ajoutez l'adresse e-mail du contact dans la fiche pour lire ses messages ici." : n ? `${n} conversation${n > 1 ? "s" : ""} avec ${esc(d.contact.name)}` : `Aucun échange avec ${esc(d.contact.name)} dans la boîte pour l'instant.`;
+  const head = `<div class="mailhead"><span class="hint ${m.state === "err" ? "bad" : ""}">${state}</span><span class="sp"></span><button class="link" data-a="mail-reload">Actualiser</button>${cur ? `<button class="link" data-a="mail-new">Nouvelle conversation</button>` : ""}</div>`;
+  const list = n > 1 ? `<div class="mthreads">${m.threads.map((t) => `<button class="mthread ${cur && cur.id === t.id ? "on" : ""}" data-a="mail-thread" data-id="${esc(t.id)}"><b>${esc(t.subject || "(sans objet)")}</b><small class="num">${threadLine(t)}</small></button>`).join("")}</div>` : "";
+  const thread = cur ? `<div class="thread" id="thread">${cur.messages.map((x) => `<article class="mail ${x.mine ? "out" : ""}">
+      <header><span class="av">${initials(mailWho(x.from) || "?")}</span><div class="grow"><b>${esc(mailWho(x.from))}</b><small>à ${esc(mailWho(x.to))}</small></div><time>${esc(when(x.at))}</time></header>
+      <div class="rich">${clean(x.html) || `<span class="hint">(message sans texte)</span>`}</div>${(x.files ?? []).map((f) => `<span class="mini att">${ico("clip", "xs")}${esc(f)}</span>`).join("")}</article>`).join("")}</div>` : "";
+  const subject = cur ? `<div class="msubject"><span class="hint">Réponse dans</span><b>${esc(cur.subject || "(sans objet)")}</b></div>` : `<input id="mail-subject" class="inp" value="${esc(S.draft["mail-subject"] ?? "")}" placeholder="Objet" aria-label="Objet">`;
+  return `${head}${list}${thread}${subject}
+    <div class="editor"><div class="rte" role="toolbar" aria-label="Mise en forme du message">${rteBar()}<button class="tb" data-cmd="link" title="Lien" aria-label="Insérer un lien">${ico("link", "s")}</button><span class="linkbox" hidden><input class="inp sm" placeholder="https://" aria-label="Adresse du lien"><button class="btn sm" data-cmd="linkok">OK</button></span>
+        <span class="sp"></span>${pick("mail-tpl", "Partir d'un modèle", "Modèles", Object.keys(MAIL_TPL).filter((k) => k !== "Envoi du devis"))}${pick("mail-var", "Insérer une information de l'affaire", "Insérer", Object.keys(MAIL_VARS))}</div>
+      <div id="mail-body" class="rich edit" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message" data-ph="${cur ? "Répondre à" : "Écrire à"} ${esc(d.contact.name)}">${S.draft["mail-body"] ?? ""}</div></div>
+    <div class="cfoot"><span class="hint">${to ? `Envoyé depuis ${S.mail.email ? esc(S.mail.email) : "la boîte du domaine"}, à ${esc(to)}` : "Sans adresse e-mail dans la fiche, rien ne peut être envoyé."}</span><button class="btn sm" data-a="mail-send" ${to && !S.mailBusy ? "" : "disabled"}>${ico("send", "s")}${S.mailBusy ? "Envoi…" : "Envoyer"}</button></div>`;
+}
+// Nothing leaves without this click. The server decides the recipient (the deal's own address) and
+// checks that a reply goes into one of the deal's conversations.
+function mailSend(d) {
+  const box = document.getElementById("mail-body"), text = box ? box.innerText.trim() : "", html = box ? clean(box.innerHTML) : "";
+  if (S.mailBusy) return;
+  const m = mails.get(d.id) ?? { threads: [] }, cur = mailCur(d, m), subject = cur ? "" : val("mail-subject").trim();
+  if (!text) { S.notice = "Le message est vide."; render(); return; }
+  if (!cur && !subject) { S.notice = "Donnez un objet au message."; S.focus = "mail-subject"; render(); return; }
+  S.mailBusy = true; S.notice = ""; render();
+  api("POST", "/api/mail/send", { dealId: d.id, subject, html, threadId: cur ? cur.id : "" }).then((r) => {
+    S.mailBusy = false; const now = deal(d.id);
+    if (r.status !== 200) { S.notice = `E-mail non envoyé : ${r.data.error ?? "erreur"}.`; render(); return; }
+    delete S.draft["mail-body"]; delete S.draft["mail-subject"];
+    if (now) { log(now, "E-mail", `E-mail envoyé : ${cur ? cur.subject || "(sans objet)" : subject}`, text); S.mailThread[d.id] = r.data.threadId ?? (cur ? cur.id : "new"); }
+    S.flash = { text: `E-mail envoyé à ${mailKey(d)}.` }; persist(); render();
+    // Gmail needs a moment before a message just sent shows up in a search.
+    setTimeout(() => { const again = deal(d.id); if (again) { loadMails(again, true); render(); } }, 1500);
+  }, () => { S.mailBusy = false; S.notice = "E-mail non envoyé : serveur injoignable."; render(); });
+}
 function mailTab(d) {
+  if (S.mail.on) return liveMailTab(d);
   const last = d.emails[d.emails.length - 1];
   const subject = S.draft["mail-subject"] ?? (last ? (last.subject.startsWith("Re: ") ? last.subject : "Re: " + last.subject) : "");
   const pick = (id, label, first, list) => `<select id="${id}" class="inp sm auto" aria-label="${label}"><option value="">${first}</option>${list.map((o) => `<option>${o}</option>`).join("")}</select>`;
@@ -1328,6 +1383,7 @@ function render() {
   queueSave();
   if (r.name === "openspace") drawWires();
   for (const id of ["thread", "chat"]) { const el = document.getElementById(id); if (el) el.scrollTop = el.scrollHeight; }
+  if (S.mailJump) { S.mailJump = false; document.querySelector(".composer")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
   // Focus goes, in order: where an action asked for it, into a window that just opened, or back
   // where it was before the redraw.
   const opened = S.modal !== shownModal && S.modal ? document.querySelector(".modal input:not([type=checkbox]), .modal select") : null;
@@ -1555,6 +1611,11 @@ document.addEventListener("click", (e) => {
     else { to.todos.push({ id: "t" + Date.now(), t: text, type: S.draft["tk-type"] ?? "Rappel", due: S.draft["tk-due"] || TODAY, at: fr(TODAY), by: me().name }); S.modal = null; S.draft = {}; S.flash = { text: `Tâche ajoutée à « ${to.title} ».` }; } }
 
   /* Conversations */
+  if (ds.a === "mail-send" && d && S.mail.on) { mailSend(d); return; }
+  if (ds.a === "mail-thread" && d) { S.mailThread[d.id] = ds.id; S.composer = "E-mail"; S.mailJump = true; }
+  if (ds.a === "mail-new" && d) { S.mailThread[d.id] = "new"; S.composer = "E-mail"; S.focus = "mail-subject"; S.mailJump = true; }
+  if (ds.a === "mail-reload" && d) loadMails(d, true);
+  if (ds.a === "mail-off") ask("Déconnecter la boîte Gmail ?", "Les conversations restent dans Gmail : seule l'application ne les lit plus et n'envoie plus rien.", "L'historique des envois reste dans les affaires.", "Déconnecter", () => { api("DELETE", "/api/mail").then((r) => { if (r.status === 200) { S.mail = { on: false }; mails.clear(); } else S.notice = "Déconnexion refusée."; render(); }); });
   if (ds.a === "mail-send" && d) { const subject = val("mail-subject").trim() || "(sans objet)", box = document.getElementById("mail-body"), body = box ? box.innerText.trim() : "", html = box ? clean(box.innerHTML) : "", att = S.draft["mail-att"] || "";
     if (body) { d.emails.push({ from: "me", subject, body, html, at: stamp(), att }); log(d, "E-mail", `E-mail envoyé : ${subject}`, body + (att ? `\n\nPièce jointe : ${att}` : ""));
       const sent = att ? d.docs.find((x) => x.t === att) : null; if (sent && !sent.sig && ["Brouillon", "Finalisé"].includes(sent.st ?? "Brouillon")) { log(d, "Document", `${sent.t} : ${sent.st ?? "Brouillon"} → Envoyé`); sent.st = "Envoyé"; }
@@ -1563,7 +1624,7 @@ document.addEventListener("click", (e) => {
     if (body) { d.wa.push({ from: "me", body, at: stamp().slice(-5) }); log(d, "WhatsApp", "WhatsApp envoyé", body); delete S.draft["wa-body"]; simulateReply(d, "wa", ""); } }
   // A reminder is written for the user, who reads it and sends it: nothing leaves on its own.
   if (ds.a === "remind" && d) { const p = income(d).find(late) ?? income(d).find((x) => x.status === "due"), first = d.contact.name.split(" ")[0];
-    S.composer = "E-mail"; S.focus = "mail-body";
+    S.composer = "E-mail"; S.focus = "mail-body"; S.mailThread[d.id] = "new";
     S.draft["mail-subject"] = p ? `Rappel : ${p.kind.toLowerCase()} pour votre séjour du ${range(d.start, d.end)}` : `Votre séjour du ${range(d.start, d.end)}`;
     S.draft["mail-body"] = p ? `Bonjour ${first},\n\nSauf erreur de notre part, nous n'avons pas encore reçu ${p.kind === "Acompte" ? "l'acompte" : "le " + p.kind.toLowerCase()} de ${eur(p.amount)}, attendu le ${fr(p.due)}.\n\nPouvez-vous nous indiquer la date de votre virement ?\n\nBien cordialement,\n${me().name}` : `Bonjour ${first},\n\n`; S.draft["mail-body"] = textToHtml(S.draft["mail-body"]); }
 
@@ -1839,9 +1900,13 @@ function auditBlock(d) {
 }
 const gmailUrl = (id) => `https://mail.google.com/mail/${S.mailbox ? "?authuser=" + encodeURIComponent(S.mailbox) : ""}#all/${encodeURIComponent(id)}`;
 function mailsBlock(d) {
+  if (S.mail.on) { const live = loadMails(d), n = live.threads.length;
+    return `<section class="blk"><h3 class="h flex">Conversations <span class="count num">${n}</span><button class="link" data-a="mail-new">Écrire</button></h3>
+      ${live.state === "err" ? `<p class="docnote">${esc(live.error)}</p>` : n ? "" : `<p class="docnote">${live.state === "loading" ? "Lecture de la boîte…" : mailKey(d) ? `Aucun échange avec ${esc(d.contact.name)} dans la boîte pour l'instant.` : "Ajoutez l'adresse e-mail du contact pour retrouver ses messages ici."}</p>`}
+      <div class="docs">${live.threads.map((t) => `<button class="drow" data-a="mail-thread" data-id="${esc(t.id)}"><span class="kb gdoc">${ico("mail", "xs")}</span><span class="grow"><b>${esc(t.subject || "(sans objet)")}</b><small class="num">${threadLine(t)}</small></span>${ico("right", "s")}</button>`).join("")}</div></section>`; }
   const m = d.mails; if (!m || !m.threads) return "";
   return `<section class="blk"><h3 class="h flex">Conversations Gmail <span class="count num">${m.threads}</span></h3>
-    <p class="docnote">${m.messages} messages (${m.received} reçus, ${m.sent} envoyés), du ${fr(m.first)} au ${fr(m.last)}. Chaque ligne ouvre la conversation dans Gmail.</p>
+    <p class="docnote">${m.messages} messages (${m.received} reçus, ${m.sent} envoyés), du ${fr(m.first)} au ${fr(m.last)}. Chaque ligne ouvre la conversation dans Gmail.${isAdmin() ? ` Pour les lire et y répondre ici, <a href="#reglages">connectez la boîte dans les réglages</a>.` : ""}</p>
     <div class="docs">${(m.list ?? []).map((t) => `<a class="drow" href="${gmailUrl(t.id)}" target="_blank" rel="noopener"><span class="kb gdoc">${ico("mail", "xs")}</span><span class="grow"><b>${esc(t.subject || "(sans objet)")}</b><small class="num">${t.n} message${t.n > 1 ? "s" : ""} · ${t.first === t.last ? fr(t.last) : `${fr(t.first)} au ${fr(t.last)}`}</small></span>${ico("right", "s")}</a>`).join("")}</div></section>`;
 }
 // A season file prepared outside the app: every field is checked again here, nothing is trusted as it comes.
@@ -1882,11 +1947,13 @@ function importSeason(file) {
   S.auditYear = String(file.season ?? S.auditYear);
   S.flash = { text: `${added} séjour${added > 1 ? "s" : ""} importé${added > 1 ? "s" : ""}, ${updated} mis à jour${skipped ? `, ${skipped} ignoré${skipped > 1 ? "s" : ""}` : ""}. L'audit est prêt.` }; location.hash = "audit"; render();
 }
-const OFF = ['a[href="#messages"]', 'a[href="#openspace"]', '[data-comp="E-mail"]', '[data-comp="WhatsApp"]', '[data-a="doc-mail"]', '[data-a="sig-new"]', '[data-a="sim"]', '[data-msg*="Dans l\'application"]', '.mepop .eyebrow', '.mepop .seg', '[data-a="doc-open"]', '[data-a="remind"]', '[data-a="quote-new"] + [data-a="doc-toast"]'].join(",");
+const OFF_LIST = ['a[href="#messages"]', 'a[href="#openspace"]', '[data-comp="E-mail"]', '[data-comp="WhatsApp"]', '[data-a="doc-mail"]', '[data-a="sig-new"]', '[data-a="sim"]', '[data-msg*="Dans l\'application"]', '.mepop .eyebrow', '.mepop .seg', '[data-a="doc-open"]', '[data-a="remind"]', '[data-a="quote-new"] + [data-a="doc-toast"]'];
+const MAIL_ONLY = ['[data-comp="E-mail"]', '[data-a="remind"]'];
+const offNow = () => OFF_LIST.filter((sel) => !(S.mail.on && MAIL_ONLY.includes(sel))).join(",");
 const OFF_CARDS = ["Pennylane", "Signature électronique", "Messagerie"];
 function paint(html) {
   const tpl = document.createElement("template"); tpl.innerHTML = html;
-  tpl.content.querySelectorAll(OFF).forEach((el) => el.remove());
+  tpl.content.querySelectorAll(offNow()).forEach((el) => el.remove());
   tpl.content.querySelectorAll(".setcard").forEach((card) => { if (OFF_CARDS.includes(card.querySelector("h3")?.textContent ?? "")) card.remove(); });
   Idiomorph.morph(document.getElementById("app"), [...tpl.content.childNodes], { morphStyle: "innerHTML", ignoreActiveValue: true });
 }
@@ -1916,7 +1983,7 @@ const usersOut = () => S.users.map((u) => ({ email: u.email, name: u.name, role:
 function applySettings(st) {
   const p = st.settings.prefs ?? {}, bank = st.settings.bank ?? {};
   S.buffer = p.buffer ?? 0; TERMS.deposit = p.deposit ?? 30; TERMS.hold = p.hold ?? 2500; S.plSeq = p.plSeq ?? { D: 0, F: 0 }; S.sources = p.sources ?? []; S.mailbox = p.mailbox ?? ""; S.lessor = p.lessor ?? {};
-  S.library = st.settings.library ?? []; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false };
+  S.library = st.settings.library ?? []; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false };
   const mine = st.user.email;
   S.users = [...st.users].sort((a, b) => Number(b.email === mine) - Number(a.email === mine)).map((u) => ({ email: u.email, name: u.name || u.email.split("@")[0], role: u.role === "admin" ? "Admin" : "Équipe", pending: u.pending }));
   for (const k of Object.keys(SETTINGS)) savedSettings[k] = JSON.stringify(SETTINGS[k]());
@@ -2102,9 +2169,11 @@ async function boot() {
   // Back from Google's consent screen for Drive: say how it went, then tidy the address.
   const back = /[?&]drive=(ok|refus)/.exec(location.search);
   if (back) { if (back[1] === "ok") S.flash = { text: "Google Drive est connecté." }; else S.notice = "Google Drive n'a pas été connecté. Si vous avez bien accepté l'autorisation, vérifiez que « Google Drive API » est activée dans la console Google Cloud du projet."; history.replaceState(null, "", "/#reglages"); }
+  const boxBack = /[?&]gmail=(ok|refus)/.exec(location.search);
+  if (boxBack) { if (boxBack[1] === "ok") S.flash = { text: "La boîte Gmail est connectée." }; else S.notice = "La boîte Gmail n'a pas été connectée. Si vous avez bien coché les deux autorisations (lire et envoyer), vérifiez que « Gmail API » est activée dans la console Google Cloud du projet."; history.replaceState(null, "", "/#reglages"); }
   if (route().name === "connexion") history.replaceState(null, "", "#affaires");
   render(); follow();
 }
 // For the journey checks only: lets a test read the state it is looking at.
-window.__app = { S, TERMS, bookings, clean, persist, mk, SEL, parseStatement, auditDeal, importSeason, checkBuild };
+window.__app = { mails, S, TERMS, bookings, clean, persist, mk, SEL, parseStatement, auditDeal, importSeason, checkBuild };
 boot();

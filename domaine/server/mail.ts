@@ -1,0 +1,115 @@
+// Gmail, for the conversations of a deal: read them and answer from the app. The grant asks to read the
+// mailbox and to send from it. The routes built on this file only ever search and show threads in which
+// one of the deal's own addresses takes part, and only ever write to the deal's contact.
+import type { Role } from "./auth.ts";
+
+export const MAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"];
+export type MailSetting = { refresh: string; email: string };
+export type Mail = { id: string; from: string; to: string; subject: string; at: string; mine: boolean; html: string; messageId: string; files: string[] };
+
+export function mailAuthUrl(clientId: string, baseUrl: string, state: string): string {
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  url.search = new URLSearchParams({ client_id: clientId, redirect_uri: `${baseUrl}/auth/callback`, response_type: "code", scope: `openid email ${MAIL_SCOPES.join(" ")}`,
+    access_type: "offline", prompt: "consent", state }).toString();
+  return url.toString();
+}
+/** What a page may know about the mailbox: never the token, and its address only for administrators. */
+export function mailSeen(stored: unknown, role: Role): { on: boolean; email?: string } {
+  const s = stored as Partial<MailSetting> | null;
+  if (!s || typeof s.refresh !== "string" || !s.refresh) return { on: false };
+  return role === "admin" ? { on: true, email: s.email ?? "" } : { on: true };
+}
+
+const ADDRESS = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+/** The addresses a deal's conversations are looked up by: its contact's, plus any other it lists. */
+export function addressesOf(doc: Record<string, unknown>): string[] {
+  const contact = (doc.contact ?? {}) as { email?: unknown }, more = Array.isArray(doc.mailAddrs) ? doc.mailAddrs : [];
+  const all = [contact.email, ...more].map((a) => (typeof a === "string" ? a.trim().toLowerCase() : "")).filter((a) => ADDRESS.test(a));
+  return [...new Set(all)].slice(0, 6);
+}
+/** Who a message from a deal goes to: the address asked for when it is one of the deal's, its contact otherwise. */
+export function recipientFor(doc: Record<string, unknown>, asked: string): string | null {
+  const known = addressesOf(doc), want = asked.trim().toLowerCase();
+  return want ? (known.includes(want) ? want : null) : known[0] ?? null;
+}
+/** The Gmail search for those addresses (braces mean "any of"). */
+export function mailQuery(addresses: string[]): string {
+  return `{${addresses.map((a) => `from:"${a}" to:"${a}"`).join(" ")}}`;
+}
+const addressesIn = (header: string) => (header.toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) ?? []);
+/** Whether one of the deal's addresses really takes part in a thread (a search hit is not proof enough). */
+export function concerns(messages: Array<{ from: string; to: string }>, addresses: string[]): boolean {
+  return messages.some((m) => [...addressesIn(m.from), ...addressesIn(m.to)].some((a) => addresses.includes(a)));
+}
+
+const TAGS = new Set(["p", "br", "b", "strong", "i", "em", "u", "ul", "ol", "li", "h1", "h2", "h3", "h4", "blockquote", "div", "span", "table", "thead", "tbody", "tr", "td", "th", "hr", "a"]);
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
+/** Mail content made safe to show and to send: simple formatting tags, no attribute except a web or mail link. */
+export function cleanMailHtml(html: string): string {
+  return html.replace(/<!--[\s\S]*?-->/g, "").replace(/<(script|style|head|title|iframe|object|svg|template)\b[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g, (m: string, tag: string, attrs: string) => {
+      const t = tag.toLowerCase(); if (!TAGS.has(t)) return "";
+      if (m.startsWith("</")) return `</${t}>`;
+      if (t !== "a") return `<${t}>`;
+      const href = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attrs), url = (href?.[1] ?? href?.[2] ?? "").trim();
+      return /^(https?:\/\/|mailto:)/i.test(url) ? `<a href="${esc(url.replace(/&amp;/g, "&"))}" target="_blank" rel="noopener noreferrer">` : "<a>";
+    }).trim();
+}
+const decode = (data: string) => Buffer.from(data ?? "", "base64url").toString("utf8");
+type Part = { mimeType?: string; filename?: string; body?: { data?: string }; parts?: Part[]; headers?: Array<{ name: string; value: string }> };
+const findPart = (p: Part, type: string): Part | null => (p.mimeType === type && p.body?.data ? p : (p.parts ?? []).map((c) => findPart(c, type)).find(Boolean) ?? null);
+const fileNames = (p: Part): string[] => [...(p.filename ? [p.filename.slice(0, 120)] : []), ...(p.parts ?? []).flatMap(fileNames)];
+const QUOTED = /^(Le .{5,90} a écrit ?:|On .{5,90} wrote:|Am .{5,90} schrieb .*:|-{3,} ?(Original Message|Message d'origine) ?-{3,}|_{10,})\s*$/m;
+/** One Gmail message, as the app shows it: who, when, and its own words without the history quoted below them. */
+export function readMessage(msg: { id: string; internalDate?: string; payload?: Part }, mailbox: string): Mail {
+  const payload = msg.payload ?? {}, h = (n: string) => (payload.headers ?? []).find((x) => x.name.toLowerCase() === n)?.value ?? "";
+  const htmlPart = findPart(payload, "text/html"), textPart = findPart(payload, "text/plain");
+  let html = "";
+  if (htmlPart) html = cleanMailHtml(decode(htmlPart.body?.data ?? "").split(/<(?:div|blockquote)[^>]*class\s*=\s*"[^"]*gmail_quote/i)[0].split(/<blockquote[^>]*type\s*=\s*"cite"/i)[0]);
+  else if (textPart) { const text = decode(textPart.body?.data ?? ""), cut = QUOTED.exec(text);
+    html = esc((cut ? text.slice(0, cut.index) : text).split("\n").filter((l) => !l.startsWith(">")).join("\n").trim()).replace(/\n/g, "<br>"); }
+  const from = h("from");
+  return { id: msg.id, from, to: h("to"), subject: h("subject"), at: new Date(Number(msg.internalDate ?? 0)).toISOString(), mine: addressesIn(from).includes(mailbox.toLowerCase()), html: html.slice(0, 40_000), messageId: h("message-id"), files: fileNames(payload).slice(0, 20) };
+}
+
+const wrap = (b64: string) => b64.replace(/(.{76})/g, "$1\r\n");
+const oneLine = (s: string) => s.replace(/[\r\n]+/g, " ").trim();
+/** A two-part (plain text and HTML) message, ready for Gmail. Headers cannot be injected through its fields. */
+export function buildMime(m: { from: string; to: string; subject: string; html: string; inReplyTo?: string; references?: string }, boundary: string): string {
+  for (const v of [m.from, m.to, m.inReplyTo ?? "", m.references ?? ""]) if (/[\r\n]/.test(v)) throw new Error("invalid header");
+  const html = cleanMailHtml(m.html), text = html.replace(/<br\s*\/?>|<\/(p|div|li|h\d|tr)>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\n{3,}/g, "\n\n").trim();
+  const head = [`From: ${m.from}`, `To: ${m.to}`, `Subject: =?UTF-8?B?${Buffer.from(oneLine(m.subject), "utf8").toString("base64")}?=`, "MIME-Version: 1.0",
+    ...(m.inReplyTo ? [`In-Reply-To: ${m.inReplyTo}`, `References: ${m.references || m.inReplyTo}`] : []), `Content-Type: multipart/alternative; boundary="${boundary}"`];
+  const part = (type: string, body: string) => `--${boundary}\r\nContent-Type: ${type}; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrap(Buffer.from(body, "utf8").toString("base64"))}\r\n`;
+  return `${head.join("\r\n")}\r\n\r\n${part("text/plain", text)}${part("text/html", `<div>${html}</div>`)}--${boundary}--`;
+}
+export const toRaw = (mime: string) => Buffer.from(mime, "utf8").toString("base64url");
+
+/* ---------- Calls to Gmail. Each one gives up after 15 seconds. ---------- */
+export class MailError extends Error { status: number; constructor(status: number, message: string) { super(message); this.status = status; } }
+const API = "https://gmail.googleapis.com/gmail/v1/users/me";
+async function gmail<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(API + path, { ...init, signal: AbortSignal.timeout(15_000), headers: { authorization: `Bearer ${token}`, ...(init.headers as Record<string, string>) } });
+  if (!res.ok) throw new MailError([401, 403, 404].includes(res.status) ? res.status : 502, `Gmail a refusé (${res.status})`);
+  return (await res.json()) as T;
+}
+/** The threads in which the given addresses take part, newest first, each with its messages read. */
+export async function threadsFor(token: string, addresses: string[], mailbox: string): Promise<Array<{ id: string; subject: string; messages: Mail[] }>> {
+  if (!addresses.length) return [];
+  const list = await gmail<{ threads?: Array<{ id: string }> }>(token, `/threads?maxResults=12&q=${encodeURIComponent(mailQuery(addresses))}`);
+  const full = await Promise.all((list.threads ?? []).map((t) => gmail<{ id: string; messages?: Array<{ id: string; internalDate?: string; payload?: Part; labelIds?: string[] }> }>(token, `/threads/${encodeURIComponent(t.id)}?format=full`)));
+  return full.map((t) => { const messages = (t.messages ?? []).filter((m) => !(m.labelIds ?? []).includes("DRAFT")).map((m) => readMessage(m, mailbox)).sort((a, b) => (a.at < b.at ? -1 : 1));
+    return { id: t.id, subject: messages[0]?.subject ?? "", messages }; }).filter((t) => t.messages.length && concerns(t.messages, addresses));
+}
+/** What a reply needs from its thread. Null when the thread is not one of the deal's. */
+export async function threadHead(token: string, threadId: string, addresses: string[], mailbox: string): Promise<{ messageId: string; subject: string } | null> {
+  const t = await gmail<{ messages?: Array<{ id: string; internalDate?: string; payload?: Part }> }>(token, `/threads/${encodeURIComponent(threadId)}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Message-ID`);
+  const messages = (t.messages ?? []).map((m) => readMessage(m, mailbox));
+  if (!messages.length || !concerns(messages, addresses)) return null;
+  const last = messages[messages.length - 1];
+  return { messageId: last.messageId, subject: messages[0].subject };
+}
+/** Sends a message from the mailbox, inside a thread when one is given. */
+export async function sendMail(token: string, mime: string, threadId = ""): Promise<{ id: string; threadId: string }> {
+  return gmail(token, "/messages/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ raw: toRaw(mime), ...(threadId ? { threadId } : {}) }) });
+}

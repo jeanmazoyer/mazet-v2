@@ -114,3 +114,79 @@ test("a document leaving the draft state is locked in Drive, with the reason sho
   assert.deepEqual(lockBody(false, "whatever"), { contentRestrictions: [{ readOnly: false }] });
   assert.equal(lockBody(true, "x".repeat(500)).contentRestrictions[0].reason?.length, 120);
 });
+
+/* ---------- Gmail: the conversations of a deal, read and answered from the app ---------- */
+const { mailAuthUrl, MAIL_SCOPES, addressesOf, mailQuery, buildMime, toRaw, readMessage, cleanMailHtml, concerns } = await import("../server/mail.ts");
+const b64 = (t: string) => Buffer.from(t, "utf8").toString("base64url");
+
+test("the mailbox consent asks to read and to send, nothing more", () => {
+  const u = new URL(mailAuthUrl("client", "https://x.fr", "gmail.abc"));
+  assert.deepEqual(u.searchParams.get("scope")?.split(" ").sort(), ["email", "openid", ...MAIL_SCOPES].sort());
+  assert.deepEqual([...MAIL_SCOPES].sort(), ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"]);
+  assert.equal(u.searchParams.get("redirect_uri"), "https://x.fr/auth/callback");
+  assert.equal(u.searchParams.get("access_type"), "offline");
+});
+
+test("only real addresses of the deal are searched, each one quoted", () => {
+  const doc = { contact: { email: " Alba@Test.fr " }, mailAddrs: ["noe@test.fr", "à compléter", "x\" OR from:boss@corp.com", "alba@test.fr"] };
+  assert.deepEqual(addressesOf(doc), ["alba@test.fr", "noe@test.fr"]);
+  assert.equal(mailQuery(["alba@test.fr", "noe@test.fr"]), '{from:"alba@test.fr" to:"alba@test.fr" from:"noe@test.fr" to:"noe@test.fr"}');
+  assert.deepEqual(addressesOf({ contact: { email: "à compléter" } }), []);
+});
+
+test("a message is built as a standard two-part e-mail, accents and thread headers included", () => {
+  const mime = buildMime({ from: "Domaine <d@test.fr>", to: "alba@test.fr", subject: "Réservation été", html: "<p>Bonjour <b>Alba</b></p>", inReplyTo: "<abc@mail>", references: "<abc@mail>" }, "BOUND");
+  assert.ok(mime.includes("To: alba@test.fr\r\n") && mime.includes("From: Domaine <d@test.fr>\r\n"));
+  assert.ok(mime.includes(`Subject: =?UTF-8?B?${Buffer.from("Réservation été").toString("base64")}?=\r\n`));
+  assert.ok(mime.includes("In-Reply-To: <abc@mail>\r\n") && mime.includes("References: <abc@mail>\r\n"));
+  assert.ok(mime.includes('Content-Type: multipart/alternative; boundary="BOUND"'));
+  const parts = mime.split("--BOUND");
+  assert.equal(parts.length, 4);
+  assert.ok(parts[1].includes("text/plain; charset=UTF-8") && Buffer.from(parts[1].split("\r\n\r\n")[1].trim(), "base64").toString("utf8").includes("Bonjour Alba"));
+  assert.ok(parts[2].includes("text/html; charset=UTF-8") && Buffer.from(parts[2].split("\r\n\r\n")[1].trim(), "base64").toString("utf8").includes("<b>Alba</b>"));
+  assert.ok(/^[A-Za-z0-9_-]+$/.test(toRaw(mime)));
+  // No header can be smuggled in through the subject or the recipient.
+  assert.throws(() => buildMime({ from: "d@test.fr", to: "a@test.fr\r\nBcc: x@evil.fr", subject: "s", html: "<p>x</p>" }, "B"));
+  assert.ok(!buildMime({ from: "d@test.fr", to: "a@test.fr", subject: "s\r\nBcc: x@evil.fr", html: "<p>x</p>" }, "B").includes("\r\nBcc:"));
+});
+
+test("a received message is read into sender, date and safe content, without the quoted history", () => {
+  const msg = { id: "m1", internalDate: "1795000000000", payload: { headers: [{ name: "From", value: "Alba Test <alba@test.fr>" }, { name: "To", value: "d@test.fr" }, { name: "Subject", value: "Re: Mariage" }, { name: "Message-ID", value: "<id1@mail>" }],
+    mimeType: "multipart/alternative", parts: [{ mimeType: "text/plain", body: { data: b64("Bonjour") } }, { mimeType: "text/html", body: { data: b64('<div>Bonjour <script>alert(1)</script><a href="javascript:x" onclick="y()">lien</a><img src="http://t/p.gif"></div><div class="gmail_quote">ancien message</div>') } }] } };
+  const m = readMessage(msg, "d@test.fr");
+  assert.equal(m.from, "Alba Test <alba@test.fr>"); assert.equal(m.subject, "Re: Mariage"); assert.equal(m.mine, false); assert.equal(m.messageId, "<id1@mail>");
+  assert.equal(m.at, new Date(1795000000000).toISOString());
+  assert.ok(m.html.includes("Bonjour") && m.html.includes("lien"));
+  for (const bad of ["<script", "javascript:", "onclick", "<img", "ancien message"]) assert.ok(!m.html.includes(bad), bad);
+  assert.equal(readMessage({ ...msg, payload: { ...msg.payload, headers: [{ name: "From", value: "Le Domaine <D@Test.fr>" }] } }, "d@test.fr").mine, true);
+  const plain = readMessage({ id: "m2", internalDate: "0", payload: { headers: [], mimeType: "text/plain", body: { data: b64("Ligne 1\n<b>pas du html</b>\n\nLe lun. 2 mars, X a écrit :\n> ancien") } } }, "d@test.fr");
+  assert.ok(plain.html.includes("Ligne 1") && plain.html.includes("&lt;b&gt;") && !plain.html.includes("ancien"));
+  const withFile = readMessage({ id: "m3", internalDate: "0", payload: { headers: [], mimeType: "multipart/mixed", parts: [{ mimeType: "text/plain", body: { data: b64("Voir le devis") } }, { mimeType: "application/pdf", filename: "Devis <1>.pdf", body: {} }] } }, "d@test.fr");
+  assert.deepEqual(withFile.files, ["Devis <1>.pdf"]); assert.deepEqual(m.files, []);
+});
+
+test("mail content keeps simple formatting and safe links only", () => {
+  const out = cleanMailHtml('<p style="color:red">Texte <a href="https://ex.fr/a?b=1" target="_top">ici</a> <a href="mailto:a@b.fr">mail</a> <a href="data:text/html,x">non</a></p><table><tr><td>cellule</td></tr></table>');
+  assert.ok(out.includes('<a href="https://ex.fr/a?b=1" target="_blank" rel="noopener noreferrer">ici</a>') && out.includes('href="mailto:a@b.fr"'));
+  assert.ok(!out.includes("style=") && !out.includes("data:") && out.includes("cellule"));
+});
+
+test("a thread is shown only when one of the deal's addresses takes part in it", () => {
+  const m = (from: string, to: string) => ({ from, to });
+  assert.equal(concerns([m("Alba <alba@test.fr>", "d@test.fr")], ["alba@test.fr"]), true);
+  assert.equal(concerns([m("d@test.fr", "Autre <autre@test.fr>, ALBA@test.fr")], ["alba@test.fr"]), true);
+  assert.equal(concerns([m("boss@corp.com", "d@test.fr")], ["alba@test.fr"]), false);
+  assert.equal(concerns([m("notalba@test.fr", "d@test.fr")], ["alba@test.fr"]), false);
+});
+
+test("a message can only go to an address of the deal, and the page never learns the mailbox's key", async () => {
+  const { recipientFor, mailSeen } = await import("../server/mail.ts");
+  const doc = { contact: { email: "alba@test.fr" }, mailAddrs: ["noe@test.fr"] };
+  assert.equal(recipientFor(doc, ""), "alba@test.fr");
+  assert.equal(recipientFor(doc, "NOE@test.fr"), "noe@test.fr");
+  assert.equal(recipientFor(doc, "boss@corp.com"), null);
+  assert.equal(recipientFor({ contact: { email: "à compléter" } }, ""), null);
+  assert.deepEqual(mailSeen({ refresh: "secret", email: "d@test.fr" }, "admin"), { on: true, email: "d@test.fr" });
+  assert.deepEqual(mailSeen({ refresh: "secret", email: "d@test.fr" }, "team"), { on: true });
+  assert.deepEqual(mailSeen(null, "admin"), { on: false });
+});

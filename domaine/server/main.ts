@@ -14,6 +14,7 @@ import { cookie, decideAccess, hashToken, mayBootstrap, readCookie, readIdToken,
 import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
+import { addressesOf, buildMime, cleanMailHtml, mailAuthUrl, MailError, mailSeen, MAIL_SCOPES, recipientFor, sendMail, threadHead, threadsFor, type MailSetting } from "./mail.ts";
 import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, lockDoc, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
 import { fetchIcal, type Source, type Stay } from "./ical.ts";
 
@@ -22,9 +23,9 @@ const CHANNEL = "domaine_changes";
 // Settings anyone signed in may write, and those only an administrator may.
 const SHARED_KEYS = ["library", "feeds", "agents"], ADMIN_KEYS = ["prefs", "bank"];
 // Settings the team does not even receive: the bank statement, and the secret of the calendar link.
-const PRIVATE_KEYS = ["bank", "ical_token", "drive"];
+const PRIVATE_KEYS = ["bank", "ical_token", "drive", "gmail"];
 // Settings that never leave the server at all: they hold a secret.
-const SECRET_KEYS = ["ical_token", "drive"];
+const SECRET_KEYS = ["ical_token", "drive", "gmail"];
 const UPLOAD_MIME = ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/csv",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
 const MAX_UPLOAD = 25 * 1024 * 1024, MAX_JSON = 3 * 1024 * 1024;
@@ -82,6 +83,7 @@ app.get("/auth/callback", async (c) => {
   const state = c.req.query("state") ?? "", code = c.req.query("code") ?? "";
   if (!state || !code || state !== readCookie(c.req.header("cookie"), "oauth_state")) return deny("connexion interrompue, recommencez");
   if (state.startsWith("drive.")) return driveConnected(c.req.header("cookie"), code);
+  if (state.startsWith("gmail.")) return mailConnected(c.req.header("cookie"), code);
   const res = await fetch("https://oauth2.googleapis.com/token", { method: "POST", signal: AbortSignal.timeout(10_000),
     body: new URLSearchParams({ code, client_id: config.googleId, client_secret: config.googleSecret, redirect_uri: `${config.baseUrl}/auth/callback`, grant_type: "authorization_code" }) });
   const who = res.ok ? readIdToken(((await res.json()) as { id_token?: string }).id_token ?? "", config.googleId, Date.now()) : null;
@@ -123,6 +125,28 @@ async function driveConnected(cookies: string | undefined, code: string): Promis
     return backTo("ok");
   } catch (e) { console.error("drive connection failed", e); return backTo("refus"); }
 }
+/* ---------- Gmail: an administrator lets the app read and answer the estate's mailbox ---------- */
+const mailSetting = async (): Promise<MailSetting | null> => { const [row] = await sql`select value from settings where key = 'gmail'`; return row && mailSeen(row.value, "admin").on ? (row.value as MailSetting) : null; };
+const backMail = (note: string) => new Response(null, { status: 302, headers: [["location", `/?gmail=${note}#reglages`], ["set-cookie", cookie("oauth_state", "", 0)]] });
+app.get("/auth/gmail", async (c) => {
+  const u = await userFromCookie(c.req.header("cookie"));
+  if (!u || u.role !== "admin") return deny("réservé aux administrateurs");
+  if (!config.googleId) return backMail("refus");
+  const state = "gmail." + randomBytes(16).toString("base64url");
+  c.header("Set-Cookie", cookie("oauth_state", state, 600));
+  return c.redirect(mailAuthUrl(config.googleId, config.baseUrl, state));
+});
+async function mailConnected(cookies: string | undefined, code: string): Promise<Response> {
+  const u = await userFromCookie(cookies);
+  if (!u || u.role !== "admin") return deny("réservé aux administrateurs");
+  const got = await exchangeCode(code, config.googleId, config.googleSecret, config.baseUrl, MAIL_SCOPES);
+  const who = got ? readIdToken(got.idToken, config.googleId, Date.now()) : null;
+  if (!got || !who) return backMail("refus");
+  const value: MailSetting = { refresh: got.refresh, email: who.email };
+  await sql`insert into settings (key, value) values ('gmail', ${sql.json(value as never)}) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+  forgetToken(); await sql.notify(CHANNEL, JSON.stringify({ kind: "setting", key: "gmail", client: "" }));
+  return backMail("ok");
+}
 if (config.devLogin) app.get("/auth/dev", async (c) => {
   const email = (c.req.query("email") ?? "dev@localhost").toLowerCase(), role = c.req.query("role") === "team" ? "team" : "admin";
   return new Response(null, { status: 302, headers: [["location", "/"], ["set-cookie", await signIn(email, c.req.query("name") ?? "Dev", role)]] });
@@ -162,10 +186,10 @@ app.get("/api/state", async (c) => {
   const u = c.get("user");
   const deals = await sql`select id, doc, version from deals order by updated_at desc`;
   const settings = Object.fromEntries((await sql`select key, value from settings`).filter((r) => adminOnly(u) ? !SECRET_KEYS.includes(r.key) : !PRIVATE_KEYS.includes(r.key)).map((r) => [r.key, r.value]));
-  const [drive] = await sql`select value from settings where key = 'drive'`;
+  const [drive] = await sql`select value from settings where key = 'drive'`, [gmail] = await sql`select value from settings where key = 'gmail'`;
   const users = adminOnly(u) ? await sql`select email, name, role, last_login is null as pending from users order by created_at` : [];
   const admin = adminOnly(u) ? { icalUrl: `${config.baseUrl}/ical/${await icalToken()}.ics`, lastBackup: await lastBackup() } : null;
-  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin, drive: driveSeen(drive ? drive.value : null, u.role), build: await buildId() });
+  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin, drive: driveSeen(drive ? drive.value : null, u.role), mail: mailSeen(gmail ? gmail.value : null, u.role), build: await buildId() });
 });
 app.get("/api/deals/:id", async (c) => {
   const [row] = await sql`select id, doc, version from deals where id = ${c.req.param("id")}`;
@@ -362,10 +386,58 @@ app.delete("/api/drive", async (c) => {
   return c.json({ ok: true });
 });
 
+/* ---------- Gmail: the conversations of a deal, and answers sent from the app ---------- */
+// The page names a deal, never an address: the server takes the addresses from the deal itself, so a
+// page cannot be used to read or write to anyone else in the mailbox.
+const mailFailure = (c: { json: (body: unknown, status: 409 | 502) => Response }, e: unknown): Response => {
+  if ((e instanceof DriveError || e instanceof MailError) && e.status === 401) { forgetToken(); return c.json({ error: "La boîte Gmail n'est plus connectée : reconnectez-la dans les réglages" }, 409); }
+  if (e instanceof MailError && e.status === 403) return c.json({ error: "Gmail refuse l'accès : vérifiez que « Gmail API » est activée dans le projet Google Cloud" }, 409);
+  console.error("gmail call failed", e); return c.json({ error: "Gmail ne répond pas, réessayez" }, 502);
+};
+const dealDoc = async (id: string): Promise<Doc | null> => { if (!DEAL_ID.test(id)) return null; const [row] = await sql`select doc from deals where id = ${id}`; return row ? (row.doc as Doc) : null; };
+app.get("/api/mail", async (c) => {
+  const doc = await dealDoc(c.req.query("dealId") ?? "");
+  if (!doc) return c.json({ error: "affaire introuvable" }, 404);
+  const box = await mailSetting();
+  if (!box) return c.json({ error: "La boîte Gmail n'est pas connectée" }, 409);
+  try {
+    const addresses = addressesOf(doc as never);
+    return c.json({ addresses, threads: await threadsFor(await accessToken(box.refresh, config.googleId, config.googleSecret), addresses, box.email) });
+  } catch (e) { return mailFailure(c as never, e); }
+});
+app.post("/api/mail/send", async (c) => {
+  const body = await readJson(c), doc = await dealDoc(String(body?.dealId ?? ""));
+  if (!doc) return c.json({ error: "affaire introuvable" }, 404);
+  const to = recipientFor(doc as never, String(body?.to ?? "")), html = cleanMailHtml(String(body?.html ?? "")), threadId = String(body?.threadId ?? "");
+  if (!to) return c.json({ error: "Cette affaire n'a pas d'adresse e-mail valable" }, 400);
+  if (!html.replace(/<[^>]+>/g, "").trim() || html.length > 100_000 || (threadId && !/^[0-9a-f]{8,32}$/.test(threadId))) return c.json({ error: "message invalide" }, 400);
+  const box = await mailSetting();
+  if (!box) return c.json({ error: "La boîte Gmail n'est pas connectée" }, 409);
+  try {
+    const token = await accessToken(box.refresh, config.googleId, config.googleSecret);
+    // A reply joins its thread only when that thread really is one of this deal's.
+    const head = threadId ? await threadHead(token, threadId, addressesOf(doc as never), box.email) : null;
+    if (threadId && !head) return c.json({ error: "Cette conversation n'appartient pas à l'affaire" }, 400);
+    const subject = String(body?.subject ?? "").trim().slice(0, 200) || (head ? `Re: ${head.subject.replace(/^(re\s*:\s*)+/i, "")}` : "(sans objet)");
+    const mime = buildMime({ from: box.email, to, subject, html, ...(head?.messageId ? { inReplyTo: head.messageId, references: head.messageId } : {}) }, "b" + randomBytes(12).toString("hex"));
+    const sent = await sendMail(token, mime, head ? threadId : "");
+    console.warn(`e-mail sent for deal ${String(body?.dealId)} by ${c.get("user").email}`);
+    return c.json({ ok: true, threadId: sent.threadId });
+  } catch (e) { return mailFailure(c as never, e); }
+});
+app.delete("/api/mail", async (c) => {
+  if (!adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);
+  const box = await mailSetting();
+  if (box) await revoke(box.refresh);
+  await sql`delete from settings where key = 'gmail'`; forgetToken();
+  await notify(c, { kind: "setting", key: "gmail" });
+  return c.json({ ok: true });
+});
+
 /* ---------- Backup: everything the app holds, as one file ---------- */
 // Uploaded files are listed, not embedded: they live on their own volume.
 async function snapshot(): Promise<string> {
-  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings where key <> 'drive'`, sql`select id, deal_id, name, mime, size, created_at from files`]);
+  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings where key not in ('drive', 'gmail')`, sql`select id, deal_id, name, mime, size, created_at from files`]);
   return JSON.stringify({ format: "domaine-backup-1", at: new Date().toISOString(), users, deals, settings, files });
 }
 const backupDir = join(config.dataDir, "backups");

@@ -74,6 +74,13 @@ ok("the Drive grant cannot be read back, even by an administrator", (await a.eva
 ok("without a connection the server creates no Drive document", (await a.evaluate((id) => fetch("/api/drive/docs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dealId: id, title: "Caution", html: "<p>x</p>" }) }).then((r) => r.status), id)) === 409);
 ok("without a connection the server makes no Drive folder either", (await a.evaluate((id) => fetch("/api/drive/folder", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dealId: id, name: "Séjour", client: false }) }).then((r) => r.status), id)) === 409
   && (await S(a, "S.deals.every(d => !d.driveFolder)")));
+// Gmail: the mailbox's key stays on the server, only an administrator connects it, and nothing is read or sent without it
+ok("the team can neither start the mailbox consent nor disconnect it", (await team.evaluate(() => fetch("/auth/gmail").then((r) => new URL(r.url).origin === location.origin))) && (await team.evaluate(() => fetch("/api/mail", { method: "DELETE" }).then((r) => r.status))) === 403);
+ok("the mailbox grant can be neither read back nor written by a page", (await a.evaluate(() => fetch("/api/settings/gmail").then((r) => r.status))) === 403 && (await S(a, "S.mail.on")) === false
+  && (await a.request.put(`${BASE}/api/settings/gmail`, { data: { value: { refresh: "x", email: "x@test.local" } } })).status() === 400 && (await a.evaluate(() => fetch("/api/state").then((r) => r.json()).then((st) => st.mail.on === false && !("gmail" in st.settings)))));
+ok("without a connected mailbox the server reads no conversation", (await a.evaluate((id) => fetch("/api/mail?dealId=" + id).then((r) => r.status), id)) === 409 && (await a.request.get(`${BASE}/api/mail?dealId=nope`)).status() === 404);
+const sendTry = async (to) => (await a.request.post(`${BASE}/api/mail/send`, { data: { dealId: id, subject: "Essai", html: "<p>Bonjour</p>", to } })).status();
+ok("the server sends nothing to an address that is not the deal's, nor without a mailbox", (await sendTry("boss@corp.com")) === 400 && [400, 409].includes(await sendTry("")));
 await a.goto(`${BASE}/#reglages`); await a.waitForSelector(".setcard");
 ok("the settings offer to connect Google Drive", (await a.locator('a[href="/auth/drive"]').count()) === 1);
 
@@ -176,6 +183,33 @@ await a.evaluate(() => { const d = window.__app.S.deals.find((o) => o.id === "t2
 await a.click('.docs .drow:has-text("Caution")'); await a.waitForSelector(".drawer iframe.fileview");
 ok("a draft typed in by hand in Google Docs is left alone, and says so", (await a.locator(".drawer footer").innerText()).includes("ne suit plus la fiche") && (await a.locator('[data-a="doc-resync"]').count()) === 1);
 await a.click("#close-preview"); await a.evaluate(() => { window.__app.S.drive = { on: false }; }); await a.context().unroute("**/api/drive/**");
+// Gmail in the deal: the conversations are read in the page and answered from it (Gmail's answers are played here)
+ok("without a mailbox, the e-mail tab is not offered", (await a.locator('.composer [data-comp="E-mail"]').count()) === 0);
+const mailDeal = await a.evaluate(() => location.hash.slice(9));
+const played = { addresses: ["alba@test.local"], threads: [
+  { id: "aaa0000000000001", subject: "Mariage en juin", messages: [
+    { id: "m1", from: "Alba Test <alba@test.local>", to: "domaine@test.local", subject: "Mariage en juin", at: "2027-01-10T09:00:00.000Z", mine: false, messageId: "<1@mail>", files: ["Plan de table.pdf"], html: '<p>Bonjour, le domaine est-il <b>libre</b> ?</p><img src="x" onerror="window.__hit = 1"><script>window.__hit = 1</script>' },
+    { id: "m2", from: "Le Domaine <domaine@test.local>", to: "alba@test.local", subject: "Re: Mariage en juin", at: "2027-01-10T11:00:00.000Z", mine: true, messageId: "<2@mail>", files: [], html: "<p>Oui, il est libre.</p>" }] },
+  { id: "aaa0000000000002", subject: "Question traiteur", messages: [{ id: "m3", from: "alba@test.local", to: "domaine@test.local", subject: "Question traiteur", at: "2026-12-01T08:00:00.000Z", mine: false, messageId: "<3@mail>", files: [], html: "<p>Peut-on venir avec notre traiteur ?</p>" }] }] };
+let mailAsked = [], mailReads = 0;
+await a.context().route("**/api/mail?**", (r) => { mailReads++; return r.fulfill({ contentType: "application/json", body: JSON.stringify(played) }); });
+await a.context().route("**/api/mail/send", (r) => { mailAsked.push(JSON.parse(r.request().postData() ?? "{}")); return r.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, threadId: "aaa0000000000001" }) }); });
+await a.evaluate((i) => { const { S } = window.__app; S.deals.find((d) => d.id === i).contact.email = "Alba@test.local"; S.mail = { on: true, email: "domaine@test.local" }; S.composer = "Notes"; window.dispatchEvent(new HashChangeEvent("hashchange")); }, mailDeal);
+await a.waitForSelector('.blk:has-text("Conversations") .drow');
+ok("with the mailbox connected, the deal lists its conversations", (await a.locator('.blk:has-text("Conversations") .drow').count()) === 2 && (await a.locator('.composer [data-comp="E-mail"]').count()) === 1);
+await a.locator('.blk:has-text("Conversations") .drow').first().click(); await a.waitForSelector("#thread .mail");
+ok("a conversation opens in the page, message by message, with its attachments named", (await a.locator("#thread .mail").count()) === 2 && (await a.locator("#thread .mail.out").count()) === 1 && (await a.locator("#thread").innerText()).includes("Plan de table.pdf") && (await a.locator("#thread .mail b").first().innerText()) === "Alba Test");
+ok("what a message carries is shown as text and formatting only", (await a.locator("#thread img, #thread script").count()) === 0 && (await a.evaluate(() => window.__hit)) === undefined && (await a.locator("#thread .rich b").first().innerText()) === "libre");
+await a.click("#mail-body"); await a.keyboard.type("Merci Alba, "); await a.click('.rte [data-cmd="bold"]'); await a.keyboard.type("à bientôt"); await settle(a);
+await a.click('[data-a="mail-send"]'); await a.waitForSelector(".flash, .toast, [role=status]", { timeout: 3000 }).catch(() => null); await settle(a);
+ok("an answer goes into its conversation, formatted, and the page never chooses the recipient", mailAsked.length === 1 && mailAsked[0].dealId === mailDeal && mailAsked[0].threadId === "aaa0000000000001" && /<b>à bientôt<\/b>/.test(mailAsked[0].html) && !("to" in mailAsked[0]), JSON.stringify(mailAsked));
+ok("a sent e-mail is written in the deal's history and the message box is emptied", (await S(a, `S.deals.find(d => d.id === '${mailDeal}').history[0].t`)) === "E-mail envoyé : Mariage en juin" && (await a.locator("#mail-body").innerText()).trim() === "");
+await a.click('[data-a="mail-new"]'); await a.waitForSelector("#mail-subject"); await a.click("#mail-body"); await a.keyboard.type("Bonjour"); await a.click('[data-a="mail-send"]'); await settle(a);
+ok("a new conversation is not sent without a subject", mailAsked.length === 1 && (await a.locator("#mail-subject").count()) === 1);
+await a.fill("#mail-subject", "Votre visite"); await a.click('[data-a="mail-send"]'); await settle(a);
+ok("a new conversation is sent with its subject, outside any thread", mailAsked.length === 2 && mailAsked[1].subject === "Votre visite" && mailAsked[1].threadId === "");
+await a.waitForTimeout(1800); await a.evaluate(() => { const { S, mails } = window.__app; S.mail = { on: false }; mails.clear(); S.composer = "Notes"; S.notice = ""; window.dispatchEvent(new HashChangeEvent("hashchange")); });
+await a.context().unroute("**/api/mail?**"); await a.context().unroute("**/api/mail/send");
 await a.click('[data-comp="Événement"]'); ok("the information sheet is shown as text, never as markup", (await a.locator(".evt").innerText()).includes("Terrasse <b>ouest</b>"));
 // From the calendar, a stay opens in a panel and can be worked on there, without leaving the calendar
 await a.goto(`${BASE}/#reservations`); await a.waitForSelector(".cmonth"); await a.evaluate(() => { window.__app.S.month = "2027-08"; }); await a.click('[data-a="rail"]'); await a.click('[data-a="rail"]');

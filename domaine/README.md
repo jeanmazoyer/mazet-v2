@@ -100,6 +100,25 @@ Needs, in the Google Cloud project of the sign-in client: the Google Drive API e
 screen published (in "Testing" mode Google ends the grant after seven days). The redirect address is the
 sign-in one, `/auth/callback`.
 
+## Gmail (conversations read and answered from a deal)
+
+An administrator connects the estate's mailbox in Réglages, card "Gmail" (`/auth/gmail`, same Google
+client and same `/auth/callback` as the sign-in). The consent asks for two things: reading the mailbox
+(`gmail.readonly`) and sending from it (`gmail.send`). "Gmail API" must be enabled in the Google Cloud
+project.
+
+- The grant is stored in the settings under `gmail`. It never leaves the server: not in `/api/state`,
+  not through `/api/settings`, not in the backups.
+- `GET /api/mail?dealId=` takes the addresses from the deal itself (its contact), searches the mailbox
+  for them, and returns only the threads in which one of them really takes part. A page names a deal,
+  never an address.
+- `POST /api/mail/send` writes to the deal's own address only. A reply joins a thread only after the
+  server has checked that this thread is one of the deal's. What is sent is cleaned to formatting tags
+  and web or mail links, and built as a plain text + HTML message.
+- Conversations are not copied into the database: they are read from Gmail when a deal is opened and
+  kept in the page's memory for two minutes. Each message sent is noted in the deal's history.
+- Not done yet: attachments on messages sent from the app.
+
 ## The rental agreement
 
 `web/contract.js` holds the estate's agreement in French and in English. A deal carries the language of
