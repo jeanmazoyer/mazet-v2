@@ -1065,3 +1065,19 @@ a.mini.att:hover { border-color: var(--blue); color: var(--blue-ink); } a.mini.a
 .mactions { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4); }
 .mactions .sp { flex: 1; } .mactions .iconbtn.on { background: var(--blue-tint); color: var(--blue-ink); } .mactions .btn { min-width: 108px; justify-content: center; }
 .signin { width: 100%; max-width: 520px; margin-top: var(--s3); resize: vertical; line-height: 1.45; padding: var(--s2) var(--s3); height: auto; }
+
+/* Messages: waiting to leave, followed, images in the text, split send button */
+.outbox { display: flex; flex-direction: column; gap: var(--s2); }
+.orow { display: flex; align-items: center; gap: var(--s3); padding: var(--s2) var(--s3); border: 1px dashed var(--line); border-radius: var(--r-md); background: var(--inset); }
+.orow .grow { flex: 1; min-width: 0; } .orow b { display: block; overflow-wrap: anywhere; } .orow small { display: block; font-size: 12px; color: var(--ink-3); margin-top: 2px; overflow-wrap: anywhere; }
+.orow > .ico { color: var(--ink-3); flex: none; } .orow.bad { border-color: rgba(235,87,87,.5); } .orow.bad > .ico, .orow.bad small { color: var(--red-ink, #b3261e); } .orow .link { font-size: 13px; white-space: nowrap; }
+.mtrack { display: inline-flex; align-items: center; gap: var(--s1); margin-top: var(--s3); font-size: 12px; color: var(--ink-3); } .mtrack.seen { color: var(--green-ink); }
+.mcomp #mail-body img, .mail .rich img { max-width: 100%; height: auto; border-radius: var(--r-sm); }
+.mline.tools .sp { flex: 1; } .tlink.ai { color: #6b4fd8; background: rgba(107,79,216,.08); } .tlink.ai:hover { background: rgba(107,79,216,.16); color: #5a3fc7; }
+.menuwrap.split { display: inline-flex; } .menuwrap.split .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; min-width: 96px; }
+.menuwrap.split .btn.caret { min-width: 0; width: 34px; padding: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid rgba(255,255,255,.35); }
+.pop.sendpop { position: absolute; right: 0; bottom: calc(100% + var(--s1)); width: 230px; }
+.attpop .mi small { display: block; font-size: 12px; color: var(--ink-3); }
+.aihint { height: auto; resize: vertical; line-height: 1.45; padding: var(--s2) var(--s3); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); }
+.tlink { white-space: nowrap; } .mline.tools { flex-wrap: wrap; row-gap: var(--s1); }

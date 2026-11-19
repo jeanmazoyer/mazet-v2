@@ -22,6 +22,10 @@ export const config = {
   // cannot be set on the box. Only the hash is ever written down; see mayBootstrap.
   setupHash: (process.env.SETUP_CODE_SHA256 ?? "").trim().toLowerCase(),
   dataDir: process.env.DATA_DIR ?? "./data",
+  // Drafting messages with Claude: off until a key is given. The daily ceiling keeps the cost known in advance.
+  aiKey: (process.env.ANTHROPIC_API_KEY ?? "").trim(),
+  aiModel: (process.env.AI_MODEL ?? "claude-opus-5-5").trim(),
+  aiDailyMax: Math.max(0, Math.min(500, Number(process.env.AI_DAILY_MAX ?? 30) || 0)),
   // Sign-in without Google, for a laptop only: both the flag and a localhost address are needed.
   devLogin: process.env.DEV_LOGIN === "true" && new URL(baseUrl).hostname === "localhost",
 };

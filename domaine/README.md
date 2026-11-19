@@ -132,6 +132,26 @@ project.
 - Formatting kept in a message: a `<font>` may carry a font, a size or a colour, each checked against a
   strict shape, on the page and again on the server. No other attribute, no style, no image.
 
+### Later sending, followed messages, PDF copies, drafting
+
+- **One delivery path.** `POST /api/mail/send` reads the request into a job, checks it (recipients are
+  addresses of the deal, files and images are stored for that deal, Google documents are the deal's
+  own), then either sends it or, with `at`, keeps it in `mail_outbox`. A clock sends what is due every
+  half minute, running the very same checks again at that moment. A line is marked "sending" before
+  anything leaves, so a message cannot leave twice.
+- **Images in the text** are files of the app while the message is written (`/api/files/<id>`); to
+  leave, each becomes a part of the message itself (`cid:`). No other image survives.
+- **PDF copies.** A Google Docs file of the deal is exported as PDF. A page made in the app (a quote) is
+  turned into a temporary Google Docs file, exported, and removed. Both need the Drive connected.
+- **Opens and clicks**, off unless the person turns them on: one image (`/t/<token>.gif`) and links
+  rewritten to `/t/<token>/<n>`. The token names nothing; the real addresses stay in `mail_tracks`, so
+  a link cannot be bent to redirect elsewhere. The CNIL treats this as a tracker (recommendation
+  n° 2026-042 of 12 March 2026): it is the estate's call, and the page says so before turning it on.
+- **Drafting with Claude** (`POST /api/mail/draft`), off until `ANTHROPIC_API_KEY` is set in the box's
+  `.env`. `AI_MODEL` (default `claude-opus-5-5`) and `AI_DAILY_MAX` (default 30 drafts a day) are
+  optional. What is sent to the model: the deal's main facts, the open conversation, the person's hint.
+  The client's messages are passed as content inside a marked block, never as instructions.
+
 ## Visits and Google Agenda
 
 A visit is planned from a deal (composer tab "Visite"): day, hour, length, a few words. It is kept in

@@ -14,9 +14,11 @@ import { cookie, decideAccess, hashToken, mayBootstrap, readCookie, readIdToken,
 import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
+import { AiError, draftMail, draftPrompt, draftToHtml, plainText } from "./ai.ts";
+import { jobOf, newToken, PIXEL, sendAtOf, TRACK_TOKEN, type Job } from "./outbox.ts";
 import { calAuthUrl, CalError, calSeen, CAL_SCOPE, deleteEvent, eventBody, eventId, putEvent, visitOf, VISIT_ID, type CalSetting } from "./calendar.ts";
-import { addressesOf, buildMime, cleanMailHtml, mailAuthUrl, MailError, mailSeen, MAIL_SCOPES, attachmentHeaders, readAttachment, recipientsFor, sendMail, threadHead, threadsFor, type MailSetting } from "./mail.ts";
-import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, lockDoc, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
+import { addressesOf, buildMime, cleanMailHtml, inlineImages, trackLinks, type InlineFile, type OutFile, mailAuthUrl, MailError, mailSeen, MAIL_SCOPES, attachmentHeaders, readAttachment, recipientsFor, sendMail, threadHead, threadsFor, type MailSetting } from "./mail.ts";
+import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, exportPdf, ownDriveDocs, pagePdf, pdfName, lockDoc, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
 import { fetchIcal, type Source, type Stay } from "./ical.ts";
 
 const app = new Hono<{ Variables: { user: User } }>();
@@ -24,9 +26,9 @@ const CHANNEL = "domaine_changes";
 // Settings anyone signed in may write, and those only an administrator may.
 const SHARED_KEYS = ["library", "feeds", "agents", "mailkit"], ADMIN_KEYS = ["prefs", "bank"];
 // Settings the team does not even receive: the bank statement, and the secret of the calendar link.
-const PRIVATE_KEYS = ["bank", "ical_token", "drive", "gmail", "agenda"];
+const PRIVATE_KEYS = ["bank", "ical_token", "drive", "gmail", "agenda", "ai_usage"];
 // Settings that never leave the server at all: they hold a secret.
-const SECRET_KEYS = ["ical_token", "drive", "gmail", "agenda"];
+const SECRET_KEYS = ["ical_token", "drive", "gmail", "agenda", "ai_usage"];
 const UPLOAD_MIME = ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/csv",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
 const MAX_UPLOAD = 25 * 1024 * 1024, MAX_JSON = 3 * 1024 * 1024;
@@ -65,6 +67,22 @@ app.get("/ical/:file", async (c) => {
   // DTEND is exclusive in iCal: the departure day stays blocked, as on the estate's own planning.
   const events = rows.filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.start ?? "") && /^\d{4}-\d{2}-\d{2}$/.test(r.end ?? "")).map((r) => `BEGIN:VEVENT\r\nUID:${r.id}@domaine\r\nDTSTAMP:${stamp}\r\nDTSTART;VALUE=DATE:${day(r.start)}\r\nDTEND;VALUE=DATE:${day(r.end, 1)}\r\nSUMMARY:Réservé\r\nEND:VEVENT`);
   return c.body(["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Le Domaine//FR", "CALSCALE:GREGORIAN", ...events, "END:VCALENDAR"].join("\r\n") + "\r\n", 200, { "content-type": "text/calendar; charset=utf-8", "cache-control": "no-store" });
+});
+
+/* ---------- Followed messages: the open (an image) and the click (a redirect) ---------- */
+// Reached by the recipient's mail service, so without sign-in. The image is always answered the same,
+// whether the token exists or not; a link leads only to the address the app kept when sending.
+app.get("/t/:file", async (c) => {
+  const token = /^([A-Za-z0-9_-]{22})\.gif$/.exec(c.req.param("file"))?.[1] ?? "";
+  if (TRACK_TOKEN.test(token)) await sql`update mail_tracks set opens = opens + 1, first_open = coalesce(first_open, now()), last_open = now() where token = ${token}`.catch(() => null);
+  return c.body(PIXEL, 200, { "content-type": "image/gif", "cache-control": "no-store, private", "content-length": String(PIXEL.length) });
+});
+app.get("/t/:token/:n", async (c) => {
+  const token = c.req.param("token"), n = Number(c.req.param("n"));
+  if (!TRACK_TOKEN.test(token) || !Number.isInteger(n) || n < 0 || n > 40) return c.text("Lien introuvable", 404);
+  const [row] = await sql`update mail_tracks set clicks = clicks + 1, last_click = now() where token = ${token} and jsonb_array_length(links) > ${n} returning links->>${n} as url`;
+  if (!row || !/^https?:\/\//i.test(row.url ?? "")) return c.text("Lien introuvable", 404);
+  return c.redirect(row.url, 302);
 });
 
 /* ---------- Sign-in ---------- */
@@ -219,7 +237,7 @@ app.get("/api/state", async (c) => {
   const [drive] = await sql`select value from settings where key = 'drive'`, [gmail] = await sql`select value from settings where key = 'gmail'`, [agenda] = await sql`select value from settings where key = 'agenda'`;
   const users = adminOnly(u) ? await sql`select email, name, role, last_login is null as pending from users order by created_at` : [];
   const admin = adminOnly(u) ? { icalUrl: `${config.baseUrl}/ical/${await icalToken()}.ics`, lastBackup: await lastBackup() } : null;
-  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin, drive: driveSeen(drive ? drive.value : null, u.role), mail: mailSeen(gmail ? gmail.value : null, u.role), agenda: calSeen(agenda ? agenda.value : null, u.role), build: await buildId() });
+  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin, drive: driveSeen(drive ? drive.value : null, u.role), mail: mailSeen(gmail ? gmail.value : null, u.role), agenda: calSeen(agenda ? agenda.value : null, u.role), ai: Boolean(config.aiKey) && config.aiDailyMax > 0, build: await buildId() });
 });
 app.get("/api/deals/:id", async (c) => {
   const [row] = await sql`select id, doc, version from deals where id = ${c.req.param("id")}`;
@@ -444,40 +462,144 @@ app.get("/api/mail/attachment", async (c) => {
   try {
     const file = await readAttachment(await accessToken(box.refresh, config.googleId, config.googleSecret), messageId, n, addressesOf(doc as never), box.email);
     if (!file) return c.json({ error: "pièce jointe introuvable" }, 404);
-    return new Response(file.bytes, { headers: { ...attachmentHeaders(file.name, file.type), "content-length": String(file.bytes.length) } });
+    return new Response(new Uint8Array(file.bytes), { headers: { ...attachmentHeaders(file.name, file.type), "content-length": String(file.bytes.length) } });
   } catch (e) { return mailFailure(c as never, e); }
 });
-app.post("/api/mail/send", async (c) => {
-  const body = await readJson(c), doc = await dealDoc(String(body?.dealId ?? ""));
-  if (!doc) return c.json({ error: "affaire introuvable" }, 404);
-  const dealId = String(body?.dealId ?? ""), asked = Array.isArray(body?.to) ? body.to.map(String) : body?.to ? [String(body.to)] : [];
-  const to = recipientsFor(doc as never, asked), html = cleanMailHtml(String(body?.html ?? "")), threadId = String(body?.threadId ?? "");
-  if (!to) return c.json({ error: asked.length ? "Un destinataire n'est pas une adresse de cette affaire" : "Cette affaire n'a pas d'adresse e-mail valable" }, 400);
+// One message, from what was asked to what Gmail receives. Used when a person sends, and again by the
+// clock for a message set to leave later: every check is made at the moment it really leaves.
+type Refusal = { status: 400 | 404 | 409 | 413; error: string };
+const refuse = (status: Refusal["status"], error: string): Refusal => ({ status, error });
+const isRefusal = (v: unknown): v is Refusal => typeof v === "object" && v !== null && "error" in v && "status" in v;
+/** Who the message goes to and whether its text holds up. No call to Google. */
+async function checkJob(job: Job, admin: boolean): Promise<Refusal | { doc: Doc; to: string[]; html: string; images: string[] }> {
+  const doc = await dealDoc(job.dealId);
+  if (!doc) return refuse(404, "affaire introuvable");
+  const to = recipientsFor(doc as never, job.to), cut = inlineImages(job.html), html = cleanMailHtml(cut.html, true);
+  if (!to) return refuse(400, job.to.length ? "Un destinataire n'est pas une adresse de cette affaire" : "Cette affaire n'a pas d'adresse e-mail valable");
+  if (!html.replace(/<[^>]+>/g, "").trim() || html.length > 100_000 || (job.threadId && !/^[0-9a-f]{8,32}$/.test(job.threadId))) return refuse(400, "message invalide");
+  if (job.files.length > 10 || cut.ids.length > 10 || [...job.files, ...cut.ids].some((id) => !/^[0-9a-f-]{36}$/.test(id))) return refuse(400, "pièce jointe invalide");
+  if (job.gdocs.length > 5 || job.pages.length > 5 || job.pages.some((p) => !p.title || !p.html || p.html.length > 300_000)) return refuse(400, "document à joindre invalide");
   // Only files stored for this very deal can be joined, and the team cannot join one reserved to administrators.
-  const wanted = Array.isArray(body?.files) ? body.files.map(String) : [], files = [];
-  if (wanted.length > 10 || wanted.some((id) => !/^[0-9a-f-]{36}$/.test(id))) return c.json({ error: "pièce jointe invalide" }, 400);
-  for (const id of wanted) {
-    const [row] = await sql`select name, mime, size, admin_only from files where id = ${id} and deal_id = ${dealId}`;
-    if (!row || (row.admin_only && !adminOnly(c.get("user")))) return c.json({ error: "pièce jointe introuvable dans cette affaire" }, 400);
-    const bytes = await readFile(join(config.dataDir, "files", id)).catch(() => null);
-    if (!bytes) return c.json({ error: "pièce jointe introuvable dans cette affaire" }, 400);
-    files.push({ name: String(row.name), type: String(row.mime), bytes });
+  for (const id of [...job.files, ...cut.ids]) {
+    const [row] = await sql`select admin_only from files where id = ${id} and deal_id = ${job.dealId}`;
+    if (!row || (row.admin_only && !admin)) return refuse(400, "pièce jointe introuvable dans cette affaire");
   }
-  if (files.reduce((n, f) => n + f.bytes.length, 0) > 20 * 1024 * 1024) return c.json({ error: "Les pièces jointes dépassent 20 Mo au total" }, 413);
-  if (!html.replace(/<[^>]+>/g, "").trim() || html.length > 100_000 || (threadId && !/^[0-9a-f]{8,32}$/.test(threadId))) return c.json({ error: "message invalide" }, 400);
+  const own = ownDriveDocs(doc as never);
+  if (job.gdocs.some((id) => !own.has(id))) return refuse(400, "Ce document Google n'appartient pas à l'affaire");
+  return { doc, to, html, images: cut.ids };
+}
+async function deliver(job: Job, by: string, admin: boolean): Promise<Refusal | { threadId: string }> {
+  const ok = await checkJob(job, admin);
+  if (isRefusal(ok)) return ok;
   const box = await mailSetting();
-  if (!box) return c.json({ error: "La boîte Gmail n'est pas connectée" }, 409);
+  if (!box) return refuse(409, "La boîte Gmail n'est pas connectée");
+  const stored = async (id: string): Promise<OutFile | null> => { const [row] = await sql`select name, mime from files where id = ${id} and deal_id = ${job.dealId}`; const bytes = row ? await readFile(join(config.dataDir, "files", id)).catch(() => null) : null; return row && bytes ? { name: String(row.name), type: String(row.mime), bytes } : null; };
+  const files: OutFile[] = [], inline: InlineFile[] = [];
+  for (const id of job.files) { const f = await stored(id); if (!f) return refuse(400, "pièce jointe introuvable dans cette affaire"); files.push(f); }
+  for (const id of ok.images) { const f = await stored(id); if (!f || !f.type.startsWith("image/")) return refuse(400, "image introuvable dans cette affaire"); inline.push({ ...f, cid: `${id}@domaine` }); }
+  // Documents written in Google Docs, and pages made in the app, leave as PDF by way of the Drive.
+  if (job.gdocs.length || job.pages.length) {
+    const drive = await driveSetting();
+    if (!drive) return refuse(409, "Connectez Google Drive dans les réglages pour joindre ce document en PDF");
+    const dtoken = await accessToken(drive.refresh, config.googleId, config.googleSecret), own = ownDriveDocs(ok.doc as never);
+    for (const id of job.gdocs) files.push({ name: pdfName(own.get(id) ?? "document"), type: "application/pdf", bytes: await exportPdf(dtoken, id) });
+    for (const p of job.pages) files.push({ name: pdfName(p.title), type: "application/pdf", bytes: await pagePdf(dtoken, p.title, docHtml(p.title, p.html), drive.folder) });
+  }
+  if ([...files, ...inline].reduce((n, f) => n + f.bytes.length, 0) > 20 * 1024 * 1024) return refuse(413, "Les pièces jointes dépassent 20 Mo au total");
+  const token = await accessToken(box.refresh, config.googleId, config.googleSecret);
+  // A reply joins its thread only when that thread really is one of this deal's.
+  const head = job.threadId ? await threadHead(token, job.threadId, addressesOf(ok.doc as never), box.email) : null;
+  if (job.threadId && !head) return refuse(400, "Cette conversation n'appartient pas à l'affaire");
+  const subject = job.subject || (head ? `Re: ${head.subject.replace(/^(re\s*:\s*)+/i, "")}` : "(sans objet)");
+  // Following opens and clicks only makes sense on an address the recipient's mail service can reach.
+  const track = job.track && config.secure ? newToken() : "", followed = track ? trackLinks(ok.html, config.baseUrl, track) : { html: ok.html, links: [] };
+  const mime = buildMime({ from: box.email, to: ok.to.join(", "), subject, html: followed.html, files, inline, ...(track ? { pixel: `${config.baseUrl}/t/${track}.gif` } : {}), ...(head?.messageId ? { inReplyTo: head.messageId, references: head.messageId } : {}) }, "b" + randomBytes(12).toString("hex"));
+  const sent = await sendMail(token, mime, head ? job.threadId : "", files.length + inline.length > 0);
+  if (track) await sql`insert into mail_tracks (token, deal_id, message_id, subject, links, sent_by) values (${track}, ${job.dealId}, ${sent.id ?? ""}, ${subject}, ${sql.json(followed.links)}, ${by})`;
+  console.warn(`e-mail sent for deal ${job.dealId} by ${by}`);
+  return { threadId: sent.threadId };
+}
+const googleFailure = (c: { json: (body: unknown, status: 409 | 502) => Response }, e: unknown): Response => (e instanceof DriveError && e.status !== 401 && !(e instanceof MailError) ? driveFailure(c, e) : mailFailure(c, e));
+app.post("/api/mail/send", async (c) => {
+  const body = await readJson(c), job = jobOf(body), u = c.get("user");
   try {
-    const token = await accessToken(box.refresh, config.googleId, config.googleSecret);
-    // A reply joins its thread only when that thread really is one of this deal's.
-    const head = threadId ? await threadHead(token, threadId, addressesOf(doc as never), box.email) : null;
-    if (threadId && !head) return c.json({ error: "Cette conversation n'appartient pas à l'affaire" }, 400);
-    const subject = String(body?.subject ?? "").trim().slice(0, 200) || (head ? `Re: ${head.subject.replace(/^(re\s*:\s*)+/i, "")}` : "(sans objet)");
-    const mime = buildMime({ from: box.email, to: to.join(", "), subject, html, files, ...(head?.messageId ? { inReplyTo: head.messageId, references: head.messageId } : {}) }, "b" + randomBytes(12).toString("hex"));
-    const sent = await sendMail(token, mime, head ? threadId : "", files.length > 0);
-    console.warn(`e-mail sent for deal ${dealId} by ${c.get("user").email}`);
-    return c.json({ ok: true, threadId: sent.threadId });
-  } catch (e) { return mailFailure(c as never, e); }
+    if (body?.at !== undefined) {
+      // Set to leave later: checked now so a mistake shows at once, checked again when it leaves.
+      const at = sendAtOf(body.at, Date.now());
+      if (!at) return c.json({ error: "Choisissez un moment à venir, dans l'année" }, 400);
+      const ok = await checkJob(job, adminOnly(u));
+      if (isRefusal(ok)) return c.json({ error: ok.error }, ok.status);
+      if (!(await mailSetting())) return c.json({ error: "La boîte Gmail n'est pas connectée" }, 409);
+      const [{ n }] = await sql`select count(*)::int as n from mail_outbox where status = 'pending'`;
+      if (n >= 200) return c.json({ error: "Trop de messages programmés : annulez-en ou attendez leur envoi" }, 409);
+      const [row] = await sql`insert into mail_outbox (deal_id, job, send_at, created_by) values (${job.dealId}, ${sql.json({ ...job, admin: adminOnly(u) } as never)}, ${at}, ${u.email}) returning id`;
+      await notify(c, { kind: "mail", id: job.dealId });
+      return c.json({ ok: true, scheduled: row.id, at: at.toISOString() });
+    }
+    const out = await deliver(job, u.email, adminOnly(u));
+    if (isRefusal(out)) return c.json({ error: out.error }, out.status);
+    return c.json({ ok: true, threadId: out.threadId });
+  } catch (e) { return googleFailure(c as never, e); }
+});
+// Messages waiting for their hour, and those that could not leave, for one deal.
+app.get("/api/mail/outbox", async (c) => {
+  const dealId = c.req.query("dealId") ?? "";
+  if (!DEAL_ID.test(dealId)) return c.json({ error: "affaire introuvable" }, 404);
+  const rows = await sql`select id, job->>'subject' as subject, job->'to' as "to", send_at, status, error, created_by from mail_outbox where deal_id = ${dealId} and status in ('pending', 'failed') order by send_at`;
+  return c.json({ list: rows.map((r) => ({ id: r.id, subject: r.subject, to: r.to, at: r.send_at, status: r.status, error: r.error, by: r.created_by })) });
+});
+app.delete("/api/mail/outbox/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!/^[0-9a-f-]{36}$/.test(id)) return c.json({ error: "introuvable" }, 404);
+  const [row] = await sql`delete from mail_outbox where id = ${id} and status in ('pending', 'failed') returning deal_id`;
+  if (!row) return c.json({ error: "Ce message est déjà parti ou n'existe plus" }, 409);
+  await notify(c, { kind: "mail", id: row.deal_id });
+  return c.json({ ok: true });
+});
+// Every half minute: the messages whose hour has come leave, one after the other. A line is taken
+// (status "sending") before anything is sent, so a message can never leave twice.
+async function sendDue(): Promise<void> {
+  const due = await sql`update mail_outbox set status = 'sending' where id in (select id from mail_outbox where status = 'pending' and send_at <= now() order by send_at limit 5 for update skip locked) returning id, deal_id, job, created_by`;
+  for (const row of due) {
+    const job = row.job as Job & { admin?: boolean };
+    let error = "";
+    try { const out = await deliver(jobOf(job as never), String(row.created_by), job.admin === true); if (isRefusal(out)) error = out.error; }
+    catch (e) { console.error("scheduled e-mail failed", e); error = e instanceof Error && (e instanceof MailError || e instanceof DriveError) ? e.message : "Google ne répond pas"; }
+    await sql`update mail_outbox set status = ${error ? "failed" : "sent"}, error = ${error.slice(0, 300)}, done_at = now() where id = ${row.id}`;
+    await sql.notify(CHANNEL, JSON.stringify({ kind: "mail", id: row.deal_id, client: "" }));
+  }
+}
+// What was sent with its opens and clicks followed, for one deal.
+app.get("/api/mail/tracks", async (c) => {
+  const dealId = c.req.query("dealId") ?? "";
+  if (!DEAL_ID.test(dealId)) return c.json({ error: "affaire introuvable" }, 404);
+  const rows = await sql`select message_id, subject, sent_at, opens, first_open, last_open, clicks, last_click from mail_tracks where deal_id = ${dealId} order by sent_at desc limit 100`;
+  return c.json({ list: rows.map((r) => ({ messageId: r.message_id, subject: r.subject, at: r.sent_at, opens: r.opens, firstOpen: r.first_open, lastOpen: r.last_open, clicks: r.clicks, lastClick: r.last_click })) });
+});
+// A draft written by Claude, on request. A daily ceiling keeps what it costs known in advance.
+app.post("/api/mail/draft", async (c) => {
+  const body = await readJson(c), dealId = String(body?.dealId ?? ""), doc = await dealDoc(dealId), threadId = String(body?.threadId ?? ""), u = c.get("user");
+  if (!doc) return c.json({ error: "affaire introuvable" }, 404);
+  if (!config.aiKey || !config.aiDailyMax) return c.json({ error: "La rédaction par IA n'est pas activée sur ce serveur" }, 409);
+  if (threadId && !/^[0-9a-f]{8,32}$/.test(threadId)) return c.json({ error: "conversation invalide" }, 400);
+  const day = new Date().toISOString().slice(0, 10), [usage] = await sql`select value from settings where key = 'ai_usage'`, used = usage && usage.value.day === day ? Number(usage.value.n) || 0 : 0;
+  if (used >= config.aiDailyMax) return c.json({ error: `Le plafond de ${config.aiDailyMax} rédactions par jour est atteint : il repart demain` }, 429);
+  try {
+    let turns: Array<{ mine: boolean; from: string; text: string }> = [];
+    if (threadId) {
+      const box = await mailSetting();
+      if (!box) return c.json({ error: "La boîte Gmail n'est pas connectée" }, 409);
+      const threads = await threadsFor(await accessToken(box.refresh, config.googleId, config.googleSecret), addressesOf(doc as never), box.email), thread = threads.find((t) => t.id === threadId);
+      if (!thread) return c.json({ error: "Cette conversation n'appartient pas à l'affaire" }, 400);
+      turns = thread.messages.map((m) => ({ mine: m.mine, from: m.from, text: plainText(m.html) }));
+    }
+    await sql`insert into settings (key, value) values ('ai_usage', ${sql.json({ day, n: used + 1 })}) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+    const text = await draftMail(config.aiKey, config.aiModel, draftPrompt(doc as never, turns, String(body?.hint ?? ""), u.name || ""));
+    return c.json({ html: draftToHtml(text), left: config.aiDailyMax - used - 1 });
+  } catch (e) {
+    if (e instanceof AiError) return c.json({ error: e.message }, e.status as 409);
+    return mailFailure(c as never, e);
+  }
 });
 app.delete("/api/mail", async (c) => {
   if (!adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);
@@ -528,7 +650,7 @@ app.delete("/api/calendar", async (c) => {
 /* ---------- Backup: everything the app holds, as one file ---------- */
 // Uploaded files are listed, not embedded: they live on their own volume.
 async function snapshot(): Promise<string> {
-  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings where key not in ('drive', 'gmail', 'agenda')`, sql`select id, deal_id, name, mime, size, created_at from files`]);
+  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings where key not in ('drive', 'gmail', 'agenda', 'ai_usage')`, sql`select id, deal_id, name, mime, size, created_at from files`]);
   return JSON.stringify({ format: "domaine-backup-1", at: new Date().toISOString(), users, deals, settings, files });
 }
 const backupDir = join(config.dataDir, "backups");
@@ -566,4 +688,5 @@ await sql.listen(CHANNEL, (payload) => { for (const send of pages) send(payload)
 setInterval(() => { syncFeeds().catch((e) => console.error("calendar sync failed", e)); }, 30 * 60 * 1000).unref();
 const backup = () => { dailyBackup().catch((e) => console.error("backup failed", e)); };
 backup(); setInterval(backup, 6 * 60 * 60 * 1000).unref();
+setInterval(() => { sendDue().catch((e) => console.error("scheduled e-mails failed", e)); }, 30 * 1000).unref();
 serve({ fetch: app.fetch, port: config.port, hostname: "0.0.0.0" }, (info) => console.warn(`domaine listening on :${info.port} (${config.baseUrl})`));

@@ -71,6 +71,18 @@ export function docMeta(name: string, folder: string): { name: string; mimeType:
   return { name, mimeType: "application/vnd.google-apps.document", parents: [folder] };
 }
 
+/** The Google Docs files a deal holds, with their titles: the only ones that may be exported for it. */
+export function ownDriveDocs(doc: Record<string, unknown>): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const x of Array.isArray(doc.docs) ? doc.docs : []) { const did = (x as { did?: unknown } | null)?.did; if (typeof did === "string" && DRIVE_ID.test(did)) out.set(did, String((x as { t?: unknown }).t ?? "")); }
+  return out;
+}
+/** The name a document takes once turned into a PDF. */
+export function pdfName(title: string): string {
+  const base = title.replace(/[\\/\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().replace(/\.pdf$/i, "").slice(0, 110) || "document";
+  return `${base}.pdf`;
+}
+
 /* ---------- Calls to Google. Each one gives up after 15 seconds. ---------- */
 const wait = () => AbortSignal.timeout(15_000);
 export class DriveError extends Error { status: number; constructor(status: number, message: string) { super(message); this.status = status; } }
@@ -159,4 +171,16 @@ export async function lockDoc(token: string, id: string, locked: boolean, reason
 /** Hands the grant back to Google. A failure here is not an obstacle: the stored token is dropped anyway. */
 export async function revoke(refresh: string): Promise<void> {
   await fetch("https://oauth2.googleapis.com/revoke", { method: "POST", signal: wait(), body: new URLSearchParams({ token: refresh }) }).catch(() => null);
+}
+/** A Google Docs file as a PDF. Google refuses above ten megabytes. */
+export async function exportPdf(token: string, id: string): Promise<Buffer> {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}/export?mimeType=application%2Fpdf`, { signal: AbortSignal.timeout(45_000), headers: { authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new DriveError([401, 403, 404].includes(res.status) ? res.status : 502, `Google Drive a refusé (${res.status})`);
+  return Buffer.from(await res.arrayBuffer());
+}
+/** A page turned into a PDF by way of a Google Docs file made for the occasion and removed at once. */
+export async function pagePdf(token: string, title: string, html: string, folder: string): Promise<Buffer> {
+  const made = await createDoc(token, title, html, folder);
+  try { return await exportPdf(token, made.id); }
+  finally { await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(made.id)}`, { method: "DELETE", signal: wait(), headers: { authorization: `Bearer ${token}` } }).catch(() => null); }
 }

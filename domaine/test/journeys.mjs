@@ -267,6 +267,39 @@ ok("the message leaves for both recipients with its file and its signature, form
 ok("once sent, the draft and its files are gone, and the history names the file", (await a.locator(".mfiles.out").count()) === 0 && (await S(a, `S.deals.find(d => d.id === '${mailDeal}').history[0].body`)).includes("Plan d'accès.pdf"));
 ok("the real server refuses a file of another deal and a recipient outside the deal", (await a.request.post(`${BASE}/api/mail/send`, { data: { dealId: mailDeal, subject: "x", html: "<p>x</p>", files: ["00000000-0000-0000-0000-000000000000"] } })).status() === 400
   && (await a.request.post(`${BASE}/api/mail/send`, { data: { dealId: mailDeal, subject: "x", html: "<p>x</p>", to: ["alba@test.local", "boss@corp.com"] } })).status() === 400);
+// Later sending, followed messages, images in the text, PDF copies, visit proposals, drafting
+const future = new Date(Date.now() + 86400000).toISOString();
+ok("the real server keeps a list of waiting and followed messages, and refuses a moment that is not to come", (await a.evaluate((i) => fetch("/api/mail/outbox?dealId=" + i).then((r) => r.json()).then((o) => Array.isArray(o.list) && o.list.length === 0), mailDeal)) && (await a.evaluate((i) => fetch("/api/mail/tracks?dealId=" + i).then((r) => r.json()).then((o) => Array.isArray(o.list)), mailDeal))
+  && (await a.request.post(`${BASE}/api/mail/send`, { data: { dealId: mailDeal, subject: "x", html: "<p>x</p>", at: "2020-01-01T10:00:00Z" } })).status() === 400 && (await a.request.post(`${BASE}/api/mail/send`, { data: { dealId: mailDeal, subject: "x", html: "<p>x</p>", at: future } })).status() === 409);
+ok("the real server joins no Google document of another deal, and drafts nothing without a key", (await a.request.post(`${BASE}/api/mail/send`, { data: { dealId: mailDeal, subject: "x", html: "<p>x</p>", gdocs: ["1NotOfThisDeal0000"] } })).status() === 400 && (await a.request.post(`${BASE}/api/mail/draft`, { data: { dealId: mailDeal } })).status() === 409 && (await S(a, "S.ai")) === false);
+const pix = await a.request.get(`${BASE}/t/AAAAAAAAAAAAAAAAAAAAAA.gif`);
+ok("the address behind an open answers the same for any token, and an unknown link leads nowhere", pix.status() === 200 && pix.headers()["content-type"] === "image/gif" && (await a.request.get(`${BASE}/t/AAAAAAAAAAAAAAAAAAAAAA/0`, { maxRedirects: 0 })).status() === 404);
+let outList = [{ id: "0a61d4a3-a822-418b-a809-12f67d27367e", subject: "Relance acompte", to: ["alba@test.local"], at: future, status: "pending", error: "", by: "alice@test.local" }], outDeleted = 0;
+await a.context().route("**/api/mail/outbox?**", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ list: outList }) }));
+await a.context().route("**/api/mail/outbox/*", (r) => { outDeleted++; outList = []; return r.fulfill({ contentType: "application/json", body: '{"ok":true}' }); });
+await a.context().route("**/api/mail/tracks?**", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ list: [{ messageId: "m2", subject: "Re: Mariage en juin", at: future, opens: 2, firstOpen: future, lastOpen: future, clicks: 1, lastClick: future }] }) }));
+await a.context().route("**/api/mail/draft", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ html: "<p>Bonjour Alba,</p><p>Le domaine est libre.</p>", left: 9 }) }));
+await a.click('[data-a="mail-reload"]'); await a.waitForSelector(".outbox .orow");
+ok("a message waiting for its hour is listed on the deal, and a followed one says if it was opened", (await a.locator(".outbox .orow").innerText()).includes("Relance acompte") && (await a.locator("#thread .mail.out .mtrack").innerText()).includes("Ouvert 2 fois") && (await a.locator("#thread .mtrack").innerText()).includes("1 clic"));
+await a.click('[data-a="mail-unsched"]'); await a.click('[data-a="confirm-yes"]'); await a.waitForSelector(".outbox", { state: "detached" });
+ok("a waiting message is cancelled after a confirmation", outDeleted === 1);
+await a.click('[data-a="mail-new"]'); await a.waitForSelector("#mail-subject"); await a.fill("#mail-subject", "Votre visite"); await a.click("#mail-body"); await a.selectOption("#mail-rdv", "slots"); await settle(a);
+ok("three free Saturdays are offered for a visit", (await a.locator("#mail-body li").count()) === 3 && (await a.locator("#mail-body").innerText()).includes("samedi"));
+await a.setInputFiles("#mail-img", { name: "plan.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64") }); await a.waitForSelector("#mail-body img");
+ok("an image is placed in the text itself", /^\/api\/files\/[0-9a-f-]{36}$/.test(await a.locator("#mail-body img").getAttribute("src")));
+await a.evaluate(() => { const { S } = window.__app; S.drive = { on: true, email: "d@test.local", folder: "x" }; S.ai = true; window.dispatchEvent(new HashChangeEvent("hashchange")); });
+await a.click('[data-menu="mailatt"]'); await a.waitForSelector(".attpop"); await a.click('.attpop [data-a="mail-attach"]:has-text("Caution")'); await a.waitForSelector(".mfiles.out .att");
+ok("a Google document of the deal is offered as a PDF to join", (await a.locator(".mfiles.out").innerText()).includes(".pdf"));
+await a.click('[data-a="mail-track"]'); await a.waitForSelector('[role="alertdialog"]'); const warned = (await a.locator('[role="alertdialog"]').innerText()).includes("CNIL"); await a.click('[data-a="confirm-yes"]'); await a.waitForTimeout(200);
+ok("following opens and clicks is off until asked for, and says what it implies", warned && (await a.locator('[data-a="mail-track"]').getAttribute("aria-pressed")) === "true");
+await a.click('[data-menu="mailsend"]'); await a.click('[data-a="mail-sched"]'); await a.waitForSelector("#sc-date"); await a.fill("#sc-date", "2020-01-01"); await a.click('[data-a="mail-sched-ok"]'); const past = await a.locator("#sc-date").count();
+await a.fill("#sc-date", future.slice(0, 10)); await a.fill("#sc-time", "09:00"); const askedBefore = mailAsked.length; await a.click('[data-a="mail-sched-ok"]'); await settle(a); await settle(a);
+const later = mailAsked[askedBefore] ?? {};
+ok("a message set for later carries its moment, its image, its PDF and the choice to follow it", past === 1 && Math.abs(Date.parse(later.at) - new Date(`${future.slice(0, 10)}T09:00:00`).getTime()) < 1000 && later.track === true && JSON.stringify(later.gdocs) === '["1DocFromDrive0001"]' && /<img src="\/api\/files\/[0-9a-f-]{36}"/.test(later.html) && (await a.locator(".flash").innerText()).includes("programmé"), JSON.stringify(later).slice(0, 500));
+await a.click('[data-a="mail-ai"]'); await a.fill("#ai-hint", "le domaine est libre"); await a.click('[data-a="mail-ai-ok"]'); await a.waitForSelector('#mail-body p');
+ok("a draft written on request lands in the editor, to be read before sending", (await a.locator("#mail-body").innerText()).includes("Le domaine est libre") && (await a.locator("#ai-hint").count()) === 0 && mailAsked.length === askedBefore + 1);
+await a.evaluate(() => { const { S } = window.__app; S.drive = { on: false }; S.ai = false; S.mailTrack = false; localStorage.removeItem("mailTrack"); delete S.draft["mail-body"]; delete S.draft["mail-subject"]; S.mailFiles = []; });
+for (const u of ["**/api/mail/outbox?**", "**/api/mail/outbox/*", "**/api/mail/tracks?**", "**/api/mail/draft"]) await a.context().unroute(u);
 await a.evaluate(() => { const { S } = window.__app; S.mailkit = { templates: [], signature: "" }; return window.__app.persist(); });
 await a.waitForTimeout(1800); await a.evaluate(() => { const { S, mails } = window.__app; S.mail = { on: false }; mails.clear(); S.composer = "Notes"; S.notice = ""; window.dispatchEvent(new HashChangeEvent("hashchange")); });
 await a.context().unroute("**/api/mail?**"); await a.context().unroute("**/api/mail/send");

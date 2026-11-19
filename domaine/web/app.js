@@ -18,6 +18,8 @@ const I = {
   check: '<path d="m5 12.500 4.500 4.500L19 7.500"/>',
   alert: '<path d="M12 8v5M12 16.500v.5"/><circle cx="12" cy="12" r="9"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.500"/><path d="m4 17 5-4 4 3 3-2 4 3"/>',
+  eye: '<path d="M2 12s3.500-7 10-7 10 7 10 7-3.500 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   shield: '<path d="M12 3 5 6v6c0 4.500 3 7.500 7 9 4-1.500 7-4.500 7-9V6z"/>',
   bank: '<path d="M3 10 12 4l9 6M5 10v8M9.500 10v8M14.500 10v8M19 10v8M3 20h18"/>',
   sync: '<path d="M20 11a8 8 0 0 0-14.500-4.500L4 8M4 4v4h4M4 13a8 8 0 0 0 14.500 4.500L20 16M20 20v-4h-4"/>',
@@ -106,7 +108,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, agenda: { on: false }, visitEdit: null, mailkit: { templates: [], signature: "" }, mailSkip: {}, mailFiles: [], mailSign: true, mailUp: false, tplQ: "", creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, agenda: { on: false }, visitEdit: null, mailkit: { templates: [], signature: "" }, mailSkip: {}, mailFiles: [], mailSign: true, mailUp: false, tplQ: "", ai: false, aiBusy: false, mailTrack: (() => { try { return localStorage.getItem("mailTrack") === "1"; } catch (_) { return false; } })(), creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -864,6 +866,19 @@ function tplSaveModal() {
     <label class="fld"><span>Nom du modèle</span><input id="tp-name" class="inp" value="${esc(dval("tp-name"))}" placeholder="Ex. Réponse à une demande de mariage" maxlength="60"></label><p class="muted">Un modèle du même nom est remplacé.</p>`,
     `<button class="btn" data-a="tpl-save-ok">Enregistrer le modèle</button>`, "small");
 }
+function mailSchedModal() {
+  if (S.modal !== "mail-sched") return "";
+  return shell("Programmer l'envoi", `<p>Le message partira tout seul au moment choisi, même si l'application est fermée. D'ici là, il reste affiché dans l'affaire et peut être annulé.</p>
+    <div class="grid2"><label class="fld"><span>Jour</span><input id="sc-date" class="inp" type="date" min="${TODAY}" value="${esc(dval("sc-date"))}"></label><label class="fld"><span>Heure</span><input id="sc-time" class="inp" type="time" step="300" value="${esc(dval("sc-time"))}"></label></div>`,
+    `<button class="btn" data-a="mail-sched-ok">${ico("clock", "s")}Programmer</button>`, "small");
+}
+function mailAiModal() {
+  if (S.modal !== "mail-ai") return ""; const has = (S.draft["mail-body"] ?? "").replace(/<[^>]+>/g, "").trim();
+  return shell("Rédige mon e-mail", `<p>Dites en quelques mots ce que vous voulez répondre. Sans indication, le brouillon répond simplement au dernier message du client.</p>
+    <label class="fld"><span>Ce que je veux dire</span><textarea id="ai-hint" class="inp aihint" rows="3" placeholder="Ex. le domaine est libre, proposer une visite samedi matin, devis sous 48 heures">${esc(dval("ai-hint"))}</textarea></label>
+    <p class="muted">Pour rédiger, les informations principales de l'affaire et la conversation ouverte sont envoyées à Claude (Anthropic). Rien n'est envoyé au client : le texte revient dans l'éditeur, à relire.${has ? " Le brouillon en cours sera remplacé." : ""}</p>`,
+    `<button class="btn" data-a="mail-ai-ok" ${S.aiBusy ? "disabled" : ""}>${ico("spark", "s")}${S.aiBusy ? "Rédaction…" : "Rédiger"}</button>`, "small");
+}
 function taskModal() {
   if (S.modal !== "task") return "";
   return shell("Nouvelle tâche", `
@@ -1051,7 +1066,8 @@ function simulateReply(d, channel, subject) {
 /* ---------- Rich text: one toolbar for the e-mail editor and for editable documents ---------- */
 // Whatever comes out of an editable area goes through this list of allowed tags before it is
 // stored or shown again: formatting only, no script, no style, no event attribute.
-const RICH_TAGS = new Set(["B", "STRONG", "I", "EM", "U", "A", "UL", "OL", "LI", "BR", "P", "DIV", "SPAN", "H1", "H2", "H3", "H4", "TABLE", "TBODY", "THEAD", "TR", "TD", "TH", "MARK", "SMALL", "S", "STRIKE", "BLOCKQUOTE", "HR", "FONT"]);
+const RICH_TAGS = new Set(["B", "STRONG", "I", "EM", "U", "A", "UL", "OL", "LI", "BR", "P", "DIV", "SPAN", "H1", "H2", "H3", "H4", "TABLE", "TBODY", "THEAD", "TR", "TD", "TH", "MARK", "SMALL", "S", "STRIKE", "BLOCKQUOTE", "HR", "FONT", "IMG"]);
+const APP_IMG = /^\/api\/files\/[0-9a-f-]{36}$/;
 // A <font> keeps a font, a size or a colour, each in a shape that can hold nothing else. A field of the deal keeps its name.
 const FONT_OK = { face: /^[A-Za-z][A-Za-z ,-]{1,60}$/, size: /^[1-7]$/, color: /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20})$/ };
 function clean(html) {
@@ -1060,8 +1076,9 @@ function clean(html) {
     if (["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "LINK", "META"].includes(el.tagName)) { el.remove(); return; }
     walk(el);
     if (!RICH_TAGS.has(el.tagName)) { el.replaceWith(...el.childNodes); return; }
+    if (el.tagName === "IMG" && !APP_IMG.test(el.getAttribute("src") ?? "")) { el.remove(); return; }
     [...el.attributes].forEach((a) => { const keep = a.name === "class" || a.name === "colspan" || (a.name === "href" && el.tagName === "A" && /^(https?:|mailto:)/i.test(a.value))
-      || (el.tagName === "FONT" && FONT_OK[a.name] && FONT_OK[a.name].test(a.value)) || (a.name === "data-var" && el.tagName === "SPAN" && Object.hasOwn(MAIL_VARS, a.value)); if (!keep) el.removeAttribute(a.name); });
+      || (el.tagName === "FONT" && FONT_OK[a.name] && FONT_OK[a.name].test(a.value)) || (el.tagName === "IMG" && a.name === "src") || (a.name === "data-var" && el.tagName === "SPAN" && Object.hasOwn(MAIL_VARS, a.value)); if (!keep) el.removeAttribute(a.name); });
     if (el.tagName === "A") { el.setAttribute("target", "_blank"); el.setAttribute("rel", "noopener"); }
   }); };
   walk(t.content); return t.innerHTML;
@@ -1136,10 +1153,11 @@ const mailKey = (d) => mailAddrs(d).join(",");
 function loadMails(d, force = false) {
   const cur = mails.get(d.id), key = mailKey(d);
   if (cur && cur.key === key && (cur.state === "loading" || (!force && Date.now() - cur.at < MAIL_FRESH_MS))) return cur;
-  const next = { key, state: "loading", threads: cur && cur.key === key ? cur.threads : [], error: "", at: Date.now() };
+  const same = cur && cur.key === key, next = { key, state: "loading", threads: same ? cur.threads : [], outbox: same ? cur.outbox : [], tracks: same ? cur.tracks : [], error: "", at: Date.now() };
   mails.set(d.id, next);
-  const done = (state, threads, error) => { if (mails.get(d.id) === next) { mails.set(d.id, { key, state, threads, error, at: Date.now() }); render(); } };
-  api("GET", "/api/mail?dealId=" + encodeURIComponent(d.id)).then((r) => (r.status === 200 ? done("ok", r.data.threads ?? [], "") : done("err", next.threads, r.data.error ?? "Gmail ne répond pas")), () => done("err", next.threads, "Serveur injoignable"));
+  const done = (state, threads, error, outbox = next.outbox, tracks = next.tracks) => { if (mails.get(d.id) === next) { mails.set(d.id, { key, state, threads, outbox, tracks, error, at: Date.now() }); render(); } };
+  const q = "?dealId=" + encodeURIComponent(d.id), side = (path) => api("GET", path + q).then((r) => (r.status === 200 ? r.data.list ?? [] : []), () => []);
+  Promise.all([api("GET", "/api/mail" + q), side("/api/mail/outbox"), side("/api/mail/tracks")]).then(([r, outbox, tracks]) => (r.status === 200 ? done("ok", r.data.threads ?? [], "", outbox, tracks) : done("err", next.threads, r.data.error ?? "Gmail ne répond pas", outbox, tracks)), () => done("err", next.threads, "Serveur injoignable"));
   return next;
 }
 const mailWho = (h) => ((/^\s*"?([^"<]*?)"?\s*<[^>]+>\s*$/.exec(h) ?? [])[1] || h.replace(/[<>]/g, "")).trim();
@@ -1153,8 +1171,22 @@ function liveMailTab(d) {
   const list = n > 1 ? `<div class="mthreads">${m.threads.map((t) => `<button class="mthread ${cur && cur.id === t.id ? "on" : ""}" data-a="mail-thread" data-id="${esc(t.id)}"><b>${esc(t.subject || "(sans objet)")}</b><small class="num">${threadLine(t)}</small></button>`).join("")}</div>` : "";
   const thread = cur ? `<div class="thread" id="thread">${cur.messages.map((x) => `<article class="mail ${x.mine ? "out" : ""}">
       <header><span class="av">${initials(mailWho(x.from) || "?")}</span><div class="grow"><b>${esc(mailWho(x.from))}</b><small>à ${esc(mailWho(x.to))}</small></div><time>${esc(when(x.at))}</time></header>
-      <div class="rich">${clean(x.html) || `<span class="hint">(message sans texte)</span>`}</div>${(x.files ?? []).length ? `<div class="mfiles">${x.files.map((f) => `<a class="mini att" href="/api/mail/attachment?dealId=${encodeURIComponent(d.id)}&messageId=${encodeURIComponent(x.id)}&n=${Number(f.n)}" target="_blank" rel="noopener" title="Ouvrir ${esc(f.name)}">${ico("clip", "xs")}${esc(f.name || "pièce jointe")}${f.size ? `<small class="num">${fileSize(f.size)}</small>` : ""}</a>`).join("")}</div>` : ""}</article>`).join("")}</div>` : "";
-  return `${head}${list}${thread}${mailComposer(d, cur, all, to)}`;
+      <div class="rich">${clean(x.html) || `<span class="hint">(message sans texte)</span>`}</div>${(x.files ?? []).length ? `<div class="mfiles">${x.files.map((f) => `<a class="mini att" href="/api/mail/attachment?dealId=${encodeURIComponent(d.id)}&messageId=${encodeURIComponent(x.id)}&n=${Number(f.n)}" target="_blank" rel="noopener" title="Ouvrir ${esc(f.name)}">${ico("clip", "xs")}${esc(f.name || "pièce jointe")}${f.size ? `<small class="num">${fileSize(f.size)}</small>` : ""}</a>`).join("")}</div>` : ""}${trackLine(m, x)}</article>`).join("")}</div>` : "";
+  const waiting = (m.outbox ?? []).length ? `<div class="outbox">${m.outbox.map((o) => `<div class="orow ${o.status === "failed" ? "bad" : ""}">${ico(o.status === "failed" ? "alert" : "clock", "s")}<span class="grow"><b>${esc(o.subject || "(réponse)")}</b><small>${o.status === "failed" ? `Non parti : ${esc(o.error || "erreur")}` : `Partira le ${esc(when(o.at))}`} · à ${esc((o.to ?? []).join(", ") || mailKey(d))}</small></span><button class="link ${o.status === "failed" ? "" : "danger"}" data-a="mail-unsched" data-id="${esc(o.id)}">${o.status === "failed" ? "Retirer" : "Annuler l'envoi"}</button></div>`).join("")}</div>` : "";
+  return `${head}${list}${thread}${waiting}${mailComposer(d, cur, all, to)}`;
+}
+const trackLine = (m, x) => { const t = x.mine ? (m.tracks ?? []).find((k) => k.messageId && k.messageId === x.id) : null; if (!t) return "";
+  return `<div class="mtrack ${t.opens ? "seen" : ""}">${ico("eye", "xs")}${t.opens ? `Ouvert ${t.opens} fois, la dernière le ${esc(when(t.lastOpen))}` : "Pas encore ouvert"}${t.clicks ? ` · ${t.clicks} clic${t.clicks > 1 ? "s" : ""} sur un lien` : ""}</div>`; };
+// What can be joined from the deal: a file as it is, a Google Docs file or a page of the app as a PDF made through the Drive.
+const joinable = (d) => d.docs.map((x, i) => ({ x, i })).filter(({ x }) => (!x.admin || isAdmin()) && (x.fileId || x.did || !x.url)).map(({ x, i }) => (x.fileId ? { kind: "file", id: x.fileId, name: x.t, size: x.size ?? 0 } : x.did ? { kind: "gdoc", id: x.did, name: `${x.t}.pdf`, size: 0 } : { kind: "page", id: "p" + i, i, name: `${x.t}.pdf`, size: 0 }));
+// Three Saturdays to offer for a visit, leaving out the days the estate is taken.
+function visitSlots() { const taken = bookings(), out = []; for (let day = addDays(TODAY, 3); out.length < 3 && day < addDays(TODAY, 120); day = addDays(day, 1)) if (new Date(day + "T00:00:00Z").getUTCDay() === 6 && !taken.some((b) => day >= b.start && day <= b.end)) out.push(day); return out; }
+const dayIn = (iso, en) => new Date(iso + "T12:00:00Z").toLocaleDateString(en ? "en-GB" : "fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+function visitText(d, pick) {
+  const en = d.lang === "en", v = pick.startsWith("v:") ? (d.visits ?? []).find((o) => o.id === pick.slice(2)) : null;
+  if (v) return en ? `<p>We look forward to showing you the estate on <b>${esc(dayIn(v.date, true))} at ${esc(v.time)}</b>.</p>` : `<p>Nous vous attendons pour la visite du domaine le <b>${esc(dayIn(v.date, false))} à ${esc(v.time)}</b>.</p>`;
+  const slots = visitSlots().map((day) => `<li>${esc(dayIn(day, en))}${en ? ", 10 am" : " à 10 h"}</li>`).join("");
+  return en ? `<p>We would be glad to show you the estate. Would one of these dates suit you?</p><ul>${slots}</ul><p>Another day is of course possible: just let me know.</p>` : `<p>Nous serions ravis de vous faire visiter le domaine. L'un de ces créneaux vous conviendrait-il ?</p><ul>${slots}</ul><p>Un autre jour est bien sûr possible : dites-moi ce qui vous arrange.</p>`;
 }
 // The message being written: who it is from and for, its subject, a template or a field of the deal to
 // start from, the text, its formatting, then what goes with it (files, signature) and the send button.
@@ -1165,31 +1197,37 @@ function mailComposer(d, cur, all, to) {
   const q = S.tplQ.trim().toLowerCase(), tpls = mailTemplates(d).filter((t) => !q || t.name.toLowerCase().includes(q));
   const tb = (cmd, label, title, arg = "") => `<button class="tb" data-cmd="${cmd}" ${arg ? `data-arg="${arg}"` : ""} title="${title}" aria-label="${title}">${label}</button>`;
   const sel = (id, title, first, opts) => `<select id="${id}" class="tbsel" aria-label="${title}" title="${title}"><option value="">${first}</option>${opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select>`;
-  const docs = d.docs.filter((x) => x.fileId && (!x.admin || isAdmin()) && !S.mailFiles.some((f) => f.id === x.fileId));
+  const docs = joinable(d).filter((j) => !S.mailFiles.some((f) => f.id === j.id) && (j.kind === "file" || S.drive.on)), needDrive = !S.drive.on && joinable(d).some((j) => j.kind !== "file");
+  const coming = visitsOf(d).filter((v) => v.date >= TODAY);
   const tplMenu = S.menu === "mailtpl" ? `<div class="pop tplpop" role="menu" aria-label="Modèles d'e-mail"><label class="tplq">${ico("search", "s")}<input id="tpl-q" value="${esc(S.tplQ)}" placeholder="Chercher" aria-label="Chercher un modèle"></label>
       <div class="tpllist">${tpls.map((t) => `<button class="mi" role="menuitem" data-a="tpl-use" data-id="${esc(t.id)}">${ico(t.std ? "lock" : "doc", "s")}<span>${esc(t.name)}</span></button>`).join("") || `<span class="muted">Aucun modèle à ce nom.</span>`}</div><hr>
       <button class="mi" role="menuitem" data-a="tpl-save">${ico("plus", "s")}Enregistrer le brouillon comme modèle…</button>${isAdmin() ? `<button class="mi" role="menuitem" data-go="reglages-emails">${ico("gear", "s")}Gérer les modèles</button>` : ""}</div>` : "";
-  const attMenu = S.menu === "mailatt" ? `<div class="pop attpop" role="menu" aria-label="Joindre un fichier"><button class="mi" role="menuitem" data-a="mail-pick">${ico("down", "s")}Depuis l'ordinateur…</button>${docs.length ? `<hr><span class="muted">Documents de l'affaire</span>` : ""}${docs.map((x) => `<button class="mi" role="menuitem" data-a="mail-attach" data-id="${esc(x.fileId)}">${ico("doc", "s")}<span>${esc(x.t)}</span></button>`).join("")}</div>` : "";
+  const attMenu = S.menu === "mailatt" ? `<div class="pop attpop" role="menu" aria-label="Joindre un fichier"><button class="mi" role="menuitem" data-a="mail-pick">${ico("down", "s")}Depuis l'ordinateur…</button>${docs.length ? `<hr><span class="muted">Documents de l'affaire</span>` : ""}${docs.map((j) => `<button class="mi" role="menuitem" data-a="mail-attach" data-id="${esc(j.id)}">${ico("doc", "s")}<span>${esc(j.name)}${j.kind === "file" ? "" : `<small>converti en PDF à l'envoi</small>`}</span></button>`).join("")}${needDrive ? `<hr><span class="muted">Connectez Google Drive dans les réglages pour joindre contrats et devis en PDF.</span>` : ""}</div>` : "";
+  const sendMenu = S.menu === "mailsend" ? `<div class="pop sendpop" role="menu" aria-label="Autres façons d'envoyer"><button class="mi" role="menuitem" data-a="mail-sched">${ico("clock", "s")}Programmer l'envoi…</button></div>` : "";
   return `<div class="mcomp">
     <div class="mline"><span class="k">De</span><b class="from">${S.mail.email ? esc(S.mail.email) : "la boîte du domaine"}</b></div>
     <div class="mline"><span class="k">À</span><div class="mto">${to.map((a) => `<span class="rcpt">${name(a)}<button data-a="mail-to-del" data-id="${esc(a)}" aria-label="Retirer ${esc(a)} de ce message" title="Retirer de ce message">${ico("close", "xs")}</button></span>`).join("")}${out.map((a) => `<button class="rcpt off" data-a="mail-to-add" data-id="${esc(a)}" title="Remettre ce destinataire">+ ${esc(a)}</button>`).join("")}
       <input id="mail-to-new" class="tonew" value="${esc(S.draft["mail-to-new"] ?? "")}" placeholder="${all.length ? "Ajouter une adresse" : "Adresse e-mail du client"}" aria-label="Ajouter un destinataire à l'affaire" inputmode="email"></div></div>
     <div class="mline"><span class="k">Objet</span>${cur ? `<b class="resub">Re: ${esc((cur.subject || "(sans objet)").replace(/^(re\s*:\s*)+/i, ""))}</b>` : `<input id="mail-subject" class="subj" value="${esc(S.draft["mail-subject"] ?? "")}" placeholder="Objet du message" aria-label="Objet">`}</div>
     <div class="mline tools"><span class="menuwrap"><button class="tlink ${S.menu === "mailtpl" ? "on" : ""}" data-menu="mailtpl" aria-haspopup="menu" aria-expanded="${S.menu === "mailtpl"}">Choisir un modèle<i class="caret">▾</i></button>${tplMenu}</span>
-      <select id="mail-var" class="tlink" aria-label="Insérer un champ de l'affaire"><option value="">Insérer un champ</option>${Object.keys(MAIL_VARS).map((o) => `<option>${o}</option>`).join("")}</select></div>
+      <select id="mail-var" class="tlink" aria-label="Insérer un champ de l'affaire"><option value="">Insérer un champ</option>${Object.keys(MAIL_VARS).map((o) => `<option>${o}</option>`).join("")}</select>
+      <select id="mail-rdv" class="tlink" aria-label="Proposer une visite"><option value="">Proposer une visite</option>${coming.map((v) => `<option value="v:${esc(v.id)}">Visite prévue le ${fr(v.date)} à ${esc(v.time)}</option>`).join("")}<option value="slots">Trois samedis libres</option></select>
+      <span class="sp"></span>${S.ai ? `<button class="tlink ai" data-a="mail-ai" title="Un brouillon rédigé par Claude à partir de l'affaire et de la conversation">${ico("spark", "s")}Rédige mon e-mail</button>` : ""}</div>
     <div id="mail-body" class="rich edit" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message" data-ph="${cur ? "Répondre à" : "Écrire à"} ${esc(d.contact.name)}">${S.draft["mail-body"] ?? ""}</div>
     ${S.mailSign && signature() ? `<div class="msign" aria-label="Signature ajoutée à l'envoi">-- <br>${esc(signature()).replace(/\n/g, "<br>")}</div>` : ""}
     <div class="rte bottom" role="toolbar" aria-label="Mise en forme du message">${tb("undo", "↶", "Annuler")}${tb("redo", "↷", "Rétablir")}<i class="tsep"></i>${sel("mail-font", "Police", "Police", MAIL_FONTS.map((f) => [f, f]))}${sel("mail-size", "Taille du texte", "Taille", MAIL_SIZES)}<i class="tsep"></i>
       ${tb("bold", "B", "Gras").replace('class="tb"', 'class="tb bold"')}${tb("italic", "I", "Italique").replace('class="tb"', 'class="tb italic"')}${tb("underline", "U", "Souligné").replace('class="tb"', 'class="tb underline"')}${sel("mail-color", "Couleur du texte", "Couleur", MAIL_COLORS)}<i class="tsep"></i>
       ${tb("insertOrderedList", "1.", "Liste numérotée")}${tb("insertUnorderedList", ico("list", "s"), "Liste à puces")}${tb("outdent", "⇤", "Diminuer le retrait")}${tb("indent", "⇥", "Augmenter le retrait")}${tb("formatBlock", "❝", "Citation", "blockquote")}<i class="tsep"></i>
       <button class="tb" data-cmd="link" title="Lien" aria-label="Insérer un lien">${ico("link", "s")}</button><span class="linkbox" hidden><input class="inp sm" placeholder="https://" aria-label="Adresse du lien"><button class="btn sm" data-cmd="linkok">OK</button></span>
+      <button class="tb" data-a="mail-img-pick" title="Insérer une image dans le texte" aria-label="Insérer une image dans le texte">${ico("image", "s")}</button><input id="mail-img" type="file" accept="image/png,image/jpeg,image/webp" hidden>
       ${tb("strikeThrough", "<s>S</s>", "Barré")}${tb("removeFormat", ico("close", "s"), "Effacer la mise en forme")}</div>
     ${S.mailFiles.length || S.mailUp ? `<div class="mfiles out">${S.mailFiles.map((f) => `<span class="mini att">${ico("clip", "xs")}${esc(f.name)}${f.size ? `<small class="num">${fileSize(f.size)}</small>` : ""}<button data-a="mail-unattach" data-id="${esc(f.id)}" aria-label="Retirer ${esc(f.name)}">${ico("close", "xs")}</button></span>`).join("")}${S.mailUp ? `<span class="hint">Envoi du fichier…</span>` : ""}</div>` : ""}
     <div class="mactions"><span class="menuwrap"><button class="iconbtn ${S.menu === "mailatt" ? "on" : ""}" data-menu="mailatt" title="Joindre un fichier" aria-label="Joindre un fichier" aria-haspopup="menu" aria-expanded="${S.menu === "mailatt"}">${ico("clip", "m")}</button>${attMenu}</span><input id="mail-file" type="file" multiple hidden>
       <button class="iconbtn ${S.mailSign && signature() ? "on" : ""}" data-a="mail-sign" title="${signature() ? (S.mailSign ? "Signature ajoutée : cliquer pour l'enlever" : "Ajouter la signature") : "Écrire une signature"}" aria-label="Signature" aria-pressed="${Boolean(S.mailSign && signature())}">${ico("pen", "m")}</button>
+      <button class="iconbtn ${S.mailTrack ? "on" : ""}" data-a="mail-track" title="${S.mailTrack ? "Suivi des ouvertures et des clics activé : cliquer pour l'arrêter" : "Suivre l'ouverture du message et les clics sur ses liens"}" aria-label="Suivi des ouvertures et des clics" aria-pressed="${S.mailTrack}">${ico("eye", "m")}</button>
       <span class="sp"></span><span class="hint">${to.length ? "" : "Aucun destinataire"}</span>
       <button class="iconbtn" data-a="mail-drop" title="Effacer le brouillon" aria-label="Effacer le brouillon">${ico("trash", "m")}</button>
-      <button class="btn" data-a="mail-send" ${to.length && !S.mailBusy && !S.mailUp ? "" : "disabled"}>${S.mailBusy ? "Envoi…" : "Envoyer"}</button></div></div>`;
+      <span class="menuwrap split"><button class="btn" data-a="mail-send" ${to.length && !S.mailBusy && !S.mailUp ? "" : "disabled"}>${S.mailBusy ? "Envoi…" : "Envoyer"}</button><button class="btn caret" data-menu="mailsend" aria-label="Autres façons d'envoyer" aria-haspopup="menu" aria-expanded="${S.menu === "mailsend"}" ${to.length && !S.mailBusy && !S.mailUp ? "" : "disabled"}>▾</button>${sendMenu}</span></div></div>`;
 }
 function addRecipient() {
   const r = ctx(), d = r.name === "affaire" ? deal(r.id) : null, a = (S.draft["mail-to-new"] ?? "").trim().toLowerCase(); if (!d || !a) return;
@@ -1200,7 +1238,7 @@ function addRecipient() {
 }
 // Nothing leaves without this click. The server checks every recipient against the deal's own addresses,
 // that a reply goes into one of the deal's conversations, and that each file belongs to the deal.
-async function mailSend(d) {
+async function mailSend(d, at = null) {
   const box = document.getElementById("mail-body"), text = box ? box.innerText.trim() : "", html = box ? flatVars(clean(box.innerHTML)) : "";
   if (S.mailBusy) return;
   const m = mails.get(d.id) ?? { threads: [] }, cur = mailCur(d, m), subject = cur ? "" : val("mail-subject").trim(), to = mailTo(d);
@@ -1210,10 +1248,13 @@ async function mailSend(d) {
   const fail = (why) => { S.mailBusy = false; S.notice = `E-mail non envoyé : ${why}.`; render(); };
   // An address just added lives in the deal: it must be saved before the server is asked to write to it.
   try { await persist(); } catch (_) { fail("l'affaire n'a pas pu être enregistrée"); return; }
-  const r = await api("POST", "/api/mail/send", { dealId: d.id, subject, html: html + (S.mailSign && signature() ? signatureHtml() : ""), threadId: cur ? cur.id : "", to, files: S.mailFiles.map((f) => f.id) }).catch(() => null);
+  const of = (kind) => S.mailFiles.filter((f) => (f.kind ?? "file") === kind);
+  const pages = of("page").map((f) => d.docs[f.i]).filter(Boolean).map((x) => ({ title: x.t, html: docBody(d, x) }));
+  const r = await api("POST", "/api/mail/send", { dealId: d.id, subject, html: html + (S.mailSign && signature() ? signatureHtml() : ""), threadId: cur ? cur.id : "", to, files: of("file").map((f) => f.id), gdocs: of("gdoc").map((f) => f.id), pages, track: S.mailTrack, ...(at ? { at } : {}) }).catch(() => null);
   if (!r) { fail("serveur injoignable"); return; }
   if (r.status !== 200) { fail(r.data.error ?? "erreur"); return; }
   S.mailBusy = false; const now = deal(d.id), sent = S.mailFiles.map((f) => f.name);
+  if (at) { if (now) log(now, "E-mail", `E-mail programmé pour le ${when(at)} : ${cur ? cur.subject || "(sans objet)" : subject}`, text); dropDraft(); S.flash = { text: `E-mail programmé : il partira le ${when(at)}.` }; persist(); if (now) loadMails(now, true); render(); return; }
   if (now) { log(now, "E-mail", `E-mail envoyé : ${cur ? cur.subject || "(sans objet)" : subject}`, text + (sent.length ? `\n\nPièces jointes : ${sent.join(", ")}` : "")); S.mailThread[d.id] = r.data.threadId ?? (cur ? cur.id : "new"); }
   dropDraft(); S.flash = { text: `E-mail envoyé à ${to.join(", ")}.` }; persist(); render();
   // Gmail needs a moment before a message just sent shows up in a search.
@@ -1511,7 +1552,7 @@ function render() {
   const body = VIEWS[r.name](r);
   document.getElementById("app").className = "app" + (S.railOpen ? " wide" : "");
   paint(rail(active) + `<main class="main">${S.stale ? `<div class="notice stale" role="status">${ico("sync", "s")}<span>Une nouvelle version de l'application est en ligne. Ce que vous êtes en train de saisir n'est pas perdu tant que vous restez sur cette page.</span><button class="btn sm" data-a="reload">Recharger</button></div>` : ""}${S.notice ? `<div class="notice" role="alert">${ico("alert", "s")}<span>${esc(S.notice)}</span></div>` : ""}${S.flash ? `<div class="flash" role="status">${ico("check", "s")}<span>${esc(S.flash.text)}</span>${S.flash.undo ? `<button class="link" data-a="undo">Annuler</button>` : ""}</div>` : ""}${body}</main>`
-    + menus() + peekPanel() + previewPanel() + newDealModal() + pickerModal() + datesModal() + docNewModal() + lostModal() + tplSaveModal() + taskModal() + icsModal() + userModal() + extModal() + searchModal() + agentModal() + sigReqModal() + signModal() + bufferModal() + confirmModal());
+    + menus() + peekPanel() + previewPanel() + newDealModal() + pickerModal() + datesModal() + docNewModal() + lostModal() + tplSaveModal() + mailSchedModal() + mailAiModal() + taskModal() + icsModal() + userModal() + extModal() + searchModal() + agentModal() + sigReqModal() + signModal() + bufferModal() + confirmModal());
   queueSave();
   if (r.name === "openspace") drawWires();
   for (const id of ["thread", "chat"]) { const el = document.getElementById(id); if (el) el.scrollTop = el.scrollHeight; }
@@ -1757,7 +1798,20 @@ document.addEventListener("click", (e) => {
   if (ds.a === "mail-to-del" && d) S.mailSkip[d.id] = [...new Set([...(S.mailSkip[d.id] ?? []), ds.id])];
   if (ds.a === "mail-to-add" && d) S.mailSkip[d.id] = (S.mailSkip[d.id] ?? []).filter((a) => a !== ds.id);
   if (ds.a === "mail-pick") { document.getElementById("mail-file")?.click(); }
-  if (ds.a === "mail-attach" && d) { const x = d.docs.find((o) => o.fileId === ds.id); if (x && S.mailFiles.length < 10) S.mailFiles.push({ id: x.fileId, name: x.t, size: x.size ?? 0 }); }
+  if (ds.a === "mail-attach" && d) { const j = joinable(d).find((o) => o.id === ds.id); if (j && S.mailFiles.length < 10 && !S.mailFiles.some((f) => f.id === j.id)) S.mailFiles.push(j); }
+  if (ds.a === "mail-img-pick") { document.getElementById("mail-img")?.click(); return; }
+  if (ds.a === "mail-track") { const flip = () => { S.mailTrack = !S.mailTrack; try { localStorage.setItem("mailTrack", S.mailTrack ? "1" : "0"); } catch (_) { /* the choice then lasts for this visit only */ } };
+    if (S.mailTrack) flip(); else ask("Suivre les ouvertures et les clics ?", "Une image invisible est ajoutée au message et ses liens passent par l'application : vous voyez ensuite, sous chaque message envoyé, s'il a été ouvert et si un lien a été suivi.", "La CNIL considère ce suivi comme un traceur : en principe, il demande l'accord de la personne qui reçoit le message. L'indication reste approximative (certaines messageries chargent les images d'avance, d'autres les bloquent).", "Activer le suivi", flip); }
+  if (ds.a === "mail-sched") { S.modal = "mail-sched"; S.modalErr = ""; S.draft["sc-date"] = S.draft["sc-date"] ?? addDays(TODAY, 1); S.draft["sc-time"] = S.draft["sc-time"] ?? "09:00"; }
+  if (ds.a === "mail-sched-ok" && d) { const day = S.draft["sc-date"] ?? "", hour = S.draft["sc-time"] ?? "", moment = new Date(`${day}T${hour}:00`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{2}:\d{2}$/.test(hour) || Number.isNaN(moment.getTime())) S.modalErr = "Choisissez le jour et l'heure de l'envoi."; else if (moment.getTime() - Date.now() < 2 * 60000) S.modalErr = "Choisissez un moment à venir.";
+    else { S.modal = null; delete S.draft["sc-date"]; delete S.draft["sc-time"]; mailSend(d, moment.toISOString()); return; } }
+  if (ds.a === "mail-unsched" && d) { const id = ds.id, did = d.id, row = ((mails.get(did) ?? {}).outbox ?? []).find((o) => o.id === id), gone = () => api("DELETE", "/api/mail/outbox/" + encodeURIComponent(id)).then((r) => { if (r.status !== 200) S.notice = r.data.error ?? "Annulation refusée."; else S.flash = { text: "Envoi annulé." }; const cur = deal(did); if (cur) loadMails(cur, true); render(); });
+    if (row && row.status === "failed") gone(); else ask("Annuler cet envoi programmé ?", `« ${esc(row ? row.subject || "(réponse)" : "")} » ne partira pas.`, "Le message n'est pas gardé : il faudra le réécrire pour l'envoyer.", "Annuler l'envoi", gone); }
+  if (ds.a === "mail-ai") { S.modal = "mail-ai"; S.modalErr = ""; S.aiBusy = false; }
+  if (ds.a === "mail-ai-ok" && d) { if (S.aiBusy) return; const cur = mailCur(d, mails.get(d.id) ?? { threads: [] }), did = d.id; S.aiBusy = true; S.modalErr = ""; render();
+    api("POST", "/api/mail/draft", { dealId: did, threadId: cur ? cur.id : "", hint: S.draft["ai-hint"] ?? "" }).then((r) => { S.aiBusy = false;
+      if (r.status !== 200) S.modalErr = r.data.error ?? "La rédaction a échoué."; else { S.draft["mail-body"] = clean(r.data.html ?? ""); S.modal = null; delete S.draft["ai-hint"]; S.focus = "mail-body"; S.flash = { text: "Brouillon rédigé : relisez-le avant d'envoyer." }; } render(); }, () => { S.aiBusy = false; S.modalErr = "Serveur injoignable."; render(); }); return; }
   if (ds.a === "mail-unattach") S.mailFiles = S.mailFiles.filter((f) => f.id !== ds.id);
   if (ds.a === "mail-drop") { const has = (S.draft["mail-body"] ?? "").replace(/<[^>]+>/g, "").trim() || S.mailFiles.length;
     if (has) ask("Effacer ce brouillon ?", "Le texte, l'objet et les pièces jointes de ce message sont retirés.", "Rien n'a été envoyé.", "Effacer le brouillon", dropDraft); else dropDraft(); }
@@ -1879,7 +1933,7 @@ document.addEventListener("click", (e) => {
   if (ds.jump) { S.month = ds.jump; S.showFree = true; }
   render();
 });
-const DRAFTS = ["mail-subject", "mail-body", "mail-to-new", "wa-body", "mail-att", "note", "note-edit", "todo"], DRAFT_RE = /^(n|dn|ic|iv|ls|tk|pv|rm|act|an|sg|vs|ve|tp|mk)-/, QUOTE_RE = /^ql-(\d+)-([lqp])$/;
+const DRAFTS = ["mail-subject", "mail-body", "mail-to-new", "wa-body", "mail-att", "note", "note-edit", "todo"], DRAFT_RE = /^(n|dn|ic|iv|ls|tk|pv|rm|act|an|sg|vs|ve|tp|mk|sc|ai)-/, QUOTE_RE = /^ql-(\d+)-([lqp])$/;
 const isDraft = (id) => Boolean(id) && (DRAFT_RE.test(id) || DRAFTS.includes(id));
 document.addEventListener("input", (e) => { const id = e.target.id, m = QUOTE_RE.exec(id ?? "");
   if (id === "mail-body") { S.draft[id] = clean(e.target.innerHTML); return; }
@@ -1898,6 +1952,10 @@ document.addEventListener("input", (e) => { const id = e.target.id, m = QUOTE_RE
 document.addEventListener("change", (e) => { const r = ctx(), id = e.target.id, v = e.target.value;
   if (id === "mail-tpl") { const md = deal(r.id); if (md && MAIL_TPL[v]) { const [sub, html] = MAIL_TPL[v](md); S.draft["mail-subject"] = sub; S.draft["mail-body"] = html + signOff(); S.focus = "mail-body"; render(); } return; }
   if (id === "mail-var") { const md = deal(r.id); if (md && Object.hasOwn(MAIL_VARS, v)) { if (S.mail.on) mailExec("", varSpan(v, md) + "&nbsp;", true); else insertInMail(MAIL_VARS[v](md)); } e.target.value = ""; return; }
+  if (id === "mail-rdv") { const md = deal(r.id); if (md && v) mailExec("", visitText(md, v), true); e.target.value = ""; return; }
+  if (id === "mail-img") { const md = deal(r.id), f = (e.target.files ?? [])[0]; e.target.value = ""; if (!md || !f) return;
+    S.mailUp = true; S.notice = ""; render();
+    uploadFile(f, md.id).then((up) => { S.mailUp = false; render(); mailExec("", `<img src="/api/files/${up.id}" alt="">`, true); }, (err) => { S.mailUp = false; S.notice = `L'image n'a pas pu être insérée : ${err.message}`; render(); }); return; }
   if (id === "mail-font" || id === "mail-size" || id === "mail-color") { if (v) mailExec({ "mail-font": "fontName", "mail-size": "fontSize", "mail-color": "foreColor" }[id], v); e.target.value = ""; return; }
   if (id === "mail-file") { const md = deal(r.id), picked = [...(e.target.files ?? [])].slice(0, 10 - S.mailFiles.length); e.target.value = ""; if (!md || !picked.length) return;
     S.mailUp = true; S.notice = ""; render();
@@ -2159,7 +2217,7 @@ const usersOut = () => S.users.map((u) => ({ email: u.email, name: u.name, role:
 function applySettings(st) {
   const p = st.settings.prefs ?? {}, bank = st.settings.bank ?? {};
   S.buffer = p.buffer ?? 0; TERMS.deposit = p.deposit ?? 30; TERMS.hold = p.hold ?? 2500; S.plSeq = p.plSeq ?? { D: 0, F: 0 }; S.sources = p.sources ?? []; S.mailbox = p.mailbox ?? ""; S.lessor = p.lessor ?? {};
-  S.library = st.settings.library ?? []; S.mailkit = { templates: [], signature: "", ...(st.settings.mailkit ?? {}) }; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false }; S.agenda = st.agenda ?? { on: false };
+  S.library = st.settings.library ?? []; S.mailkit = { templates: [], signature: "", ...(st.settings.mailkit ?? {}) }; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false }; S.agenda = st.agenda ?? { on: false }; S.ai = st.ai === true;
   const mine = st.user.email;
   S.users = [...st.users].sort((a, b) => Number(b.email === mine) - Number(a.email === mine)).map((u) => ({ email: u.email, name: u.name || u.email.split("@")[0], role: u.role === "admin" ? "Admin" : "Équipe", pending: u.pending }));
   for (const k of Object.keys(SETTINGS)) savedSettings[k] = JSON.stringify(SETTINGS[k]());
@@ -2276,6 +2334,7 @@ function follow() {
       if (mine && (mine._v >= e.version || plain(mine) !== saved.get(e.id))) return; // already known, or I am mid-change: the save will tell
       const r = await api("GET", "/api/deals/" + encodeURIComponent(e.id)).catch(() => null);
       if (r && r.status === 200) { putDeal(r.data); render(); }
+    } else if (e.kind === "mail") { const md = deal(e.id); if (md && mails.has(md.id) && S.mail.on) { loadMails(md, true); render(); }
     } else {
       const dirty = Object.keys(SETTINGS).some((k) => JSON.stringify(SETTINGS[k]()) !== savedSettings[k]);
       const r = dirty ? null : await api("GET", "/api/state").catch(() => null);
