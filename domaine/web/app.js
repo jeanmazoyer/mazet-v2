@@ -105,7 +105,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, creating: "", docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, creating: "", previewOut: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -1045,6 +1045,14 @@ function quoteTab(d) {
     <div class="qf"><span class="sp"></span><span>Total TTC</span><b class="num big">${eur(quoteTotal(q))}</b></div></div>
     <div class="cfoot"><span class="hint">${state} Les lignes se modifient dans le document, tant qu'il n'est pas finalisé.</span><button class="btn sm" data-a="quote-open">${x ? "Ouvrir le devis" : "Créer le devis"}</button></div>`;
 }
+// The panel slides in from the right when it opens (CSS, on insertion) and slides back out before it
+// is removed: closing first marks it as leaving, then drops it once the movement is over.
+const PANEL_OUT_MS = 190;
+function closePanel() {
+  if (!S.preview || S.previewOut) return;
+  S.previewOut = true;
+  setTimeout(() => { S.preview = null; S.previewOut = false; S.docEdit = false; render(); }, PANEL_OUT_MS);
+}
 function previewPanel() {
   const cur = previewed(); if (!cur) return "";
   const { d, x, sheet } = cur, locked = Boolean(x.admin) && !isAdmin(), plain = !sheet && !locked, mode = plain ? docMode(x) : "";
@@ -1076,8 +1084,8 @@ function previewPanel() {
     signed: del + pdf + mail("alt") + `<button class="btn" data-a="doc-open">Ouvrir dans Drive</button>`,
     file: del + (x.url ? `${driveLive(x) ? `<button class="btn alt" data-a="doc-bare" title="${S.docBare ? "Revenir à l'éditeur Google Docs complet" : "N'afficher que la page, sans barre d'outils ni onglets"}">${S.docBare ? "Éditeur complet" : "Page seule"}</button>` : ""}<a class="btn" href="${esc(x.url)}" target="_blank" rel="noopener">Ouvrir dans Google Drive</a>` : x.fileId ? `<a class="btn" href="/api/files/${x.fileId}" target="_blank" rel="noopener">Ouvrir le fichier</a>` : pdf) }[mode];
   const pill = mode === "pldraft" || mode === "final" || fixed;
-  return `<div class="scrim" data-a="close-preview"></div>
-    <aside class="drawer ${x.url && !sheet ? "wide" : ""}" role="dialog" aria-modal="true" aria-label="Aperçu du document">
+  return `<div class="scrim fade ${S.previewOut ? "out" : ""}" data-a="close-preview"></div>
+    <aside class="drawer ${x.url && !sheet ? "wide" : ""} ${S.previewOut ? "out" : ""}" role="dialog" aria-modal="true" aria-label="Aperçu du document">
       <header><span class="kb ${x.k}">${BADGE[x.k]}</span><div class="grow">${S.docEdit && plain && !fixed && mode !== "final" ? `<div class="rename"><input id="doc-name" class="inp" value="${esc(x.t)}" aria-label="Nom du document"><button class="btn green sm" data-a="doc-rename-ok">Enregistrer</button></div>` : `<b>${esc(x.t)}${plain && !fixed && mode !== "final" ? `<button class="iconbtn inline" data-a="doc-rename" title="Renommer" aria-label="Renommer le document">${ico("pen", "s")}</button>` : ""}</b>`}<small>${KLBL[x.k]} · ${fr(x.d)} · ${d ? esc(d.title) : "Non classé"}</small></div>${plain ? (pill ? `<span class="tag ${DOC_ST[x.st ?? "Brouillon"]}">${x.st ?? "Brouillon"}</span>` : `<span class="status"><select data-docstatus aria-label="Statut du document">${Object.keys(DOC_ST).map((o) => `<option ${(x.st ?? "Brouillon") === o ? "selected" : ""}>${o}</option>`).join("")}</select></span>`) : ""}<button class="iconbtn" id="close-preview" data-a="close-preview" aria-label="Fermer l'aperçu">${ico("close", "m")}</button></header>
       ${meta}${state}
       <div class="stage">${body}</div>
@@ -1374,7 +1382,7 @@ document.addEventListener("click", (e) => {
   if (ds.a === "slot-pick" && d) { S.modal = "pick"; S.pickSlot = ds.slot; S.draft = {}; }
   if (ds.pick && d) { const [kind, a, b] = ds.pick.split(":"), src = kind === "lib" ? S.library.splice(Number(a), 1)[0] : deal(a)?.docs[Number(b)];
     if (src) { d.docs.push({ ...src, slot: S.pickSlot }); log(d, "Document", `${src.t} rattaché depuis ${kind === "lib" ? "les documents non classés" : deal(a).title}`); } S.modal = null; S.pickSlot = null; }
-  if (ds.a === "close-preview") { S.preview = null; S.docEdit = false; }
+  if (ds.a === "close-preview") closePanel();
   if (ds.a === "doc-pdf" || ds.a === "doc-print") { S.toast = "Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF »."; render(); window.print(); return; }
   if (ds.a === "doc-open") S.toast = "Dans l'application : le document s'ouvre dans Google Drive.";
   
@@ -1637,6 +1645,7 @@ document.addEventListener("change", (e) => { const r = route(), id = e.target.id
     render(); } });
 document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); S.modal = "search"; S.preview = null; S.menu = null; S.draft.gq = ""; render(); return; }
+  if (e.key === "Escape" && S.preview && !S.edit && !S.payEdit && !S.modal && !S.menu) { closePanel(); render(); return; }
   if (e.key === "Escape" && (S.edit || S.payEdit || S.preview || S.modal || S.menu)) { if (S.modal === "confirm") { S.modal = null; S.confirm = null; } else S.edit = S.payEdit = S.preview = S.modal = S.pending = S.menu = S.pick = S.confirm = null; S.modalErr = ""; S.docEdit = false; render(); return; }
   if (e.key !== "Enter") return;
   if (e.target.id === "doc-name") { document.querySelector('[data-a="doc-rename-ok"]')?.click(); return; }

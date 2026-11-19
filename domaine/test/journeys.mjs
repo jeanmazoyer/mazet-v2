@@ -119,7 +119,10 @@ ok("the deal page shows the remarks, the conversations and the Drive document", 
 await a.context().route(/https:\/\/(drive|docs)\.google\.com\//, (r) => r.fulfill({ contentType: "text/html", body: "<p>Google</p>" }));
 await a.click('.docs .drow >> nth=0'); await a.waitForSelector(".drawer iframe.fileview");
 ok("a signed PDF kept in Drive is shown in the panel by the Drive viewer", (await a.locator(".drawer iframe.fileview").getAttribute("src")) === "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/preview");
-await a.click("#close-preview"); await a.click('.docs .drow >> nth=1'); await a.waitForSelector(".drawer iframe.fileview");
+ok("the panel has slid in from the right", (await a.locator(".drawer").evaluate((el) => getComputedStyle(el).animationName)) === "drawer-in");
+await a.click("#close-preview");
+ok("closing slides it back out before it goes", (await a.locator(".drawer.out").count()) === 1 && (await a.locator(".drawer").evaluate((el) => getComputedStyle(el).animationName)) === "drawer-out");
+await a.waitForSelector(".drawer", { state: "detached" }); await a.click('.docs .drow >> nth=1'); await a.waitForSelector(".drawer iframe.fileview");
 ok("a Google Docs draft opens in the panel in edit mode", (await a.locator(".drawer iframe.fileview").getAttribute("src")) === "https://docs.google.com/document/d/1ZyXwVuTsRqPoNmLk/edit");
 const box = await a.locator(".drawer.wide").boundingBox(), frame = await a.locator(".drawer iframe.fileview").boundingBox();
 ok("a Drive document gets a wide panel and its whole height", box.width >= 1100 && frame.width >= box.width - 4 && frame.height >= 600, JSON.stringify({ box, frame }));
