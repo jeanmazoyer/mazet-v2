@@ -38,6 +38,13 @@ await a.click('[data-comp="Notes"]'); await a.fill("#note", "Note écrite par Al
 ok("another person sees the note without reloading", (await bob.locator(".feed").innerText()).includes("Note écrite par Alice"));
 ok("a note is a sticky note placed above the documents", (await a.locator(".stickies .sticky").first().innerText()).includes("Note écrite par Alice")
   && (await a.evaluate(() => { const note = document.querySelector(".stickies"), docs = [...document.querySelectorAll(".feed .blk h3")].find((h) => h.textContent.startsWith("Documents")); return Boolean(note && docs && (note.compareDocumentPosition(docs) & Node.DOCUMENT_POSITION_FOLLOWING)); })));
+await a.click('.sticky [data-a="note-edit"]'); await a.fill("#note-edit", "Note corrigée par Alice"); await a.click('[data-a="note-save"]'); await settle(a); await settle(bob);
+ok("a note can be corrected, and the correction reaches the others", (await a.locator(".sticky p").first().innerText()) === "Note corrigée par Alice" && (await a.locator(".sticky small").first().innerText()).includes("modifiée") && (await bob.locator(".stickies").innerText()).includes("Note corrigée par Alice"));
+await a.click('.sticky [data-a="pin-del"]'); await a.waitForSelector('[role="alertdialog"]');
+ok("deleting a note asks for a confirmation first", (await a.locator('[role="alertdialog"]').innerText()).includes("Note corrigée par Alice") && (await a.locator(".sticky").count()) === 1);
+await a.click('[role="alertdialog"] [data-a="close-modal"]'); ok("declining keeps the note", (await a.locator(".sticky").count()) === 1 && (await a.locator('[role="alertdialog"]').count()) === 0);
+await a.click('.sticky [data-a="pin-del"]'); await a.click('[data-a="confirm-yes"]'); await settle(a); await settle(bob);
+ok("once confirmed the note is gone for everyone", (await a.locator(".sticky").count()) === 0 && (await bob.locator(".sticky").count()) === 0);
 // Signing the deal creates the schedule; the other page follows
 await a.click('[data-stage="4"]'); await settle(a); await settle(bob);
 ok("stage and schedule reach the other page", (await bob.locator(".step.cur").innerText()).includes("Signé") && (await S(bob, "S.deals[0].payments.length")) === 3);

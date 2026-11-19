@@ -106,7 +106,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -427,7 +427,10 @@ function viewAffaire(id, peek = false) {
       </aside>
       <div class="feed">
         ${composer}
-        ${d.pinned.length ? `<section class="blk"><h3 class="h flex">Notes <span class="count num">${d.pinned.length}</span></h3><div class="stickies">${d.pinned.map((p, i) => `<article class="sticky">${["Note", "Note épinglée"].includes(p.t) ? "" : `<b>${esc(p.t)}</b>`}<p>${esc(p.body)}</p><footer><small>${esc(p.at)} · ${esc(p.by)}</small><span class="acts"><button class="link" data-unpin="${i}" title="La note quitte le haut de la fiche et reste dans l'historique">Archiver</button><button class="link danger" data-a="pin-del" data-i="${i}">Supprimer</button></span></footer></article>`).join("")}</div></section>` : ""}
+        ${d.pinned.length ? `<section class="blk"><h3 class="h flex">Notes <span class="count num">${d.pinned.length}</span></h3><div class="stickies">${d.pinned.map((p, i) => { const head = ["Note", "Note épinglée"].includes(p.t) ? "" : `<b>${esc(p.t)}</b>`;
+          return S.noteEdit && S.noteEdit.deal === d.id && S.noteEdit.i === i
+            ? `<article class="sticky editing">${head}<textarea id="note-edit" aria-label="Modifier la note">${esc(S.draft["note-edit"] ?? p.body)}</textarea><footer><span class="acts"><button class="link" data-a="note-cancel">Annuler</button><button class="btn sm" data-a="note-save" data-i="${i}">Enregistrer</button></span></footer></article>`
+            : `<article class="sticky">${head}<p>${esc(p.body)}</p><footer><small>${esc(p.at)} · ${esc(p.by)}${p.edited ? ` · modifiée le ${esc(p.edited)}` : ""}</small><span class="acts"><button class="link" data-a="note-edit" data-i="${i}">Modifier</button><button class="link" data-unpin="${i}" title="La note quitte le haut de la fiche et reste dans l'historique">Archiver</button><button class="link danger" data-a="pin-del" data-i="${i}">Supprimer</button></span></footer></article>`; }).join("")}</div></section>` : ""}
         <section class="blk"><h3 class="h flex">Documents <span class="count num">${slotsFor(d).length - missingDocs(d)} sur ${slotsFor(d).length}</span>${d.driveFolder ? `<a class="link drivelink" href="https://drive.google.com/drive/folders/${encodeURIComponent(d.driveFolder)}" target="_blank" rel="noopener">Dossier Drive · ${d.drivePlace === "clients" ? "Clients" : "Prospects"}</a>` : d.folderUrl ? `<a class="link drivelink" href="${esc(d.folderUrl)}" target="_blank" rel="noopener">Dossier Drive</a>` : ""}<button class="link" data-a="doc">+ Ajouter</button></h3><div class="docs">${dealDocs(d)}</div>${stageDocNote(d) ? `<p class="docnote">${stageDocNote(d)}</p>` : ""}</section>
         ${auditBlock(d)}${mailsBlock(d)}
         <section class="blk"><h3 class="h">À faire</h3>
@@ -1663,8 +1666,14 @@ document.addEventListener("click", (e) => {
     if (todo) { const at = dd.todos.indexOf(todo); dd.todos.splice(at, 1); log(dd, "Note", `Fait : ${todo.t}`); S.flash = { text: `Fait : ${todo.t}`, undo: () => dd.todos.splice(at, 0, todo) }; } }
   if (ds.a === "note" && d) { const body = val("note").trim(); if (body) { d.pinned.unshift({ t: "Note", body: body.slice(0, 4000), at: fr(TODAY), by: me().name }); delete S.draft.note; } }
   if (ds.a === "todo" && d) { const tt = val("todo").trim(); if (tt) { d.todos.push({ id: "t" + Date.now(), t: tt, type: val("act-type") || "Rappel", due: val("act-due") || TODAY, at: fr(TODAY), by: me().name }); delete S.draft.todo; } }
-  if (ds.unpin !== undefined && d) { const p = d.pinned.splice(Number(ds.unpin), 1)[0]; if (p) log(d, "Note", "Note archivée", p.body); }
-  if (ds.a === "pin-del" && d) { const i = Number(ds.i), p = d.pinned.splice(i, 1)[0]; if (p) S.flash = { text: "Note supprimée.", undo: () => d.pinned.splice(i, 0, p) }; }
+  if (ds.unpin !== undefined && d) { const p = d.pinned.splice(Number(ds.unpin), 1)[0]; if (p) log(d, "Note", "Note archivée", p.body); S.noteEdit = null; }
+  // Deleting a note cannot be taken back: it is asked for twice.
+  if (ds.a === "pin-del" && d) { const p = d.pinned[Number(ds.i)], id = d.id;
+    if (p) ask("Supprimer cette note ?", `« ${esc(p.body.length > 160 ? p.body.slice(0, 160) + "…" : p.body)} »`, "La note est effacée pour de bon. Pour la garder dans l'historique sans l'afficher en haut de la fiche, choisissez plutôt « Archiver ».", "Supprimer la note", () => { const cur = deal(id), at = cur ? cur.pinned.indexOf(p) : -1; if (at >= 0) { cur.pinned.splice(at, 1); S.noteEdit = null; S.flash = { text: "Note supprimée." }; } }); }
+  if (ds.a === "note-edit" && d) { S.noteEdit = { deal: d.id, i: Number(ds.i) }; delete S.draft["note-edit"]; S.focus = "note-edit"; }
+  if (ds.a === "note-cancel") { S.noteEdit = null; delete S.draft["note-edit"]; }
+  if (ds.a === "note-save" && d) { const p = d.pinned[Number(ds.i)], body = val("note-edit").trim().slice(0, 4000);
+    if (!body) S.focus = "note-edit"; else { if (p && body !== p.body) { p.body = body; p.edited = fr(TODAY); } S.noteEdit = null; delete S.draft["note-edit"]; } }
 
   /* Deal: payments */
   if (ds.pay && d) { const p = d.payments.find((x) => x.id === ds.id);
@@ -1711,7 +1720,7 @@ document.addEventListener("click", (e) => {
   if (ds.jump) { S.month = ds.jump; S.showFree = true; }
   render();
 });
-const DRAFTS = ["mail-subject", "mail-body", "wa-body", "mail-att", "note", "todo"], DRAFT_RE = /^(n|dn|ic|iv|ls|tk|pv|rm|act|an|sg)-/, QUOTE_RE = /^ql-(\d+)-([lqp])$/;
+const DRAFTS = ["mail-subject", "mail-body", "wa-body", "mail-att", "note", "note-edit", "todo"], DRAFT_RE = /^(n|dn|ic|iv|ls|tk|pv|rm|act|an|sg)-/, QUOTE_RE = /^ql-(\d+)-([lqp])$/;
 const isDraft = (id) => Boolean(id) && (DRAFT_RE.test(id) || DRAFTS.includes(id));
 document.addEventListener("input", (e) => { const id = e.target.id, m = QUOTE_RE.exec(id ?? "");
   if (id === "mail-body") { S.draft[id] = clean(e.target.innerHTML); return; }
