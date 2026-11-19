@@ -46,7 +46,9 @@ ok("quote lines drive the total", (await txt("#q-total")).replace(/\s/g, "") ===
 await p.click('[data-a="pl-final"]');
 ok("finalising numbers the quote and freezes it", (await S("S.deals.find(d => d.id === 't-option').docs[0].pl.num")) === "D-2026-001" || /^D-\d{4}-001$/.test(await S("S.deals.find(d => d.id === 't-option').docs[0].pl.num")), await S("S.deals.find(d => d.id === 't-option').docs[0].pl.num"));
 ok("no leftover of unplugged features in the panel", (await p.locator('[data-a="doc-mail"], [data-a="sig-new"]').count()) === 0 && !(await txt(".drawer")).includes("Pennylane"));
-await p.click("#close-preview"); await p.click('[data-slot="contrat"][data-a="slot-create"]'); await p.click("#doc-edit h2"); await p.keyboard.press("End"); await p.keyboard.type(" (modifié)"); await settle(); await p.reload(); await p.waitForSelector(".dealhead");
+await p.click("#close-preview"); await p.click('[data-slot="contrat"][data-a="slot-create"]');
+ok("without Drive, creating a contract offers to connect it first", (await p.locator('.modal a[href="/auth/drive"]').count()) === 1);
+await p.click('[data-a="confirm-yes"]'); await p.click("#doc-edit h2"); await p.keyboard.press("End"); await p.keyboard.type(" (modifié)"); await settle(); await p.reload(); await p.waitForSelector(".dealhead");
 ok("an edited contract is saved", ((await S("S.deals.find(d => d.id === 't-option').docs.find(x => x.slot === 'contrat').body")) ?? "").includes("(modifié)"));
 await p.click('[data-comp="Activité"]'); await p.fill("#todo", "Rappeler pour la visite"); await p.click('[data-a="todo"]'); await p.click('[data-comp="Événement"]'); await p.fill("#pv-name", "Traiteur Test"); await p.click('[data-a="pv-add"]');
 await p.click('[data-edit="guests"]'); await p.fill("#e-guests", "42"); await p.keyboard.press("Enter"); await settle(); await p.reload(); await p.waitForSelector(".dealhead");

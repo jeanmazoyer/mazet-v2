@@ -224,7 +224,7 @@ function confirmModal() {
     <div class="modal small top" role="alertdialog" aria-modal="true" aria-labelledby="c-title">
       <header><h2 id="c-title">${esc(c.title)}</h2><button class="iconbtn" data-a="close-modal" aria-label="Fermer">${ico("close", "m")}</button></header>
       <div class="mbody"><p>${c.body}</p>${c.more ? `<p class="muted">${c.more}</p>` : ""}</div>
-      <footer><button class="btn alt" data-a="close-modal">Annuler</button><button class="btn red" data-a="confirm-yes">${esc(c.cta)}</button></footer>
+      <footer><button class="btn alt" data-a="close-modal">Annuler</button><button class="btn ${c.link ? "alt" : "red"}" data-a="confirm-yes">${esc(c.cta)}</button>${c.link ? `<a class="btn" href="${esc(c.link.href)}">${esc(c.link.label)}</a>` : ""}</footer>
     </div>`;
 }
 const topbar = (title, right = "", back = "", sub = "") => `<header class="topbar">
@@ -1290,7 +1290,7 @@ function syncBank(d) {
 }
 const SEL = ["go", "tab", "view", "edit", "a", "toggle", "pay", "hist", "comp", "done", "stage", "month", "doc", "jump", "pick", "folder", "dview", "day", "pm", "menu", "sort", "newday", "ext", "mtab", "ttab", "qdel", "pvdel", "rmdel", "unpin", "udel", "src", "agent", "agent-open", "agent-run", "prop-ok", "prop-no", "tool", "kind", "calview", "real", "seemonth", "year", "ayear", "atab", "aopen", "aok", "bskip"].map((k) => `[data-${k}]`).join(",");
 // Ask before anything that removes something. The action itself runs only on "confirm-yes".
-function ask(title, body, more, cta, run) { S.modal = "confirm"; S.confirm = { title, body, more, cta, run }; }
+function ask(title, body, more, cta, run, link = null) { S.modal = "confirm"; S.confirm = { title, body, more, cta, run, link }; }
 function openLost() { S.modal = "lost"; S.modalErr = ""; S.draft = { "ls-reason": LOST[0] }; }
 document.addEventListener("click", (e) => {
   const t = e.target.closest(SEL);
@@ -1346,7 +1346,10 @@ document.addEventListener("click", (e) => {
         const fail = (why) => { S.creating = ""; S.notice = `Document non créé : ${why}.`; render(); };
         api("POST", "/api/drive/docs", { dealId: d.id, title, html: docBody(d, x), folder: d.driveFolder ?? "" }).then((r) => { if (r.status !== 200) { fail(r.data.error || "refus du serveur"); return; }
           S.creating = ""; d.driveFolder = r.data.folder; d.docs.push({ ...x, t: title, url: r.data.url }); log(d, "Document", `${sl.label} créé dans Google Drive`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = ""; render(); }, () => fail("serveur injoignable")); } }
-    else if (sl) { d.docs.push(newSlotDoc(sl)); log(d, "Document", `${sl.label} créé ${sl.k === "pl" ? "en brouillon" : "depuis un modèle"}`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = sl.k === "pl" ? "Brouillon créé." : "Créé en brouillon à partir du modèle : modifiez-le directement ici."; } }
+    else if (sl) { const local = () => { d.docs.push(newSlotDoc(sl)); log(d, "Document", `${sl.label} créé ${sl.k === "pl" ? "en brouillon" : "depuis un modèle"}`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = sl.k === "pl" ? "Brouillon créé." : "Créé en brouillon à partir du modèle : modifiez-le directement ici."; };
+      // An administrator who has not connected Drive is told so: the real Google Docs file is one click away.
+      if (sl.k === "gdoc" && isAdmin()) ask("Google Drive n'est pas connecté", "Pour que « Créer » fabrique un vrai document Google Docs, privé et modifiable dans le panneau, connectez d'abord Google Drive (une seule fois).", "Sans connexion, le document reste un brouillon interne à l'application.", "Créer dans l'application", () => { local(); render(); }, { href: "/auth/drive", label: "Connecter Google Drive" });
+      else local(); } }
   if (ds.a === "doc") { const first = d ? slotsFor(d).find((x) => !d.docs.some((y) => y.slot === x.key)) : null; S.modal = "doc-new"; S.modalErr = ""; S.draft = { "dn-deal": d ? d.id : "", "dn-slot": ds.slot ?? (first ? first.key : ""), "dn-src": ds.file ? "file" : "model" }; }
   if (ds.src) S.draft["dn-src"] = ds.src;
   if (ds.a === "doc-add" && S.draft["dn-src"] === "file") { const el = document.getElementById("dn-file"), f = el && el.files[0], to = deal(S.draft["dn-deal"]), sl = SLOTS.find((s) => s.key === S.draft["dn-slot"]);
@@ -1969,7 +1972,7 @@ async function boot() {
   applyState(await res.json());
   // Back from Google's consent screen for Drive: say how it went, then tidy the address.
   const back = /[?&]drive=(ok|refus)/.exec(location.search);
-  if (back) { if (back[1] === "ok") S.flash = { text: "Google Drive est connecté." }; else S.notice = "Google Drive n'a pas été connecté : l'autorisation a été refusée ou n'a pas abouti."; history.replaceState(null, "", "/#reglages"); }
+  if (back) { if (back[1] === "ok") S.flash = { text: "Google Drive est connecté." }; else S.notice = "Google Drive n'a pas été connecté. Si vous avez bien accepté l'autorisation, vérifiez que « Google Drive API » est activée dans la console Google Cloud du projet."; history.replaceState(null, "", "/#reglages"); }
   if (route().name === "connexion") history.replaceState(null, "", "#affaires");
   render(); follow();
 }
