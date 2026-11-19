@@ -106,7 +106,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, creating: "", previewOut: false, lessor: {}, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -384,8 +384,8 @@ function reopen(d) {
 }
 // What moves a deal from each stage to the next one, said under the progress line.
 const STEP_NEXT = ["répondez à la demande et proposez une visite.", "après la visite, posez une option sur les dates.", "envoyez le devis pour confirmer l'option.", "faites signer le contrat, la signature crée l'échéancier.", "encaissez le solde, puis marquez l'affaire comme soldée."];
-function viewAffaire(id) {
-  const d = deal(id); if (!d) return viewAffaires();
+function viewAffaire(id, peek = false) {
+  const d = deal(id); if (!d) return peek ? "" : viewAffaires();
   if (S.composer === "E-mail") d.unread.mail = false;
   if (S.composer === "WhatsApp") d.unread.wa = false;
   const lost = d.status === "Perdu";
@@ -409,7 +409,7 @@ function viewAffaire(id) {
       : comp === "Activité" ? `<input id="todo" class="inp" value="${esc(dv("todo"))}" placeholder="Que faut-il faire ? (rappel, appel, visite)" aria-label="Nouvelle activité"><div class="cfoot"><select id="act-type" class="inp auto" aria-label="Type d'activité">${TASK_TYPES.map((o) => `<option ${dv("act-type", "Rappel") === o ? "selected" : ""}>${o}</option>`).join("")}</select><input id="act-due" class="inp auto" type="date" value="${dv("act-due", addDays(TODAY, 2))}" aria-label="Échéance"><button class="btn sm" data-a="todo">Ajouter à faire</button></div>`
       : comp === "E-mail" ? mailTab(d) : comp === "WhatsApp" ? waTab(d) : comp === "Devis" ? quoteTab(d) : eventTab(d)}</div></div>`;
   const menu = S.menu === "deal" ? `<div class="pop dealpop" role="menu" aria-label="Autres actions"><button class="mi" role="menuitem" data-a="sheet">${ico("doc", "s")}Fiche événement</button><button class="mi" role="menuitem" data-a="deal-dup">${ico("copy", "s")}Dupliquer l'affaire</button>${lost ? "" : `<button class="mi" role="menuitem" data-a="lose">${ico("close", "s")}Marquer comme perdue</button>`}${isAdmin() ? `<button class="mi danger" role="menuitem" data-a="deal-del">${ico("trash", "s")}Supprimer l'affaire</button>` : ""}</div>` : "";
-  return topbar("Détail d'une affaire", `<span class="menuwrap"><button class="btn alt sq" data-menu="deal" aria-label="Autres actions" aria-haspopup="menu" aria-expanded="${S.menu === "deal"}">${ico("dots", "m")}</button>${menu}</span><button class="btn alt" data-a="doc">${ico("doc", "s")}Ajouter un document</button>${!lost && d.stage < 5 ? `<button class="btn" data-a="advance">${d.stage < 4 ? "Passer à l'étape suivante" : "Marquer comme soldé"}</button>` : ""}`, "affaires")
+  return topbar(peek ? "Fiche de l'affaire" : "Détail d'une affaire", (peek ? `<a class="btn alt" href="#affaire-${d.id}" data-go="affaire-${d.id}">Ouvrir en pleine page</a>` : "") + `<span class="menuwrap"><button class="btn alt sq" data-menu="deal" aria-label="Autres actions" aria-haspopup="menu" aria-expanded="${S.menu === "deal"}">${ico("dots", "m")}</button>${menu}</span><button class="btn alt" data-a="doc">${ico("doc", "s")}Ajouter un document</button>${!lost && d.stage < 5 ? `<button class="btn" data-a="advance">${d.stage < 4 ? "Passer à l'étape suivante" : "Marquer comme soldé"}</button>` : ""}` + (peek ? `<button class="iconbtn" data-a="peek-close" aria-label="Fermer la fiche">${ico("close", "m")}</button>` : ""), peek ? "" : "affaires")
     + `<div class="dealhead"><div class="id"><h2><span class="ic">${ico(KIND_ICON[d.kind], "m")}</span>${esc(d.title)}</h2>
         <div class="tags">${lost ? `<span class="tag t-red">Perdue</span>` : ""}<span class="tag"><i class="dotk ${KIND[d.kind]}"></i>${d.kind}</span><span class="tag num">${range(d.start, d.end)}</span><span class="tag num">${d.guests ? d.guests + " invités" : "Invités à préciser"}</span><span class="tag">Source : ${esc(d.source)}</span></div></div>${alert}
         <div class="steps" role="group" aria-label="Cycle de l'affaire">${STAGES.map((s, i) => `<button class="step ${i < d.stage ? "done" : i === d.stage ? "cur" : ""}" data-stage="${i}" ${i === d.stage ? `aria-current="step"` : `title="${i < d.stage ? "Revenir à" : "Passer à"} l'étape ${s}"`}><i>${i < d.stage ? ico("check", "xs") : ""}</i><span>${s}</span>${i === d.stage ? `<small>Étape actuelle</small>` : ""}</button>`).join("")}</div>
@@ -784,7 +784,7 @@ function docNewModal() {
 }
 const LOST = ["Dates indisponibles", "Budget", "A choisi un autre lieu", "Sans réponse", "Projet annulé", "Autre"];
 function lostModal() {
-  if (S.modal !== "lost") return ""; const d = deal(route().id); if (!d) return "";
+  if (S.modal !== "lost") return ""; const d = deal(ctx().id); if (!d) return "";
   return shell("Marquer l'affaire comme perdue", `<p>« ${esc(d.title)} » quitte le tableau${d.stage >= 2 ? ` et libère les dates du ${range(d.start, d.end)}` : ""}. Elle reste consultable dans l'onglet « Perdues » et peut être rouverte.</p>
     <label class="fld"><span>Raison</span><select id="ls-reason" class="inp">${opts("ls-reason", LOST, LOST[0])}</select></label>
     <label class="fld"><span>Précision (facultatif)</span><input id="ls-note" class="inp" value="${esc(dval("ls-note"))}"></label>`,
@@ -846,7 +846,7 @@ function searchModal() {
 // documents of other deals. The ones whose name matches what is missing are listed on top.
 function pickerModal() {
   if (S.modal !== "pick") return "";
-  const r = route(), d = deal(r.id), sl = SLOTS.find((s) => s.key === S.pickSlot); if (!d || !sl) return "";
+  const r = ctx(), d = deal(r.id), sl = SLOTS.find((s) => s.key === S.pickSlot); if (!d || !sl) return "";
   const q = (S.draft["pick-q"] ?? "").toLowerCase();
   const pool = [...S.library.map((x, i) => ({ x, ref: `lib:${i}`, from: "Non classé" })), ...S.deals.filter((o) => o.id !== d.id).flatMap((o) => o.docs.map((x, i) => ({ x, ref: `deal:${o.id}:${i}`, from: o.title })))]
     .filter((it) => (it.x.t + " " + it.from).toLowerCase().includes(q))
@@ -1066,6 +1066,17 @@ function quoteTab(d) {
     <div class="qf"><span class="sp"></span><span>Total TTC</span><b class="num big">${eur(quoteTotal(q))}</b></div></div>
     <div class="cfoot"><span class="hint">${state} Les lignes se modifient dans le document, tant qu'il n'est pas finalisé.</span><button class="btn sm" data-a="quote-open">${x ? "Ouvrir le devis" : "Créer le devis"}</button></div>`;
 }
+// A deal opened from the calendar: its whole page, in a panel, with the same slide as documents.
+function peekPanel() {
+  if (!S.peek) return ""; const d = deal(S.peek); if (!d) return "";
+  return `<div class="scrim fade ${S.peekOut ? "out" : ""}" data-a="peek-close"></div>
+    <aside class="drawer wide peek ${S.peekOut ? "out" : ""}" role="dialog" aria-modal="true" aria-label="Fiche de l'affaire ${esc(d.title)}"><div class="peekbody">${viewAffaire(d.id, true)}</div></aside>`;
+}
+function closePeek() {
+  if (!S.peek || S.peekOut) return;
+  S.peekOut = true;
+  setTimeout(() => { S.peek = null; S.peekOut = false; S.edit = S.payEdit = null; render(); }, PANEL_OUT_MS);
+}
 // The panel slides in from the right when it opens (CSS, on insertion) and slides back out before it
 // is removed: closing first marks it as leaving, then drops it once the movement is over.
 const PANEL_OUT_MS = 190;
@@ -1278,6 +1289,9 @@ function viewSeason() {
 
 /* ---------- Router and events ---------- */
 const PAGES = ["connexion", "openspace", "affaires", "reservations", "contacts", "documents", "audit", "messages", "taches", "statistiques", "reglages"];
+// The deal a click or a field belongs to: the one of the page, or the one shown in the panel opened
+// from the calendar. Drawing the page still follows the address alone (route).
+function ctx() { return S.peek && deal(S.peek) ? { name: "affaire", id: S.peek } : route(); }
 function route() {
   const h = (location.hash || "#affaires").slice(1);
   if (h.startsWith("affaire-")) return { name: "affaire", id: h.slice(8) };
@@ -1304,7 +1318,7 @@ function render() {
   const body = VIEWS[r.name](r);
   document.getElementById("app").className = "app" + (S.railOpen ? " wide" : "");
   paint(rail(active) + `<main class="main">${S.notice ? `<div class="notice" role="alert">${ico("alert", "s")}<span>${esc(S.notice)}</span></div>` : ""}${S.flash ? `<div class="flash" role="status">${ico("check", "s")}<span>${esc(S.flash.text)}</span>${S.flash.undo ? `<button class="link" data-a="undo">Annuler</button>` : ""}</div>` : ""}${body}</main>`
-    + menus() + previewPanel() + newDealModal() + pickerModal() + datesModal() + docNewModal() + lostModal() + taskModal() + icsModal() + userModal() + extModal() + searchModal() + agentModal() + sigReqModal() + signModal() + bufferModal() + confirmModal());
+    + menus() + peekPanel() + previewPanel() + newDealModal() + pickerModal() + datesModal() + docNewModal() + lostModal() + taskModal() + icsModal() + userModal() + extModal() + searchModal() + agentModal() + sigReqModal() + signModal() + bufferModal() + confirmModal());
   queueSave();
   if (r.name === "openspace") drawWires();
   for (const id of ["thread", "chat"]) { const el = document.getElementById(id); if (el) el.scrollTop = el.scrollHeight; }
@@ -1337,7 +1351,10 @@ document.addEventListener("click", (e) => {
   if (S.menu && !e.target.closest("[data-menu]")) { if (e.target.closest(".pop") && !t) return; S.menu = null; if (!t) { render(); return; } }
   if (!t) return;
   if (justDragged && t.closest(".agent")) return;
-  const r = route(), d = r.name === "affaire" || r.name === "contact" ? deal(r.id) : null, ds = t.dataset;
+  const r = ctx(), d = r.name === "affaire" || r.name === "contact" ? deal(r.id) : null, ds = t.dataset;
+  // From the calendar, a stay opens in a panel: the calendar stays where it was underneath.
+  if (ds.go && ds.go.startsWith("affaire-") && route().name === "reservations" && !S.peek && deal(ds.go.slice(8))) { S.peek = ds.go.slice(8); S.peekOut = false; S.edit = S.payEdit = S.menu = null; render(); return; }
+  if (ds.a === "peek-close") { closePeek(); render(); return; }
   const flash = S.flash; S.flash = null; S.notice = "";
   if (ds.menu) { S.menu = S.menu === ds.menu ? null : ds.menu; render(); return; }
   if (ds.a === "undo" && flash && flash.undo) flash.undo();
@@ -1374,7 +1391,7 @@ document.addEventListener("click", (e) => {
     try { navigator.clipboard.writeText(text).catch(() => { S.exportMsg = `${rows.length} documents sélectionnés. Dans l'application, ce bouton téléchargera la liste et les fichiers dans une archive.`; render(); }); } catch (_) { /* no clipboard here: the message above still stands */ } }
 
   /* Navigation */
-  if (ds.go) { S.edit = S.payEdit = S.preview = S.modal = null; S.sync = ""; if (ds.comp) S.composer = ds.comp;
+  if (ds.go) { S.edit = S.payEdit = S.preview = S.modal = S.peek = null; S.sync = ""; if (ds.comp) S.composer = ds.comp;
     if (location.hash === "#" + ds.go) { render(); return; } location.hash = ds.go; return; }
 
   /* Documents */
@@ -1637,11 +1654,11 @@ document.addEventListener("input", (e) => { const id = e.target.id, m = QUOTE_RE
   else if (id === "pick-q" || id === "gq") { S.draft[id] = e.target.value; render(); }
   // A quote line is stored as it is typed and its totals are rewritten in place, so the field
   // being typed in is never redrawn.
-  else if (m) { const pv = previewed(), d = (pv && pv.d) || deal(route().id); if (!d) return; d.quote = d.quote ?? quoteOf(d); const row = d.quote[Number(m[1])]; if (!row) return;
+  else if (m) { const pv = previewed(), d = (pv && pv.d) || deal(ctx().id); if (!d) return; d.quote = d.quote ?? quoteOf(d); const row = d.quote[Number(m[1])]; if (!row) return;
     row[m[2]] = m[2] === "l" ? e.target.value : Number(e.target.value) || 0;
     const cell = document.getElementById("qt-" + m[1]), sum = document.getElementById("q-total"); if (cell) cell.textContent = eur(row.q * row.p); if (sum) sum.textContent = eur(quoteTotal(d.quote)); const paper = document.querySelector(".drawer .stage .paper"); if (pv && paper) paper.innerHTML = docBody(pv.d, pv.x); }
   else if (isDraft(id)) { S.draft[id] = e.target.value; if (S.modalErr) { S.modalErr = ""; render(); } } });
-document.addEventListener("change", (e) => { const r = route(), id = e.target.id, v = e.target.value;
+document.addEventListener("change", (e) => { const r = ctx(), id = e.target.id, v = e.target.value;
   if (id === "mail-tpl") { const md = deal(r.id); if (md && MAIL_TPL[v]) { const [sub, html] = MAIL_TPL[v](md); S.draft["mail-subject"] = sub; S.draft["mail-body"] = html + signOff(); S.focus = "mail-body"; render(); } return; }
   if (id === "mail-var") { const md = deal(r.id); if (md && MAIL_VARS[v]) insertInMail(MAIL_VARS[v](md)); e.target.value = ""; return; }
   if (id && id.startsWith("ag-")) { const a = selAgent(); if (a && id === "ag-trigger") a.trigger = v; return; }
@@ -1680,6 +1697,7 @@ document.addEventListener("change", (e) => { const r = route(), id = e.target.id
 document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); S.modal = "search"; S.preview = null; S.menu = null; S.draft.gq = ""; render(); return; }
   if (e.key === "Escape" && S.preview && !S.edit && !S.payEdit && !S.modal && !S.menu) { closePanel(); render(); return; }
+  if (e.key === "Escape" && S.peek && !S.edit && !S.payEdit && !S.modal && !S.menu) { closePeek(); render(); return; }
   if (e.key === "Escape" && (S.edit || S.payEdit || S.preview || S.modal || S.menu)) { if (S.modal === "confirm") { S.modal = null; S.confirm = null; } else S.edit = S.payEdit = S.preview = S.modal = S.pending = S.menu = S.pick = S.confirm = null; S.modalErr = ""; S.docEdit = false; render(); return; }
   if (e.key !== "Enter") return;
   if (e.target.id === "doc-name") { document.querySelector('[data-a="doc-rename-ok"]')?.click(); return; }
@@ -1700,7 +1718,7 @@ document.addEventListener("dragover", (e) => { const col = e.target.closest ? e.
   e.preventDefault(); e.dataTransfer.dropEffect = "move"; document.querySelectorAll(".col.over").forEach((x) => { if (x !== col) x.classList.remove("over"); }); col.classList.add("over"); });
 document.addEventListener("drop", (e) => { const col = e.target.closest ? e.target.closest(".col[data-col]") : null; if (!col || !dragId) return;
   e.preventDefault(); const d = deal(dragId); dragId = null; S.notice = ""; if (d) setStage(d, Number(col.dataset.col)); render(); });
-window.addEventListener("hashchange", () => { S.menu = null; render(); window.scrollTo(0, 0); });
+window.addEventListener("hashchange", () => { S.menu = null; S.peek = null; render(); window.scrollTo(0, 0); });
 /* ---------- Server: load, save what changed, follow what others change ---------- */
 // Features drawn by the pages but not plugged in yet: their entry points are taken out of the
 // page before it is shown, so nothing on screen pretends to work.

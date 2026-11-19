@@ -950,3 +950,9 @@ a.drow { color: inherit; text-decoration: none; }
 .scrim.fade { animation: scrim-in .22s ease-out; }
 .scrim.fade.out { animation: scrim-out .18s ease-in forwards; }
 @media (prefers-reduced-motion: reduce), print { .drawer, .drawer.out, .scrim.fade, .scrim.fade.out { animation: none; } }
+
+/* A deal opened from the calendar: its page inside the wide panel, scrolling on its own. */
+.drawer.peek { background: var(--page); }
+.peekbody { flex: 1; min-height: 0; overflow: auto; }
+.peekbody .topbar { position: sticky; top: 0; z-index: 2; }
+.peekbody .topbar, .peekbody .dealhead { padding-left: var(--s6); padding-right: var(--s5); }

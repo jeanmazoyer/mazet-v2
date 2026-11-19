@@ -168,6 +168,14 @@ await a.click('.docs .drow:has-text("Caution")'); await a.waitForSelector(".draw
 ok("a draft typed in by hand in Google Docs is left alone, and says so", (await a.locator(".drawer footer").innerText()).includes("ne suit plus la fiche") && (await a.locator('[data-a="doc-resync"]').count()) === 1);
 await a.click("#close-preview"); await a.evaluate(() => { window.__app.S.drive = { on: false }; }); await a.context().unroute("**/api/drive/**");
 await a.click('[data-comp="Événement"]'); ok("the information sheet is shown as text, never as markup", (await a.locator(".evt").innerText()).includes("Terrasse <b>ouest</b>"));
+// From the calendar, a stay opens in a panel and can be worked on there, without leaving the calendar
+await a.goto(`${BASE}/#reservations`); await a.waitForSelector(".cmonth"); await a.evaluate(() => { window.__app.S.month = "2027-08"; }); await a.click('[data-a="rail"]'); await a.click('[data-a="rail"]');
+await a.locator('[data-go="affaire-t27-ok"]').first().click(); await a.waitForSelector(".drawer.peek .dealhead");
+ok("a stay clicked in the calendar opens in a panel over it", (await a.evaluate(() => location.hash)) === "#reservations" && (await a.locator(".cmonth").count()) >= 1 && (await a.locator(".drawer.peek h2").first().innerText()).includes("Alba"));
+await a.click('.drawer.peek [data-comp="Notes"]'); await a.fill(".drawer.peek #note", "Note prise depuis le calendrier"); await a.click('.drawer.peek [data-a="note"]'); await settle(a);
+ok("what is done in the panel lands on that deal", (await S(a, "S.deals.find(d => d.id === 't27-ok').history.some(h => h.body === 'Note prise depuis le calendrier')")) === true);
+await a.click('.drawer.peek [data-a="peek-close"]'); await a.waitForSelector(".drawer.peek", { state: "detached" });
+ok("closing the panel leaves the calendar as it was", (await a.evaluate(() => location.hash)) === "#reservations" && (await S(a, "S.month")) === "2027-08");
 await a.evaluate(() => { window.__app.S.deals = []; return window.__app.persist(); }); await settle(a); await a.reload(); await a.waitForSelector(".topbar h1");
 ok("deleting is saved too", (await S(a, "S.deals.length")) === 0);
 await a.evaluate(() => fetch("/auth/logout", { method: "POST" })); await a.reload(); await a.waitForSelector(".logincard");
