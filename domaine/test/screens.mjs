@@ -62,7 +62,7 @@ ok("figures at the top follow the data", (await txt(".kpis .v")).replace(/\s/g, 
 // Bank statement: made-up lines, one of which pays the deposit of the signed deal
 const csv = 'Date,Description,Amount,Bank Account\n"05/01/2027","VIR SEPA M ET MME FICTIF ACOMPTE MARIAGE","2700.00","Compte"\n"06/01/2027","PRLV ASSURANCE","-120.50","Compte"\n"07/01/2027","VIR AUTRE CLIENT","2700.00","Compte"\n';
 await p.goto(`${BASE}/#affaire-t-signe`); await p.waitForSelector(".dealhead"); await p.click('[data-pay="undo"][data-id="dep"]'); await p.click('[data-pay="confirm-undo"]'); await settle();
-await p.goto(`${BASE}/#reglages`); await p.waitForSelector("#bank-file");
+await p.goto(`${BASE}/#reglages-banque`); await p.waitForSelector("#bank-file");
 await p.setInputFiles("#bank-file", { name: "releve.csv", mimeType: "text/csv", buffer: Buffer.from(csv) }); await settle();
 ok("a statement keeps the incoming lines only and matches the deposit", (await S("S.bankStatement.length")) === 2 && (await S("S.deals.find(d => d.id === 't-signe').payments[0].status")) === "paid" && (await S("S.deals.find(d => d.id === 't-signe').payments[0].paidOn")) === "2027-01-05", await txt(".flash"));
 await p.setInputFiles("#bank-file", { name: "releve.csv", mimeType: "text/csv", buffer: Buffer.from(csv) }); await settle();

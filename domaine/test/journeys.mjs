@@ -87,10 +87,10 @@ writeFileSync("/tmp/domaine-test.html", "<script>alert(1)</script>");
 ok("a web page is refused as an upload", (await a.evaluate(async () => { const fd = new FormData(); fd.append("file", new File(["<script>alert(1)</script>"], "x.html", { type: "text/html" })); return (await fetch("/api/files", { method: "POST", body: fd })).status; })) === 415);
 
 // Settings are saved; a team member can neither change them nor delete a deal
-await a.click("#close-preview"); await a.goto(`${BASE}/#reglages`); await a.waitForSelector(".setgrid"); await a.click('[data-a="dep-plus"]'); await settle(a);
-await a.reload(); await a.waitForSelector(".setgrid");
+await a.click("#close-preview"); await a.goto(`${BASE}/#reglages-echeancier`); await a.waitForSelector(".setmain"); await a.click('[data-a="dep-plus"]'); await settle(a);
+await a.reload(); await a.waitForSelector(".setmain");
 ok("a setting survives a reload", (await S(a, "TERMS.deposit")) === 35);
-ok("cards of features not plugged in are not shown", !(await a.locator(".setgrid").innerText()).includes("Pennylane"));
+ok("cards of features not plugged in are not shown", !(await a.locator(".setx").innerText()).includes("Pennylane") && (await a.locator(".setnav a").count()) === 13 && (await a.locator(".setmain h2").innerText()) === "Échéancier par défaut");
 const team = await person("carol@test.local", "team");
 ok("the team does not receive the bank statement or the calendar secret", await team.evaluate(() => fetch("/api/state").then((r) => r.json()).then((s) => !("bank" in s.settings) && !("ical_token" in s.settings) && s.admin === null)));
 ok("the team cannot download a backup", (await team.evaluate(() => fetch("/api/backup").then((r) => r.status))) === 403); await team.goto(`${BASE}/#reglages`); await team.waitForSelector(".lockcard");
@@ -112,12 +112,14 @@ ok("without a connected mailbox no attachment is served, and a page cannot ask f
 ok("without a connected mailbox the server reads no conversation", (await a.evaluate((id) => fetch("/api/mail?dealId=" + id).then((r) => r.status), id)) === 409 && (await a.request.get(`${BASE}/api/mail?dealId=nope`)).status() === 404);
 const sendTry = async (to) => (await a.request.post(`${BASE}/api/mail/send`, { data: { dealId: id, subject: "Essai", html: "<p>Bonjour</p>", to } })).status();
 ok("the server sends nothing to an address that is not the deal's, nor without a mailbox", (await sendTry("boss@corp.com")) === 400 && [400, 409].includes(await sendTry("")));
-await a.goto(`${BASE}/#reglages`); await a.waitForSelector(".setcard");
-ok("the settings offer to connect Google Drive", (await a.locator('a[href="/auth/drive"]').count()) === 1);
+await a.goto(`${BASE}/#reglages-drive`); await a.waitForSelector(".setmain");
+ok("the settings offer to connect Google Drive, and show at a glance that nothing is connected", (await a.locator('a[href="/auth/drive"]').count()) === 1 && (await a.locator(".setnav .cdot").count()) === 3 && (await a.locator(".setnav .cdot.on").count()) === 0);
+await a.click('.setnav a[href="#reglages-gmail"]'); await a.waitForSelector('a[href="/auth/gmail"]');
+ok("a section of the settings opens from the list on the left, one at a time", (await a.locator(".setmain h2").innerText()) === "Gmail" && (await a.locator('a[href="/auth/drive"]').count()) === 0 && (await a.evaluate(() => location.hash)) === "#reglages-gmail");
 
 // Import a planning file, then delete what the test created
 writeFileSync("/tmp/domaine-plan.json", JSON.stringify([{ title: "Séjour importé", kind: "Séjour", start: "2027-07-14", end: "2027-07-21", guests: 12 }, { title: "", start: "x" }]));
-await a.setInputFiles("#imp-file", "/tmp/domaine-plan.json"); await settle(a);
+await a.click('.setnav a[href="#reglages-import"]'); await a.waitForSelector("#imp-file"); await a.setInputFiles("#imp-file", "/tmp/domaine-plan.json"); await settle(a);
 ok("a planning file becomes deals, bad lines are skipped", (await S(a, "S.deals.some(d => d.title === 'Séjour importé' && d.stage === 4)")) && (await a.locator(".flash").innerText()).includes("1 ligne ignorée"), await a.locator(".flash").innerText().catch(() => ""));
 await a.goto(`${BASE}/#reservations`); await a.waitForSelector(".cmonth"); await a.click('[data-calview="season"]'); await a.click('[data-year="1"]');
 ok("the season line shows the imported stay", (await a.locator(".sbar").count()) >= 1);
@@ -175,14 +177,14 @@ const season = { format: "domaine-import-1", season: 2027, mailbox: "accueil@tes
     findings: [{ lvl: "warn", t: "Remarque de test à traiter." }], mails: { threads: 1, messages: 3, received: 2, sent: 1, first: "2026-12-01", last: "2027-01-10", list: [{ id: "19abcdef0123", first: "2026-12-01", last: "2027-01-10", n: 3, subject: "Mariage août 2027" }] } },
   { id: "bad id!", title: "Refusé", start: "2027-09-01", end: "2027-09-03" }, { id: "t27-nodate", title: "Sans dates" }] };
 writeFileSync("/tmp/domaine-season.json", JSON.stringify(season));
-await a.goto(`${BASE}/#reglages`); await a.waitForSelector("#imp-file"); await a.setInputFiles("#imp-file", "/tmp/domaine-season.json"); await a.waitForSelector(".audit"); await settle(a);
+await a.goto(`${BASE}/#reglages-import`); await a.waitForSelector("#imp-file"); await a.setInputFiles("#imp-file", "/tmp/domaine-season.json"); await a.waitForSelector(".audit"); await settle(a);
 ok("a season file: valid stays in, invalid ones skipped, the audit opens", (await S(a, "S.deals.filter(d => d.id.startsWith('t27-')).length")) === 1 && (await a.locator(".flash").innerText()).includes("2 ignorés"), await a.locator(".flash").innerText().catch(() => ""));
 ok("the season file fills in the lessor where nothing was typed", (await S(a, "S.lessor.name")) === "SARL Importée" && (await S(a, "S.lessor.city")) === "Nîmes");
 ok("only Google Drive links are kept on documents", (await S(a, "S.deals.find(d => d.id === 't27-ok').docs.length")) === 2);
 ok("the audit lists the stay and flags the contract dates", (await a.locator('[data-aopen="t27-ok"] .ac.bad').count()) === 1 && (await a.locator('[data-aopen="t27-ok"] .st').innerText()) === "Bloquant");
 await a.click('[data-aopen="t27-ok"]'); const treat = a.locator('.aitems li.warn [data-aok]').first(), before = await a.locator(".aitems li.seen").count(); await treat.click(); await settle(a);
 ok("a remark marked as dealt with is struck out", (await a.locator(".aitems li.seen").count()) === before + 1);
-await a.goto(`${BASE}/#reglages`); await a.waitForSelector("#imp-file"); await a.setInputFiles("#imp-file", "/tmp/domaine-season.json"); await a.waitForSelector(".audit"); await settle(a); await a.reload(); await a.waitForSelector(".audit");
+await a.goto(`${BASE}/#reglages-import`); await a.waitForSelector("#imp-file"); await a.setInputFiles("#imp-file", "/tmp/domaine-season.json"); await a.waitForSelector(".audit"); await settle(a); await a.reload(); await a.waitForSelector(".audit");
 ok("importing the same season again updates, never duplicates, and keeps what was dealt with", (await S(a, "S.deals.filter(d => d.id === 't27-ok').length")) === 1 && (await S(a, "S.deals.find(d => d.id === 't27-ok').auditOk.length")) === 1, await a.locator(".flash").innerText().catch(() => ""));
 await a.goto(`${BASE}/#affaire-t27-ok`); await a.waitForSelector(".dealhead");
 ok("the deal page shows the remarks, the conversations and the Drive document", (await a.locator(".aitems li").count()) >= 2 && (await a.locator('a.drow[href^="https://mail.google.com/"]').count()) === 1 && (await a.locator(".docs .drow").first().innerText()).includes("Contrat signé"));
