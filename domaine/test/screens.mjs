@@ -27,11 +27,11 @@ ok("a signed deal gets its schedule, a request gets none", (await S("S.deals.fin
 ok("no invented document or e-mail on a new deal", (await S("S.deals.every(d => d.docs.length === 0 && d.emails.length === 0)")));
 
 const dead = [];
-for (const h of ["#affaires", "#reservations", "#contacts", "#documents", "#taches", "#statistiques", "#reglages", "#affaire-t-signe", "#affaire-t-option", "#affaire-t-demande", "#contact-t-signe"]) {
+for (const h of ["#affaires", "#reservations", "#contacts", "#documents", "#audit", "#taches", "#statistiques", "#reglages", "#affaire-t-signe", "#affaire-t-option", "#affaire-t-demande", "#contact-t-signe"]) {
   await p.goto(`${BASE}/${h}`); await p.waitForTimeout(350);
   ok("screen " + h, (await p.locator(".topbar h1").count()) === 1 && !(await p.locator("#app").innerText()).match(/undefined|NaN|\[object/), (await p.locator("#app").innerText()).match(/.{0,30}(undefined|NaN|\[object).{0,30}/)?.[0] ?? "no topbar");
   const sel = await p.evaluate(() => window.__app.SEL);
-  for (const f of await p.evaluate((s) => [...document.querySelectorAll("button, a")].filter((el) => !el.matches(s) && !el.matches("[data-cmd]") && !(el.tagName === "A" && /^(#|\/api\/)/.test(el.getAttribute("href") ?? "")) && !el.disabled).map((el) => el.outerHTML.slice(0, 100)), sel)) dead.push(h + " " + f);
+  for (const f of await p.evaluate((s) => [...document.querySelectorAll("button, a")].filter((el) => !el.matches(s) && !el.matches("[data-cmd]") && !(el.tagName === "A" && /^(#|\/api\/|\/auth\/|https:\/\/)/.test(el.getAttribute("href") ?? "")) && !el.disabled).map((el) => el.outerHTML.slice(0, 100)), sel)) dead.push(h + " " + f);
 }
 ok("no button without an action", dead.length === 0, "\n   " + dead.slice(0, 8).join("\n   "));
 for (const v of ["year", "season", "month"]) { await p.goto(`${BASE}/#reservations`); await p.click(`[data-calview="${v}"]`); await p.click(v === "month" ? '[data-month="1"]' : '[data-year="1"]'); await p.waitForTimeout(200); ok("calendar view " + v, (await p.locator(v === "season" ? ".srow" : ".cmonth").count()) >= 1); }

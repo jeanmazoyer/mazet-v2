@@ -104,7 +104,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "",
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, creating: "",
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -598,6 +598,9 @@ function viewSettings() {
     ${card("Banque", "Importez le relevé de votre banque (CSV avec les colonnes Date, Description, Amount). Seuls les encaissements sont gardés, puis rapprochés des échéances : même montant, nom du locataire dans le libellé.",
       srow("Relevé importé", S.bankStatement.length ? `${S.bankStatement.length} encaissement${S.bankStatement.length > 1 ? "s" : ""}, du ${fr(S.bankStatement.reduce((m, t) => (t.on < m ? t.on : m), "9999"))} au ${fr(S.bankStatement.reduce((m, t) => (t.on > m ? t.on : m), "0000"))} · importé ${esc(S.lastBank)}` : "Aucun relevé pour l'instant", S.bankStatement.length ? `<button class="btn alt sm" data-a="sync-all">${ico("sync", "s")}Rapprocher</button>` : "")
       + `<label class="fld"><span>Importer un relevé</span><input id="bank-file" class="inp filein" type="file" accept=".csv,text/csv"></label>`)}
+    ${card("Google Drive", "Une fois connecté, « Créer » sur un contrat ou une caution fabrique un vrai document Google Docs, rempli depuis l'affaire et modifiable dans le panneau. L'application ne voit que les documents qu'elle crée. Ils sont privés : partagez le dossier avec les personnes qui doivent y accéder.",
+      S.drive.on ? srow(`Connecté${S.drive.email ? " : " + esc(S.drive.email) : ""}`, "Un sous-dossier par séjour, dans le dossier « Les jardins de Campagne ».", `${S.drive.folder ? `<a class="btn alt sm" href="https://drive.google.com/drive/folders/${encodeURIComponent(S.drive.folder)}" target="_blank" rel="noopener">Ouvrir le dossier</a>` : ""}<button class="btn alt sm" data-a="drive-off">Déconnecter</button>`)
+        : srow("Non connecté", "Les documents créés restent pour l'instant dans l'application.", `<a class="btn sm" href="/auth/drive">Connecter Google Drive</a>`))}
     ${card("Sauvegarde", "Une copie de toutes les données est faite chaque jour sur le serveur, et les 30 dernières sont gardées. Téléchargez-en une de temps en temps pour la ranger ailleurs.", srow("Dernière copie automatique", S.admin && S.admin.lastBackup ? `le ${fr(S.admin.lastBackup)}` : "pas encore faite", `<a class="btn alt sm" href="/api/backup" download>${ico("down", "s")}Télécharger</a>`))}
     ${card("Modèles de documents", "Le bouton « Créer » d'un document manquant part de ces modèles.", SLOTS.map((s) => srow(s.label, KLBL[s.k], sim("Ouvrir le modèle", `Dans l'application : le modèle « ${s.label} » s'ouvre dans Google Docs.`))).join(""))}
     ${card("Importer un planning", "Un fichier JSON : une ligne par séjour, ou une saison complète (paiements, documents, e-mails) préparée pour l'audit. Réimporter le même fichier met les séjours à jour.", `<label class="fld"><span>Fichier</span><input id="imp-file" class="inp filein" type="file" accept=".json,application/json"></label>`)}
@@ -669,7 +672,7 @@ function dealDocs(d, inFolder = false) {
   // Only the next document to prepare carries the main button: the order is quote, contract, then the rest.
   const row = (sl, n) => { const main = n === 0 ? "btn sm" : "btn alt sm";
     const acts = inFolder ? `<button class="btn alt sm" data-go="affaire-${d.id}">Ouvrir l'affaire</button>`
-      : `${sl.k === "pdf" ? `<button class="${main}" data-a="doc" data-slot="${sl.key}" data-file="1">Importer</button>` : `<button class="${main}" data-a="slot-create" data-slot="${sl.key}">Créer</button>`}<button class="link" data-a="slot-pick" data-slot="${sl.key}">Récupérer</button>`;
+      : `${sl.k === "pdf" ? `<button class="${main}" data-a="doc" data-slot="${sl.key}" data-file="1">Importer</button>` : `<button class="${main}" data-a="slot-create" data-slot="${sl.key}" ${S.creating ? "disabled" : ""}>${S.creating === sl.key ? "Création dans Drive" : "Créer"}</button>`}<button class="link" data-a="slot-pick" data-slot="${sl.key}">Récupérer</button>`;
     return `<div class="mrow"><span class="kb ${sl.k} todo" title="${KLBL[sl.k]}, à préparer">${BADGE[sl.k]}</span><span class="grow"><b>${sl.label}</b><small>${SLOT_HINT[sl.key]}</small></span>${acts}</div>`; };
   return cards + (todo.length ? `<div class="mdocs"><span class="eyebrow">À préparer à cette étape</span>${todo.map(row).join("")}</div>` : "");
 }
@@ -1338,7 +1341,12 @@ document.addEventListener("click", (e) => {
   /* Documents */
   if (ds.doc) { const [id, i] = ds.doc.split(":"); S.preview = id === "lib" ? { lib: Number(i) } : { deal: id, i: Number(i) }; S.toast = ""; S.docEdit = false; if (S.modal === "search") S.modal = null; }
   if (ds.a === "slot-create" && d) { const sl = SLOTS.find((x) => x.key === ds.slot);
-    if (sl) { d.docs.push(newSlotDoc(sl)); log(d, "Document", `${sl.label} créé ${sl.k === "pl" ? "en brouillon" : "depuis un modèle"}`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = sl.k === "pl" ? "Brouillon créé." : "Créé en brouillon à partir du modèle : modifiez-le directement ici."; } }
+    // With Drive connected, a contract or a deposit form becomes a real Google Docs file, filled from the deal.
+    if (sl && sl.k === "gdoc" && S.drive.on) { if (!S.creating) { const x = newSlotDoc(sl), title = `${sl.label} - ${d.title}`.slice(0, 120); S.creating = sl.key;
+        const fail = (why) => { S.creating = ""; S.notice = `Document non créé : ${why}.`; render(); };
+        api("POST", "/api/drive/docs", { dealId: d.id, title, html: docBody(d, x), folder: d.driveFolder ?? "" }).then((r) => { if (r.status !== 200) { fail(r.data.error || "refus du serveur"); return; }
+          S.creating = ""; d.driveFolder = r.data.folder; d.docs.push({ ...x, t: title, url: r.data.url }); log(d, "Document", `${sl.label} créé dans Google Drive`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = ""; render(); }, () => fail("serveur injoignable")); } }
+    else if (sl) { d.docs.push(newSlotDoc(sl)); log(d, "Document", `${sl.label} créé ${sl.k === "pl" ? "en brouillon" : "depuis un modèle"}`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = sl.k === "pl" ? "Brouillon créé." : "Créé en brouillon à partir du modèle : modifiez-le directement ici."; } }
   if (ds.a === "doc") { const first = d ? slotsFor(d).find((x) => !d.docs.some((y) => y.slot === x.key)) : null; S.modal = "doc-new"; S.modalErr = ""; S.draft = { "dn-deal": d ? d.id : "", "dn-slot": ds.slot ?? (first ? first.key : ""), "dn-src": ds.file ? "file" : "model" }; }
   if (ds.src) S.draft["dn-src"] = ds.src;
   if (ds.a === "doc-add" && S.draft["dn-src"] === "file") { const el = document.getElementById("dn-file"), f = el && el.files[0], to = deal(S.draft["dn-deal"]), sl = SLOTS.find((s) => s.key === S.draft["dn-slot"]);
@@ -1459,6 +1467,7 @@ document.addEventListener("click", (e) => {
     if (name.length < 2) S.modalErr = "Donnez un nom au logement."; else if (!/^https:\/\/\S+\.\S+/.test(url)) S.modalErr = "Collez le lien iCal complet : il commence par https://";
     else { S.sources.push({ id: "s" + Date.now(), kind: S.draft["ic-kind"] ?? "Airbnb", name, url, last: "" }); S.modal = null; S.draft = {}; S.flash = { text: "Calendrier ajouté : lecture en cours." }; render(); persist().then(syncFeeds); return; } }
   if (ds.a === "src-sync") { syncFeeds(); return; }
+  if (ds.a === "drive-off") ask("Déconnecter Google Drive ?", "Les documents déjà créés restent dans Drive et dans les affaires.", "« Créer » refera des documents internes à l'application.", "Déconnecter", () => { api("DELETE", "/api/drive").then((r) => { if (r.status === 200) S.drive = { on: false }; else S.notice = "Déconnexion refusée."; render(); }); });
   if (ds.a === "src-del") { const s = S.sources.find((x) => x.id === ds.id);
     if (s) ask("Retirer ce calendrier ?", `Les réservations importées de « ${esc(s.kind)}, ${esc(s.name)} » disparaîtront du calendrier, et leurs dates redeviendront libres ici.`, "Rien n'est modifié sur la plateforme d'origine.", "Retirer le calendrier", () => {
       const at = S.sources.indexOf(s), gone = S.feeds.filter((f) => f.src === s.id); S.sources.splice(at, 1); S.feeds = S.feeds.filter((f) => f.src !== s.id);
@@ -1828,7 +1837,7 @@ const usersOut = () => S.users.map((u) => ({ email: u.email, name: u.name, role:
 function applySettings(st) {
   const p = st.settings.prefs ?? {}, bank = st.settings.bank ?? {};
   S.buffer = p.buffer ?? 0; TERMS.deposit = p.deposit ?? 30; TERMS.hold = p.hold ?? 2500; S.plSeq = p.plSeq ?? { D: 0, F: 0 }; S.sources = p.sources ?? []; S.mailbox = p.mailbox ?? "";
-  S.library = st.settings.library ?? []; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null;
+  S.library = st.settings.library ?? []; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false };
   const mine = st.user.email;
   S.users = [...st.users].sort((a, b) => Number(b.email === mine) - Number(a.email === mine)).map((u) => ({ email: u.email, name: u.name || u.email.split("@")[0], role: u.role === "admin" ? "Admin" : "Équipe", pending: u.pending }));
   for (const k of Object.keys(SETTINGS)) savedSettings[k] = JSON.stringify(SETTINGS[k]());
@@ -1958,6 +1967,9 @@ async function boot() {
   const res = await fetch("/api/state", { headers: { "x-client": CLIENT } }).catch(() => null);
   if (!res || res.status !== 200) { S.user = null; if (!location.hash.startsWith("#connexion")) history.replaceState(null, "", "#connexion"); if (!res) S.loginErr = "serveur injoignable"; render(); return; }
   applyState(await res.json());
+  // Back from Google's consent screen for Drive: say how it went, then tidy the address.
+  const back = /[?&]drive=(ok|refus)/.exec(location.search);
+  if (back) { if (back[1] === "ok") S.flash = { text: "Google Drive est connecté." }; else S.notice = "Google Drive n'a pas été connecté : l'autorisation a été refusée ou n'a pas abouti."; history.replaceState(null, "", "/#reglages"); }
   if (route().name === "connexion") history.replaceState(null, "", "#affaires");
   render(); follow();
 }

@@ -68,6 +68,12 @@ ok("the team cannot download a backup", (await team.evaluate(() => fetch("/api/b
 ok("the team sees the settings locked", (await team.locator(".lockcard").count()) === 1);
 ok("the server refuses a setting or a deletion from the team", (await team.evaluate(() => fetch("/api/settings/prefs", { method: "PUT", headers: { "content-type": "application/json" }, body: '{"value":{}}' }).then((r) => r.status))) === 403
   && (await team.evaluate((i) => fetch("/api/deals/" + i, { method: "DELETE" }).then((r) => r.status), id)) === 403);
+// Google Drive: nothing about the grant leaves the server, and only an administrator may connect or disconnect it
+ok("the team can neither start the Drive consent nor disconnect it", (await team.evaluate(() => fetch("/auth/drive").then((r) => new URL(r.url).origin === location.origin))) && (await team.evaluate(() => fetch("/api/drive", { method: "DELETE" }).then((r) => r.status))) === 403);
+ok("the Drive grant cannot be read back, even by an administrator", (await a.evaluate(() => fetch("/api/settings/drive").then((r) => r.status))) === 403 && (await S(a, "S.drive.on")) === false);
+ok("without a connection the server creates no Drive document", (await a.evaluate((id) => fetch("/api/drive/docs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dealId: id, title: "Caution", html: "<p>x</p>" }) }).then((r) => r.status), id)) === 409);
+await a.goto(`${BASE}/#reglages`); await a.waitForSelector(".setcard");
+ok("the settings offer to connect Google Drive", (await a.locator('a[href="/auth/drive"]').count()) === 1);
 
 // Import a planning file, then delete what the test created
 writeFileSync("/tmp/domaine-plan.json", JSON.stringify([{ title: "Séjour importé", kind: "Séjour", start: "2027-07-14", end: "2027-07-21", guests: 12 }, { title: "", start: "x" }]));

@@ -14,6 +14,7 @@ import { cookie, decideAccess, mayBootstrap, readCookie, readIdToken, signIn, si
 import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
+import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, forgetToken, revoke, type DriveSetting } from "./drive.ts";
 import { fetchIcal, type Source, type Stay } from "./ical.ts";
 
 const app = new Hono<{ Variables: { user: User } }>();
@@ -21,7 +22,9 @@ const CHANNEL = "domaine_changes";
 // Settings anyone signed in may write, and those only an administrator may.
 const SHARED_KEYS = ["library", "feeds", "agents"], ADMIN_KEYS = ["prefs", "bank"];
 // Settings the team does not even receive: the bank statement, and the secret of the calendar link.
-const PRIVATE_KEYS = ["bank", "ical_token"];
+const PRIVATE_KEYS = ["bank", "ical_token", "drive"];
+// Settings that never leave the server at all: they hold a secret.
+const SECRET_KEYS = ["ical_token", "drive"];
 const UPLOAD_MIME = ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/csv",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
 const MAX_UPLOAD = 25 * 1024 * 1024, MAX_JSON = 3 * 1024 * 1024;
@@ -78,6 +81,7 @@ app.get("/auth/google", (c) => {
 app.get("/auth/callback", async (c) => {
   const state = c.req.query("state") ?? "", code = c.req.query("code") ?? "";
   if (!state || !code || state !== readCookie(c.req.header("cookie"), "oauth_state")) return deny("connexion interrompue, recommencez");
+  if (state.startsWith("drive.")) return driveConnected(c.req.header("cookie"), code);
   const res = await fetch("https://oauth2.googleapis.com/token", { method: "POST", signal: AbortSignal.timeout(10_000),
     body: new URLSearchParams({ code, client_id: config.googleId, client_secret: config.googleSecret, redirect_uri: `${config.baseUrl}/auth/callback`, grant_type: "authorization_code" }) });
   const who = res.ok ? readIdToken(((await res.json()) as { id_token?: string }).id_token ?? "", config.googleId, Date.now()) : null;
@@ -91,6 +95,33 @@ app.get("/auth/callback", async (c) => {
   if (!access.ok) { console.warn(`sign-in refused: ${access.reason}`); return deny(access.reason); }
   return new Response(null, { status: 302, headers: [["location", "/"], ["set-cookie", await signIn(who.email, who.name, access.role)], ["set-cookie", cookie("oauth_state", "", 0)], ["set-cookie", cookie("setup", "", 0)]] });
 });
+/* ---------- Google Drive: an administrator lets the app create documents in their Drive ---------- */
+const driveSetting = async (): Promise<DriveSetting | null> => { const [row] = await sql`select value from settings where key = 'drive'`; return row && driveSeen(row.value, "admin").on ? (row.value as DriveSetting) : null; };
+const backTo = (note: string) => new Response(null, { status: 302, headers: [["location", `/?drive=${note}#reglages`], ["set-cookie", cookie("oauth_state", "", 0)]] });
+app.get("/auth/drive", async (c) => {
+  const u = await userFromCookie(c.req.header("cookie"));
+  if (!u || u.role !== "admin") return deny("réservé aux administrateurs");
+  if (!config.googleId) return backTo("refus");
+  const state = "drive." + randomBytes(16).toString("base64url");
+  c.header("Set-Cookie", cookie("oauth_state", state, 600));
+  return c.redirect(driveAuthUrl(config.googleId, config.baseUrl, state));
+});
+async function driveConnected(cookies: string | undefined, code: string): Promise<Response> {
+  const u = await userFromCookie(cookies);
+  if (!u || u.role !== "admin") return deny("réservé aux administrateurs");
+  const got = await exchangeCode(code, config.googleId, config.googleSecret, config.baseUrl);
+  const who = got ? readIdToken(got.idToken, config.googleId, Date.now()) : null;
+  if (!got || !who) return backTo("refus");
+  try {
+    // The same account connecting again keeps its folder: the documents already created stay reachable.
+    const before = await driveSetting();
+    const folder = before && before.email === who.email ? before.folder : await createFolder(got.access, "Les jardins de Campagne");
+    const value: DriveSetting = { refresh: got.refresh, email: who.email, folder };
+    await sql`insert into settings (key, value) values ('drive', ${sql.json(value as never)}) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+    forgetToken(); await sql.notify(CHANNEL, JSON.stringify({ kind: "setting", key: "drive", client: "" }));
+    return backTo("ok");
+  } catch (e) { console.error("drive connection failed", e); return backTo("refus"); }
+}
 if (config.devLogin) app.get("/auth/dev", async (c) => {
   const email = (c.req.query("email") ?? "dev@localhost").toLowerCase(), role = c.req.query("role") === "team" ? "team" : "admin";
   return new Response(null, { status: 302, headers: [["location", "/"], ["set-cookie", await signIn(email, c.req.query("name") ?? "Dev", role)]] });
@@ -121,10 +152,11 @@ const dealOut = (row: { id: string; doc: Doc; version: number }, role: Role) => 
 app.get("/api/state", async (c) => {
   const u = c.get("user");
   const deals = await sql`select id, doc, version from deals order by updated_at desc`;
-  const settings = Object.fromEntries((await sql`select key, value from settings`).filter((r) => adminOnly(u) ? r.key !== "ical_token" : !PRIVATE_KEYS.includes(r.key)).map((r) => [r.key, r.value]));
+  const settings = Object.fromEntries((await sql`select key, value from settings`).filter((r) => adminOnly(u) ? !SECRET_KEYS.includes(r.key) : !PRIVATE_KEYS.includes(r.key)).map((r) => [r.key, r.value]));
+  const [drive] = await sql`select value from settings where key = 'drive'`;
   const users = adminOnly(u) ? await sql`select email, name, role, last_login is null as pending from users order by created_at` : [];
   const admin = adminOnly(u) ? { icalUrl: `${config.baseUrl}/ical/${await icalToken()}.ics`, lastBackup: await lastBackup() } : null;
-  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin });
+  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin, drive: driveSeen(drive ? drive.value : null, u.role) });
 });
 app.get("/api/deals/:id", async (c) => {
   const [row] = await sql`select id, doc, version from deals where id = ${c.req.param("id")}`;
@@ -172,7 +204,7 @@ app.put("/api/settings/:key", async (c) => {
   return c.json({ ok: true });
 });
 app.get("/api/settings/:key", async (c) => {
-  if (PRIVATE_KEYS.includes(c.req.param("key")) && !adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);
+  if (SECRET_KEYS.includes(c.req.param("key")) || (PRIVATE_KEYS.includes(c.req.param("key")) && !adminOnly(c.get("user")))) return c.json({ error: "réservé aux administrateurs" }, 403);
   const [row] = await sql`select value from settings where key = ${c.req.param("key")}`;
   return c.json({ value: row ? row.value : null });
 });
@@ -234,10 +266,42 @@ async function syncFeeds(): Promise<{ feeds: Stay[]; errors: string[] }> {
 }
 app.post("/api/feeds/sync", async (c) => c.json(await syncFeeds()));
 
+/* ---------- Documents created in Google Drive ---------- */
+app.post("/api/drive/docs", async (c) => {
+  const body = await readJson(c), dealId = String(body?.dealId ?? ""), title = String(body?.title ?? "").trim().slice(0, 120), html = String(body?.html ?? ""), given = String(body?.folder ?? "");
+  if (!DEAL_ID.test(dealId) || !title || !html || html.length > 300_000) return c.json({ error: "document invalide" }, 400);
+  const [deal] = await sql`select doc from deals where id = ${dealId}`;
+  if (!deal) return c.json({ error: "affaire introuvable" }, 404);
+  const drive = await driveSetting();
+  if (!drive) return c.json({ error: "Google Drive n'est pas connecté" }, 409);
+  try {
+    const token = await accessToken(drive.refresh, config.googleId, config.googleSecret);
+    // One folder per stay inside the app's folder. With this grant the app cannot write anywhere else.
+    const name = `${String((deal.doc as Doc).start ?? "").slice(0, 10)} ${String((deal.doc as Doc).title ?? dealId)}`.trim().slice(0, 120);
+    const folder = DRIVE_ID.test(given) ? given : await createFolder(token, name, drive.folder);
+    const id = await createDoc(token, title, docHtml(title, html), folder).catch(async (e) => {
+      // The stay's folder was removed in Drive: make a new one rather than fail.
+      if (!(e instanceof DriveError) || e.status !== 404 || folder !== given) throw e;
+      return createDoc(token, title, docHtml(title, html), await createFolder(token, name, drive.folder)); });
+    return c.json({ id, url: `https://docs.google.com/document/d/${id}/edit`, folder });
+  } catch (e) {
+    if (e instanceof DriveError && e.status === 401) { forgetToken(); return c.json({ error: "Google Drive n'est plus connecté : reconnectez-le dans les réglages" }, 409); }
+    console.error("drive document failed", e); return c.json({ error: "Google Drive ne répond pas, réessayez" }, 502);
+  }
+});
+app.delete("/api/drive", async (c) => {
+  if (!adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);
+  const drive = await driveSetting();
+  if (drive) await revoke(drive.refresh);
+  await sql`delete from settings where key = 'drive'`; forgetToken();
+  await notify(c, { kind: "setting", key: "drive" });
+  return c.json({ ok: true });
+});
+
 /* ---------- Backup: everything the app holds, as one file ---------- */
 // Uploaded files are listed, not embedded: they live on their own volume.
 async function snapshot(): Promise<string> {
-  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings`, sql`select id, deal_id, name, mime, size, created_at from files`]);
+  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings where key <> 'drive'`, sql`select id, deal_id, name, mime, size, created_at from files`]);
   return JSON.stringify({ format: "domaine-backup-1", at: new Date().toISOString(), users, deals, settings, files });
 }
 const backupDir = join(config.dataDir, "backups");

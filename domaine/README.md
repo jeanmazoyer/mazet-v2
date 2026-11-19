@@ -84,3 +84,16 @@ The Audit page confronts every stay of a season with what each source says: date
 contract), contract signed or not, deposit and balance against the bank statement, security deposit,
 insurance, information sheet, e-mails. A remark is blocking, to check, or plain information; a remark
 marked as dealt with no longer counts. Credits of the statement that no stay claims are listed below.
+
+## Google Drive (documents created from the app)
+
+An administrator connects a Google account from the settings page. From then on, "Créer" on a contract or
+a security deposit makes a real Google Docs file, filled from the deal and edited inside the panel. The
+grant asked for is `drive.file`: the app reaches only the files and folders it created. Documents go in
+"Les jardins de Campagne / <date and title of the stay>" and are private to the connected account; sharing
+that folder in Drive is what gives other people access. The grant is stored on the server only: it is never
+sent to a page and is left out of the backups.
+
+Needs, in the Google Cloud project of the sign-in client: the Google Drive API enabled, and the consent
+screen published (in "Testing" mode Google ends the grant after seven days). The redirect address is the
+sign-in one, `/auth/callback`.

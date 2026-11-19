@@ -47,3 +47,37 @@ test("an iCal booking keeps its arrival and departure days", () => {
   const ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20270503\r\nDTEND;VALUE=DATE:20270505\r\nSUMMARY:Reserved\r\nEND:VEVENT\r\nEND:VCALENDAR";
   assert.deepEqual(parseIcal(ics, { id: "s1", kind: "Airbnb", name: "Mas", url: "" }), [{ src: "s1", title: "Airbnb, Mas · Reserved", start: "2027-05-03", end: "2027-05-05" }]);
 });
+
+/* ---------- Google Drive: documents created from the app ---------- */
+const { driveAuthUrl, driveSeen, docHtml, docMeta, DRIVE_SCOPE } = await import("../server/drive.ts");
+
+test("Drive consent asks only for the files the app creates, and for a lasting grant", () => {
+  const u = new URL(driveAuthUrl("client", "https://x.fr", "drive.abc"));
+  assert.equal(u.origin + u.pathname, "https://accounts.google.com/o/oauth2/v2/auth");
+  assert.equal(u.searchParams.get("redirect_uri"), "https://x.fr/auth/callback");
+  assert.deepEqual(u.searchParams.get("scope")?.split(" ").sort(), ["email", "openid", DRIVE_SCOPE].sort());
+  assert.equal(DRIVE_SCOPE, "https://www.googleapis.com/auth/drive.file");
+  assert.equal(u.searchParams.get("access_type"), "offline");
+  assert.equal(u.searchParams.get("state"), "drive.abc");
+});
+
+test("the pages never receive the Drive token, and the team not even the account", () => {
+  const stored = { refresh: "secret-token", email: "a@ex.fr", folder: "folder1234567890" };
+  assert.deepEqual(driveSeen(stored, "admin"), { on: true, email: "a@ex.fr", folder: "folder1234567890" });
+  assert.deepEqual(driveSeen(stored, "team"), { on: true });
+  assert.deepEqual(driveSeen(null, "admin"), { on: false });
+  assert.deepEqual(driveSeen({ email: "a@ex.fr" }, "admin"), { on: false });
+  assert.ok(!JSON.stringify(driveSeen(stored, "admin")).includes("secret"));
+});
+
+test("a document sent to Drive carries text and layout only", () => {
+  const html = docHtml("Caution <b>", `<h1>Caution</h1><script>alert(1)</script><p onclick="x()">Dépôt de <mark>2 500 €</mark></p><img src=x onerror=y><a href="javascript:z">l</a>`);
+  assert.ok(html.startsWith("<!doctype html>"));
+  assert.ok(html.includes("<title>Caution &lt;b&gt;</title>"));
+  assert.ok(html.includes("Dépôt de 2 500 €"));
+  for (const bad of ["<script", "onclick", "onerror", "<img", "javascript:", "<mark"]) assert.ok(!html.includes(bad), bad);
+});
+
+test("a new document is a Google Docs file in the one folder given", () => {
+  assert.deepEqual(docMeta("Caution", "f1"), { name: "Caution", mimeType: "application/vnd.google-apps.document", parents: ["f1"] });
+});
