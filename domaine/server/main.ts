@@ -15,7 +15,7 @@ import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
 import { calAuthUrl, CalError, calSeen, CAL_SCOPE, deleteEvent, eventBody, eventId, putEvent, visitOf, VISIT_ID, type CalSetting } from "./calendar.ts";
-import { addressesOf, buildMime, cleanMailHtml, mailAuthUrl, MailError, mailSeen, MAIL_SCOPES, recipientFor, sendMail, threadHead, threadsFor, type MailSetting } from "./mail.ts";
+import { addressesOf, buildMime, cleanMailHtml, mailAuthUrl, MailError, mailSeen, MAIL_SCOPES, attachmentHeaders, readAttachment, recipientFor, sendMail, threadHead, threadsFor, type MailSetting } from "./mail.ts";
 import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, lockDoc, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
 import { fetchIcal, type Source, type Stay } from "./ical.ts";
 
@@ -433,6 +433,18 @@ app.get("/api/mail", async (c) => {
   try {
     const addresses = addressesOf(doc as never);
     return c.json({ addresses, threads: await threadsFor(await accessToken(box.refresh, config.googleId, config.googleSecret), addresses, box.email) });
+  } catch (e) { return mailFailure(c as never, e); }
+});
+// A file joined to a message of one of the deal's conversations, opened from the page.
+app.get("/api/mail/attachment", async (c) => {
+  const doc = await dealDoc(c.req.query("dealId") ?? ""), messageId = c.req.query("messageId") ?? "", n = Number(c.req.query("n") ?? "x");
+  if (!doc || !/^[0-9a-f]{8,32}$/.test(messageId) || !Number.isInteger(n)) return c.json({ error: "pièce jointe introuvable" }, 404);
+  const box = await mailSetting();
+  if (!box) return c.json({ error: "La boîte Gmail n'est pas connectée" }, 409);
+  try {
+    const file = await readAttachment(await accessToken(box.refresh, config.googleId, config.googleSecret), messageId, n, addressesOf(doc as never), box.email);
+    if (!file) return c.json({ error: "pièce jointe introuvable" }, 404);
+    return new Response(file.bytes, { headers: { ...attachmentHeaders(file.name, file.type), "content-length": String(file.bytes.length) } });
   } catch (e) { return mailFailure(c as never, e); }
 });
 app.post("/api/mail/send", async (c) => {

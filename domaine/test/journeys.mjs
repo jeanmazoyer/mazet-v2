@@ -107,6 +107,8 @@ ok("without a connection the server makes no Drive folder either", (await a.eval
 ok("the team can neither start the mailbox consent nor disconnect it", (await team.evaluate(() => fetch("/auth/gmail").then((r) => new URL(r.url).origin === location.origin))) && (await team.evaluate(() => fetch("/api/mail", { method: "DELETE" }).then((r) => r.status))) === 403);
 ok("the mailbox grant can be neither read back nor written by a page", (await a.evaluate(() => fetch("/api/settings/gmail").then((r) => r.status))) === 403 && (await S(a, "S.mail.on")) === false
   && (await a.request.put(`${BASE}/api/settings/gmail`, { data: { value: { refresh: "x", email: "x@test.local" } } })).status() === 400 && (await a.evaluate(() => fetch("/api/state").then((r) => r.json()).then((st) => st.mail.on === false && !("gmail" in st.settings)))));
+ok("without a connected mailbox no attachment is served, and a page cannot ask for an arbitrary message", (await a.evaluate((id) => fetch(`/api/mail/attachment?dealId=${id}&messageId=aaa0000000000001&n=0`).then((r) => r.status), id)) === 409
+  && (await a.request.get(`${BASE}/api/mail/attachment?dealId=${id}&messageId=../labels&n=0`)).status() === 404);
 ok("without a connected mailbox the server reads no conversation", (await a.evaluate((id) => fetch("/api/mail?dealId=" + id).then((r) => r.status), id)) === 409 && (await a.request.get(`${BASE}/api/mail?dealId=nope`)).status() === 404);
 const sendTry = async (to) => (await a.request.post(`${BASE}/api/mail/send`, { data: { dealId: id, subject: "Essai", html: "<p>Bonjour</p>", to } })).status();
 ok("the server sends nothing to an address that is not the deal's, nor without a mailbox", (await sendTry("boss@corp.com")) === 400 && [400, 409].includes(await sendTry("")));
@@ -217,7 +219,7 @@ ok("without a mailbox, the e-mail tab is not offered", (await a.locator('.compos
 const mailDeal = await a.evaluate(() => location.hash.slice(9));
 const played = { addresses: ["alba@test.local"], threads: [
   { id: "aaa0000000000001", subject: "Mariage en juin", messages: [
-    { id: "m1", from: "Alba Test <alba@test.local>", to: "domaine@test.local", subject: "Mariage en juin", at: "2027-01-10T09:00:00.000Z", mine: false, messageId: "<1@mail>", files: ["Plan de table.pdf"], html: '<p>Bonjour, le domaine est-il <b>libre</b> ?</p><img src="x" onerror="window.__hit = 1"><script>window.__hit = 1</script>' },
+    { id: "m1", from: "Alba Test <alba@test.local>", to: "domaine@test.local", subject: "Mariage en juin", at: "2027-01-10T09:00:00.000Z", mine: false, messageId: "<1@mail>", files: [{ n: 0, name: "Plan de table.pdf", type: "application/pdf", size: 204800 }], html: '<p>Bonjour, le domaine est-il <b>libre</b> ?</p><img src="x" onerror="window.__hit = 1"><script>window.__hit = 1</script>' },
     { id: "m2", from: "Le Domaine <domaine@test.local>", to: "alba@test.local", subject: "Re: Mariage en juin", at: "2027-01-10T11:00:00.000Z", mine: true, messageId: "<2@mail>", files: [], html: "<p>Oui, il est libre.</p>" }] },
   { id: "aaa0000000000002", subject: "Question traiteur", messages: [{ id: "m3", from: "alba@test.local", to: "domaine@test.local", subject: "Question traiteur", at: "2026-12-01T08:00:00.000Z", mine: false, messageId: "<3@mail>", files: [], html: "<p>Peut-on venir avec notre traiteur ?</p>" }] }] };
 let mailAsked = [], mailReads = 0;
@@ -228,6 +230,8 @@ await a.waitForSelector('.blk:has-text("Conversations") .drow');
 ok("with the mailbox connected, the deal lists its conversations", (await a.locator('.blk:has-text("Conversations") .drow').count()) === 2 && (await a.locator('.composer [data-comp="E-mail"]').count()) === 1);
 await a.locator('.blk:has-text("Conversations") .drow').first().click(); await a.waitForSelector("#thread .mail");
 ok("a conversation opens in the page, message by message, with its attachments named", (await a.locator("#thread .mail").count()) === 2 && (await a.locator("#thread .mail.out").count()) === 1 && (await a.locator("#thread").innerText()).includes("Plan de table.pdf") && (await a.locator("#thread .mail b").first().innerText()) === "Alba Test");
+ok("an attachment is a link that opens that file of that message, and the head offers a small button and an icon", (await a.locator("#thread a.att").getAttribute("href")) === `/api/mail/attachment?dealId=${mailDeal}&messageId=m1&n=0` && (await a.locator("#thread a.att").innerText()).includes("200 Ko")
+  && (await a.locator('.mailhead .btn[data-a="mail-new"]').count()) === 1 && (await a.locator('.mailhead .iconbtn[data-a="mail-reload"]').innerText()).trim() === "");
 ok("what a message carries is shown as text and formatting only", (await a.locator("#thread img, #thread script").count()) === 0 && (await a.evaluate(() => window.__hit)) === undefined && (await a.locator("#thread .rich b").first().innerText()) === "libre");
 await a.click("#mail-body"); await a.keyboard.type("Merci Alba, "); await a.click('.rte [data-cmd="bold"]'); await a.keyboard.type("à bientôt"); await settle(a);
 await a.click('[data-a="mail-send"]'); await a.waitForSelector(".flash, .toast, [role=status]", { timeout: 3000 }).catch(() => null); await settle(a);

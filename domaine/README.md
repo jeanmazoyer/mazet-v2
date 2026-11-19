@@ -117,6 +117,10 @@ project.
   and web or mail links, and built as a plain text + HTML message.
 - Conversations are not copied into the database: they are read from Gmail when a deal is opened and
   kept in the page's memory for two minutes. Each message sent is noted in the deal's history.
+- `GET /api/mail/attachment?dealId=&messageId=&n=` serves the n-th file of a message, after checking
+  that the message belongs to one of the deal's conversations. PDF and common images open in the
+  browser; anything else is downloaded, never displayed. Images placed inside a message's text
+  (signatures) are not listed as attachments.
 - Not done yet: attachments on messages sent from the app.
 
 ## Visits and Google Agenda

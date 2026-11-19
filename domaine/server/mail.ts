@@ -5,7 +5,8 @@ import type { Role } from "./auth.ts";
 
 export const MAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"];
 export type MailSetting = { refresh: string; email: string };
-export type Mail = { id: string; from: string; to: string; subject: string; at: string; mine: boolean; html: string; messageId: string; files: string[] };
+export type Mail = { id: string; from: string; to: string; subject: string; at: string; mine: boolean; html: string; messageId: string; files: MailFile[] };
+export type MailFile = { n: number; name: string; type: string; size: number };
 
 export function mailAuthUrl(clientId: string, baseUrl: string, state: string): string {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -56,9 +57,24 @@ export function cleanMailHtml(html: string): string {
     }).trim();
 }
 const decode = (data: string) => Buffer.from(data ?? "", "base64url").toString("utf8");
-type Part = { mimeType?: string; filename?: string; body?: { data?: string }; parts?: Part[]; headers?: Array<{ name: string; value: string }> };
+type Part = { mimeType?: string; filename?: string; body?: { data?: string; attachmentId?: string; size?: number }; parts?: Part[]; headers?: Array<{ name: string; value: string }> };
 const findPart = (p: Part, type: string): Part | null => (p.mimeType === type && p.body?.data ? p : (p.parts ?? []).map((c) => findPart(c, type)).find(Boolean) ?? null);
-const fileNames = (p: Part): string[] => [...(p.filename ? [p.filename.slice(0, 120)] : []), ...(p.parts ?? []).flatMap(fileNames)];
+// The files joined to a message, in order. An image placed inside the text (a signature, a logo) is not one.
+const inText = (p: Part) => (p.mimeType ?? "").startsWith("image/") && /^\s*inline/i.test((p.headers ?? []).find((h) => h.name.toLowerCase() === "content-disposition")?.value ?? "");
+const fileParts = (p: Part): Part[] => [...(p.filename && !inText(p) ? [p] : []), ...(p.parts ?? []).flatMap(fileParts)];
+const fileType = (p: Part) => (p.mimeType ?? "").slice(0, 100);
+/** Where to fetch the n-th file of a message. Null when there is none at that place. */
+export function attachmentOf(msg: { payload?: Part }, n: number): { id: string; name: string; type: string } | null {
+  const part = Number.isInteger(n) && n >= 0 ? fileParts(msg.payload ?? {})[n] : undefined;
+  return part?.body?.attachmentId ? { id: part.body.attachmentId, name: (part.filename ?? "").slice(0, 120), type: fileType(part) } : null;
+}
+const SHOWN = new Set(["application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp"]);
+/** How a file from a message is handed to the browser: displayed only when that runs nothing, downloaded otherwise. */
+export function attachmentHeaders(name: string, type: string): Record<string, string> {
+  const shown = SHOWN.has(type);
+  return { "content-type": shown ? type : "application/octet-stream", "content-disposition": `${shown ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(name || "piece-jointe")}`,
+    "x-content-type-options": "nosniff", "cache-control": "private, max-age=600", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'" };
+}
 const QUOTED = /^(Le .{5,90} a écrit ?:|On .{5,90} wrote:|Am .{5,90} schrieb .*:|-{3,} ?(Original Message|Message d'origine) ?-{3,}|_{10,})\s*$/m;
 /** One Gmail message, as the app shows it: who, when, and its own words without the history quoted below them. */
 export function readMessage(msg: { id: string; internalDate?: string; payload?: Part }, mailbox: string): Mail {
@@ -69,7 +85,7 @@ export function readMessage(msg: { id: string; internalDate?: string; payload?: 
   else if (textPart) { const text = decode(textPart.body?.data ?? ""), cut = QUOTED.exec(text);
     html = esc((cut ? text.slice(0, cut.index) : text).split("\n").filter((l) => !l.startsWith(">")).join("\n").trim()).replace(/\n/g, "<br>"); }
   const from = h("from");
-  return { id: msg.id, from, to: h("to"), subject: h("subject"), at: new Date(Number(msg.internalDate ?? 0)).toISOString(), mine: addressesIn(from).includes(mailbox.toLowerCase()), html: html.slice(0, 40_000), messageId: h("message-id"), files: fileNames(payload).slice(0, 20) };
+  return { id: msg.id, from, to: h("to"), subject: h("subject"), at: new Date(Number(msg.internalDate ?? 0)).toISOString(), mine: addressesIn(from).includes(mailbox.toLowerCase()), html: html.slice(0, 40_000), messageId: h("message-id"), files: fileParts(payload).slice(0, 20).map((p, n) => ({ n, name: (p.filename ?? "").slice(0, 120), type: fileType(p), size: Number(p.body?.size ?? 0) })) };
 }
 
 const wrap = (b64: string) => b64.replace(/(.{76})/g, "$1\r\n");
@@ -88,8 +104,8 @@ export const toRaw = (mime: string) => Buffer.from(mime, "utf8").toString("base6
 /* ---------- Calls to Gmail. Each one gives up after 15 seconds. ---------- */
 export class MailError extends Error { status: number; constructor(status: number, message: string) { super(message); this.status = status; } }
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
-async function gmail<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(API + path, { ...init, signal: AbortSignal.timeout(15_000), headers: { authorization: `Bearer ${token}`, ...(init.headers as Record<string, string>) } });
+async function gmail<T>(token: string, path: string, init: RequestInit = {}, wait = 15_000): Promise<T> {
+  const res = await fetch(API + path, { ...init, signal: AbortSignal.timeout(wait), headers: { authorization: `Bearer ${token}`, ...(init.headers as Record<string, string>) } });
   if (!res.ok) throw new MailError([401, 403, 404].includes(res.status) ? res.status : 502, `Gmail a refusé (${res.status})`);
   return (await res.json()) as T;
 }
@@ -108,6 +124,18 @@ export async function threadHead(token: string, threadId: string, addresses: str
   if (!messages.length || !concerns(messages, addresses)) return null;
   const last = messages[messages.length - 1];
   return { messageId: last.messageId, subject: messages[0].subject };
+}
+/**
+ * One file of one message, for a deal. Null when the message is not part of the deal's conversations
+ * or holds no such file: a page cannot use this to read anything else in the mailbox.
+ */
+export async function readAttachment(token: string, messageId: string, n: number, addresses: string[], mailbox: string): Promise<{ name: string; type: string; bytes: Buffer } | null> {
+  const msg = await gmail<{ id: string; threadId?: string; internalDate?: string; payload?: Part }>(token, `/messages/${encodeURIComponent(messageId)}?format=full`);
+  const mine = concerns([readMessage(msg, mailbox)], addresses) || (msg.threadId ? (await threadHead(token, msg.threadId, addresses, mailbox)) !== null : false);
+  const file = mine ? attachmentOf(msg, n) : null;
+  if (!file) return null;
+  const got = await gmail<{ data?: string }>(token, `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(file.id)}`, {}, 45_000);
+  return { name: file.name, type: file.type, bytes: Buffer.from(got.data ?? "", "base64url") };
 }
 /** Sends a message from the mailbox, inside a thread when one is given. */
 export async function sendMail(token: string, mime: string, threadId = ""): Promise<{ id: string; threadId: string }> {

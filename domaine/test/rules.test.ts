@@ -162,7 +162,7 @@ test("a received message is read into sender, date and safe content, without the
   const plain = readMessage({ id: "m2", internalDate: "0", payload: { headers: [], mimeType: "text/plain", body: { data: b64("Ligne 1\n<b>pas du html</b>\n\nLe lun. 2 mars, X a écrit :\n> ancien") } } }, "d@test.fr");
   assert.ok(plain.html.includes("Ligne 1") && plain.html.includes("&lt;b&gt;") && !plain.html.includes("ancien"));
   const withFile = readMessage({ id: "m3", internalDate: "0", payload: { headers: [], mimeType: "multipart/mixed", parts: [{ mimeType: "text/plain", body: { data: b64("Voir le devis") } }, { mimeType: "application/pdf", filename: "Devis <1>.pdf", body: {} }] } }, "d@test.fr");
-  assert.deepEqual(withFile.files, ["Devis <1>.pdf"]); assert.deepEqual(m.files, []);
+  assert.deepEqual(withFile.files, [{ n: 0, name: "Devis <1>.pdf", type: "application/pdf", size: 0 }]); assert.deepEqual(m.files, []);
 });
 
 test("mail content keeps simple formatting and safe links only", () => {
@@ -225,4 +225,24 @@ test("a visit becomes one agenda event, always the same one, in the estate's tim
   assert.ok(!e.description.includes("<"));
   // A visit that runs past midnight ends the next day, month ends included.
   assert.deepEqual(eventBody({ id: "v1", date: "2027-01-31", time: "23:30", dur: 60, note: "" }, deal, "https://x.fr").end, { dateTime: "2027-02-01T00:30:00", timeZone: "Europe/Paris" });
+});
+
+test("an attachment is found by its place in the message, and a signature image is not one", async () => {
+  const { readMessage, attachmentOf, attachmentHeaders } = await import("../server/mail.ts");
+  const payload = { headers: [], mimeType: "multipart/mixed", parts: [
+    { mimeType: "multipart/related", parts: [{ mimeType: "text/html", body: { data: b64("<p>Voir la brochure</p>") } },
+      { mimeType: "image/png", filename: "signature.png", headers: [{ name: "Content-Disposition", value: 'inline; filename="signature.png"' }, { name: "Content-ID", value: "<sig>" }], body: { attachmentId: "A0", size: 900 } }] },
+    { mimeType: "application/pdf", filename: "Brochure.pdf", headers: [{ name: "Content-Disposition", value: 'attachment; filename="Brochure.pdf"' }], body: { attachmentId: "A1", size: 1200 } },
+    { mimeType: "image/jpeg", filename: "Plan.jpg", headers: [{ name: "Content-Disposition", value: "attachment" }], body: { attachmentId: "A2", size: 300 } }] };
+  const msg = { id: "m9", internalDate: "0", payload };
+  assert.deepEqual(readMessage(msg, "d@test.fr").files, [{ n: 0, name: "Brochure.pdf", type: "application/pdf", size: 1200 }, { n: 1, name: "Plan.jpg", type: "image/jpeg", size: 300 }]);
+  assert.deepEqual(attachmentOf(msg, 1), { id: "A2", name: "Plan.jpg", type: "image/jpeg" });
+  assert.equal(attachmentOf(msg, 2), null); assert.equal(attachmentOf(msg, -1), null); assert.equal(attachmentOf(msg, 0.5), null);
+  // Shown in the browser only for what it displays without running anything; the rest is downloaded.
+  assert.match(attachmentHeaders("Brochure.pdf", "application/pdf")["content-disposition"], /^inline; /);
+  assert.equal(attachmentHeaders("Brochure.pdf", "application/pdf")["content-type"], "application/pdf");
+  for (const [name, type] of [["page.html", "text/html"], ["dessin.svg", "image/svg+xml"], ["x.pdf", "application/pdf; charset=x\r\nSet-Cookie: a=b"]]) {
+    const h = attachmentHeaders(name, type); assert.match(h["content-disposition"], /^attachment; /); assert.equal(h["content-type"], "application/octet-stream"); }
+  assert.ok(attachmentHeaders('a"b\r\n.pdf', "application/pdf")["content-disposition"].includes("filename*=UTF-8''a%22b%0D%0A.pdf"));
+  assert.equal(attachmentHeaders("x", "image/png")["x-content-type-options"], "nosniff");
 });
