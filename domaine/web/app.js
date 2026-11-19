@@ -1040,7 +1040,8 @@ function previewPanel() {
   const cur = previewed(); if (!cur) return "";
   const { d, x, sheet } = cur, locked = Boolean(x.admin) && !isAdmin(), plain = !sheet && !locked, mode = plain ? docMode(x) : "";
   const slotFree = (k) => !d || !d.docs.some((y) => y !== x && y.slot === k), fixed = mode === "signed" || mode === "signing";
-  const meta = plain ? `<div class="dmeta"><label><span>Type de document</span><select class="inp" data-doctype aria-label="Type de document" ${fixed ? "disabled" : ""}><option value="">Autre document</option>${SLOTS.map((s) => `<option value="${s.key}" ${x.slot === s.key ? "selected" : ""} ${slotFree(s.key) ? "" : "disabled"}>${s.label}${slotFree(s.key) ? "" : " (déjà présent)"}</option>`).join("")}</select></label>
+  // A Drive file takes the whole panel: its type and its deal were set by the import.
+  const meta = plain && !x.url ? `<div class="dmeta"><label><span>Type de document</span><select class="inp" data-doctype aria-label="Type de document" ${fixed ? "disabled" : ""}><option value="">Autre document</option>${SLOTS.map((s) => `<option value="${s.key}" ${x.slot === s.key ? "selected" : ""} ${slotFree(s.key) ? "" : "disabled"}>${s.label}${slotFree(s.key) ? "" : " (déjà présent)"}</option>`).join("")}</select></label>
       <label><span>Affaire</span><select class="inp" data-docdeal aria-label="Affaire du document" ${fixed ? "disabled" : ""}><option value="">Non classé</option>${S.deals.map((o) => `<option value="${o.id}" ${d === o ? "selected" : ""}>${esc(o.title)}</option>`).join("")}</select></label></div>` : "";
   const paid = d && x.pl && (x.slot === "acompte" || x.slot === "solde") && d.payments.find((p) => p.id === (x.slot === "acompte" ? "dep" : "bal"))?.status === "paid";
   const say = (msg) => `data-a="doc-toast" data-msg="${esc(msg)}"`;
