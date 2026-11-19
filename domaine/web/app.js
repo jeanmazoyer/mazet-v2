@@ -1542,7 +1542,7 @@ document.addEventListener("click", (e) => {
   if (ds.month) { const [y, m] = S.month.split("-").map(Number); const n = new Date(Date.UTC(y, m - 1 + Number(ds.month), 1)); S.month = n.toISOString().slice(0, 7); }
 
   /* Deal: fields, dates, stage, status */
-  if (ds.edit === "dates" && d) { S.modal = "dates"; S.pick = { id: d.id, a: d.start, b: d.end, month: d.start.slice(0, 7) }; }
+  if (ds.edit === "dates" && d) { S.modal = "dates"; S.pick = { id: d.id, a: d.start, b: d.end, month: (d.start || TODAY).slice(0, 7) }; }
   else if (ds.edit) S.edit = { key: ds.edit };
   if (ds.day && S.pick) { const pk = S.pick; if (!pk.a || pk.b || ds.day <= pk.a) { pk.a = ds.day; pk.b = null; } else pk.b = ds.day; }
   if (ds.pm && S.pick) { const [py, pmo] = S.pick.month.split("-").map(Number); S.pick.month = new Date(Date.UTC(py, pmo - 1 + Number(ds.pm), 1)).toISOString().slice(0, 7); }

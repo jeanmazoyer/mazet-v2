@@ -89,6 +89,11 @@ const quick = await S(a, "S.deals.find(d => d.title === 'Appel de Mme Test')");
 ok("a deal is created from a note alone", Boolean(quick) && quick.start === "" && quick.pinned[0].body.includes("rappeler jeudi") && (await a.locator(".dealhead").innerText()).includes("Dates à définir"), JSON.stringify(quick ?? null).slice(0, 200));
 await a.click('.step[data-stage="2"]'); await settle(a);
 ok("no option can be held without dates", (await S(a, "S.deals.find(d => d.title === 'Appel de Mme Test').stage")) === 0 && (await a.locator(".notice, .banner, [role=alert]").first().innerText().catch(() => "")).includes("dates"));
+await a.click('[data-edit="dates"]'); await a.waitForSelector(".pmonths");
+const free = a.locator(".pmonths [data-day]:not([disabled])"); await free.nth(20).click(); await free.nth(23).click(); await a.click('[data-a="dates-ok"]'); await settle(a);
+const dated = await S(a, "S.deals.find(d => d.title === 'Appel de Mme Test')");
+ok("dates can be given afterwards", /^\d{4}-\d{2}-\d{2}$/.test(dated.start) && dated.end > dated.start, JSON.stringify([dated.start, dated.end]));
+await a.evaluate(() => { const d = window.__app.S.deals.find((o) => o.title === "Appel de Mme Test"); d.start = d.end = ""; return window.__app.persist(); }); await settle(a);
 const errsBefore = errors.length;
 for (const h of ["#affaires", "#reservations", "#contacts", "#documents", "#audit", "#taches", "#statistiques", "#reglages", `#contact-${quick.id}`, `#affaire-${quick.id}`]) { await a.goto(`${BASE}/${h}`); await a.waitForSelector(".topbar h1"); await a.waitForTimeout(150); }
 await a.click('[data-comp="Événement"]'); await a.click('[data-a="sheet"]'); await a.waitForSelector(".drawer"); await a.click("#close-preview");
