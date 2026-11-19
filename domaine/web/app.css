@@ -897,3 +897,5 @@ a.btn { text-decoration: none; }
   .paper { border: 0; max-width: none; min-height: 0; padding: 0; }
   .paper mark { background: none; }
 }
+/* The estate's name runs on two lines beside the logo when the menu is open. */
+.app.wide .rail .brand .lb { display: block; white-space: normal; overflow: visible; font-size: 14px; line-height: 1.2; }

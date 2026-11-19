@@ -196,7 +196,7 @@ function rail(active) {
   const unread = live().reduce((s, d) => s + (d.unread.mail ? 1 : 0) + (d.unread.wa ? 1 : 0), 0);
   const due = live().flatMap((d) => d.todos).filter((t) => t.due && t.due <= TODAY).length, n = alerts().length, u = me();
   return `<nav class="rail" aria-label="Navigation principale">
-    <a class="brand" href="#affaires" title="Accueil" aria-label="Accueil : affaires"><span class="logo">J</span><span class="lb">Le Domaine</span></a><hr>
+    <a class="brand" href="#affaires" title="Accueil" aria-label="Accueil : affaires"><span class="logo">J</span><span class="lb">Les jardins de Campagne</span></a><hr>
     <button class="tile" data-a="search" title="Rechercher (Ctrl K)" aria-label="Rechercher partout">${ico("search", "m")}<span class="lb">Rechercher</span><kbd class="lb">Ctrl K</kbd></button>
     ${item("affaires", "grid", "Affaires")}${item("reservations", "cal", "Réservations")}${item("contacts", "users", "Contacts")}${item("documents", "doc", "Documents")}${item("messages", "mail", "Messages", unread)}${item("taches", "tasks", "Tâches", due)}${item("openspace", "spark", "Open Space", S.props.length)}${item("statistiques", "chart", "Statistiques")}${item("reglages", "gear", "Réglages")}
     <button class="plus" data-a="new" title="Nouvelle affaire" aria-label="Nouvelle affaire">${ico("plus")}<span class="lb">Nouvelle affaire</span></button>
@@ -977,7 +977,7 @@ function insertInMail(text) {
 }
 
 /* ---------- E-mail: templates and the deal's own information ---------- */
-const signOff = () => `<p>Bien cordialement,<br>${esc(me().name)}<br>Le Domaine</p>`;
+const signOff = () => `<p>Bien cordialement,<br>${esc(me().name)}<br>Les jardins de Campagne</p>`;
 const firstName = (d) => d.contact.name.split(" ")[0];
 const owed = (d) => income(d).filter((p) => p.status === "due").reduce((s, p) => s + p.amount, 0);
 const MAIL_TPL = {
@@ -1235,7 +1235,7 @@ const VIEWS = { affaire: (r) => viewAffaire(r.id), contact: (r) => viewContact(r
 let shownModal = null;
 // Where signing out leads. Signing in is Google's own screen, so nothing is typed here.
 function viewLogin() {
-  return `<div class="login"><div class="card logincard"><div class="biglogo" aria-hidden="true">J</div><h1>Le Domaine</h1><p class="muted">Affaires, réservations, documents et encaissements du domaine.</p>
+  return `<div class="login"><div class="card logincard"><div class="biglogo" aria-hidden="true">J</div><h1>Les jardins de Campagne</h1><p class="muted">Affaires, réservations, documents et encaissements du domaine.</p>
     ${S.loginErr ? `<p class="err" role="alert">Connexion refusée : ${esc(S.loginErr)}.</p>` : ""}
     <a class="btn" href="/auth/google">Se connecter avec Google</a><p class="help">Seules les adresses invitées peuvent entrer.</p></div></div>`;
 }
