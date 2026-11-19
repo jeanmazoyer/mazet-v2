@@ -121,6 +121,13 @@ ok("switching the deal to English switches the agreement", ["Seasonal Rental Agr
 await a.click("#close-preview"); await a.waitForSelector(".drawer", { state: "detached" });
 await a.evaluate(() => { const S = window.__app.S; S.deals = S.deals.filter((d) => d.title !== "Contrat bilingue"); S.lessor = {}; return window.__app.persist(); }); await settle(a);
 
+// A page left open on an older version: told so while something is being typed, reloaded by itself otherwise
+await a.goto(`${BASE}/#affaires`); await a.waitForSelector(".topbar h1");
+await a.evaluate(() => { const S = window.__app.S; S.build = "older"; S.draft.note = "en cours"; return window.__app.checkBuild(); }); await a.waitForSelector(".notice.stale");
+ok("an outdated page says a new version is online while something is being typed", (await a.locator('.notice.stale [data-a="reload"]').count()) === 1);
+await a.evaluate(() => { const S = window.__app.S; S.draft = {}; S.stale = false; S.build = "older"; window.__marker = 1; return window.__app.checkBuild(); }); await a.waitForFunction(() => window.__marker === undefined && window.__app && window.__app.S.build && window.__app.S.build !== "older");
+ok("with nothing in progress it reloads by itself onto the new version", (await a.locator(".notice.stale").count()) === 0);
+
 // A season file (fictional people): stays with payments, documents and remarks, then the audit page
 const season = { format: "domaine-import-1", season: 2027, mailbox: "accueil@test.local", lessor: { name: "SARL Importée", city: "Nîmes", signer: "<b>Signataire</b>" }, deals: [
   { id: "t27-ok", title: "Mariage Alba & Noé", kind: "Mariage", stage: 4, status: "Gagné", amount: 8000, start: "2027-08-06", end: "2027-08-09", guests: 60, sleeping: 20, signed: "2027-01-10", contact: { name: "Alba Test", email: "alba@test.local" },

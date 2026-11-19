@@ -10,7 +10,7 @@ import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { etag } from "hono/etag";
 import { streamSSE } from "hono/streaming";
-import { cookie, decideAccess, mayBootstrap, readCookie, readIdToken, signIn, signOut, userFromCookie, type Access, type Role, type User } from "./auth.ts";
+import { cookie, decideAccess, hashToken, mayBootstrap, readCookie, readIdToken, signIn, signOut, userFromCookie, type Access, type Role, type User } from "./auth.ts";
 import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
@@ -150,6 +150,14 @@ const readJson = async (c: { req: { text: () => Promise<string> } }): Promise<Re
 };
 const dealOut = (row: { id: string; doc: Doc; version: number }, role: Role) => ({ ...forRole(row.doc, role), id: row.id, _v: row.version });
 
+// Which version of the pages is being served: it changes whenever one of their files does. A page left
+// open compares it with the one it started from, so that nobody keeps working in yesterday's version.
+const PAGE_FILES = ["index.html", "app.js", "contract.js", "app.css"];
+async function buildId(): Promise<string> {
+  const parts = await Promise.all(PAGE_FILES.map((f) => stat(join("web", f)).then((i) => `${f}:${i.size}:${Math.round(i.mtimeMs)}`, () => `${f}:-`)));
+  return hashToken(parts.join("|")).slice(0, 16);
+}
+app.get("/api/build", async (c) => { c.header("Cache-Control", "no-store"); return c.json({ build: await buildId() }); });
 app.get("/api/state", async (c) => {
   const u = c.get("user");
   const deals = await sql`select id, doc, version from deals order by updated_at desc`;
@@ -157,7 +165,7 @@ app.get("/api/state", async (c) => {
   const [drive] = await sql`select value from settings where key = 'drive'`;
   const users = adminOnly(u) ? await sql`select email, name, role, last_login is null as pending from users order by created_at` : [];
   const admin = adminOnly(u) ? { icalUrl: `${config.baseUrl}/ical/${await icalToken()}.ics`, lastBackup: await lastBackup() } : null;
-  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin, drive: driveSeen(drive ? drive.value : null, u.role) });
+  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin, drive: driveSeen(drive ? drive.value : null, u.role), build: await buildId() });
 });
 app.get("/api/deals/:id", async (c) => {
   const [row] = await sql`select id, doc, version from deals where id = ${c.req.param("id")}`;

@@ -106,7 +106,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -1323,7 +1323,7 @@ function render() {
   // The page first: opening a conversation marks it read, and the rail counts what is unread.
   const body = VIEWS[r.name](r);
   document.getElementById("app").className = "app" + (S.railOpen ? " wide" : "");
-  paint(rail(active) + `<main class="main">${S.notice ? `<div class="notice" role="alert">${ico("alert", "s")}<span>${esc(S.notice)}</span></div>` : ""}${S.flash ? `<div class="flash" role="status">${ico("check", "s")}<span>${esc(S.flash.text)}</span>${S.flash.undo ? `<button class="link" data-a="undo">Annuler</button>` : ""}</div>` : ""}${body}</main>`
+  paint(rail(active) + `<main class="main">${S.stale ? `<div class="notice stale" role="status">${ico("sync", "s")}<span>Une nouvelle version de l'application est en ligne. Ce que vous êtes en train de saisir n'est pas perdu tant que vous restez sur cette page.</span><button class="btn sm" data-a="reload">Recharger</button></div>` : ""}${S.notice ? `<div class="notice" role="alert">${ico("alert", "s")}<span>${esc(S.notice)}</span></div>` : ""}${S.flash ? `<div class="flash" role="status">${ico("check", "s")}<span>${esc(S.flash.text)}</span>${S.flash.undo ? `<button class="link" data-a="undo">Annuler</button>` : ""}</div>` : ""}${body}</main>`
     + menus() + peekPanel() + previewPanel() + newDealModal() + pickerModal() + datesModal() + docNewModal() + lostModal() + taskModal() + icsModal() + userModal() + extModal() + searchModal() + agentModal() + sigReqModal() + signModal() + bufferModal() + confirmModal());
   queueSave();
   if (r.name === "openspace") drawWires();
@@ -1361,6 +1361,7 @@ document.addEventListener("click", (e) => {
   // From the calendar, a stay opens in a panel: the calendar stays where it was underneath.
   if (ds.go && ds.go.startsWith("affaire-") && route().name === "reservations" && !S.peek && deal(ds.go.slice(8))) { S.peek = ds.go.slice(8); S.peekOut = false; S.edit = S.payEdit = S.menu = null; render(); return; }
   if (ds.a === "peek-close") { closePeek(); render(); return; }
+  if (ds.a === "reload") { persist().finally(() => location.reload()); return; }
   const flash = S.flash; S.flash = null; S.notice = "";
   if (ds.menu) { S.menu = S.menu === ds.menu ? null : ds.menu; render(); return; }
   if (ds.a === "undo" && flash && flash.undo) flash.undo();
@@ -1921,8 +1922,18 @@ function applySettings(st) {
   for (const k of Object.keys(SETTINGS)) savedSettings[k] = JSON.stringify(SETTINGS[k]());
   savedSettings.users = JSON.stringify(usersOut());
 }
+// A page left open does not know the app has moved on. It asks now and then, and when it comes back to
+// the front: with nothing in progress it reloads by itself, otherwise it says so and waits for a click.
+async function checkBuild() {
+  if (!S.user || !S.build) return;
+  const r = await fetch("/api/build", { headers: { "x-client": CLIENT } }).then((x) => (x.ok ? x.json() : null), () => null);
+  if (!r || !r.build || r.build === S.build) return;
+  const busy = S.modal || S.edit || S.payEdit || S.preview || S.peek || Object.values(S.draft).some((v) => v) || saving;
+  if (!busy) { location.reload(); return; }
+  if (!S.stale) { S.stale = true; render(); }
+}
 function applyState(st) {
-  S.user = st.user; S.role = st.user.role === "admin" ? "admin" : "team";
+  S.user = st.user; S.role = st.user.role === "admin" ? "admin" : "team"; S.build = st.build ?? "";
   S.deals = st.deals; saved.clear(); for (const d of S.deals) saved.set(d.id, plain(d));
   applySettings(st);
 }
@@ -2011,6 +2022,8 @@ async function syncFeeds() {
 // Changes made from another page or by another person arrive here, as they are saved.
 function follow() {
   const es = new EventSource("/api/events");
+  // The stream opens again after the server restarts: the moment a new version usually arrives.
+  es.onopen = () => { checkBuild(); };
   es.onmessage = async (m) => {
     let e; try { e = JSON.parse(m.data); } catch (_) { return; }
     if (e.client === CLIENT || !S.user) return;
@@ -2078,7 +2091,8 @@ function importPlanning(text) {
 document.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (!f) return;
   if (e.target.id === "imp-file") f.text().then(importPlanning);
   if (e.target.id === "bank-file") f.text().then((t) => { importStatement(t); e.target.value = ""; }); });
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") persist(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") persist(); else checkBuild(); });
+setInterval(checkBuild, 5 * 60 * 1000);
 async function boot() {
   const refus = /refus=([^&]+)/.exec(location.hash);
   if (refus) { S.loginErr = decodeURIComponent(refus[1]); history.replaceState(null, "", "#connexion"); }
@@ -2092,5 +2106,5 @@ async function boot() {
   render(); follow();
 }
 // For the journey checks only: lets a test read the state it is looking at.
-window.__app = { S, TERMS, bookings, clean, persist, mk, SEL, parseStatement, auditDeal, importSeason };
+window.__app = { S, TERMS, bookings, clean, persist, mk, SEL, parseStatement, auditDeal, importSeason, checkBuild };
 boot();
