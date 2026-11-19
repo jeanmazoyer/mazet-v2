@@ -190,3 +190,39 @@ test("a message can only go to an address of the deal, and the page never learns
   assert.deepEqual(mailSeen({ refresh: "secret", email: "d@test.fr" }, "team"), { on: true });
   assert.deepEqual(mailSeen(null, "admin"), { on: false });
 });
+
+/* ---------- Google Agenda: the visits planned on a deal ---------- */
+test("the agenda consent asks to write events, nothing more", async () => {
+  const { calAuthUrl, CAL_SCOPE, calSeen } = await import("../server/calendar.ts");
+  const u = new URL(calAuthUrl("client", "https://x.fr", "agenda.abc"));
+  assert.deepEqual(u.searchParams.get("scope")?.split(" ").sort(), ["email", "openid", CAL_SCOPE].sort());
+  assert.equal(CAL_SCOPE, "https://www.googleapis.com/auth/calendar.events");
+  assert.equal(u.searchParams.get("redirect_uri"), "https://x.fr/auth/callback"); assert.equal(u.searchParams.get("access_type"), "offline");
+  assert.deepEqual(calSeen({ refresh: "secret", email: "d@test.fr" }, "admin"), { on: true, email: "d@test.fr" });
+  assert.deepEqual(calSeen({ refresh: "secret", email: "d@test.fr" }, "team"), { on: true });
+  assert.deepEqual(calSeen({ email: "d@test.fr" }, "admin"), { on: false });
+});
+
+test("a visit is read from its deal, and nothing malformed gets through", async () => {
+  const { visitOf } = await import("../server/calendar.ts");
+  const doc = { visits: [{ id: "vabc123", date: "2027-03-06", time: "10:30", dur: 90, note: "Avec les parents" }, { id: "vbad0001", date: "06/03/2027", time: "10:30", dur: 60, note: "" },
+    { id: "vbad0002", date: "2027-03-06", time: "25:00", dur: 60, note: "" }, { id: "vlong001", date: "2027-03-06", time: "09:00", dur: 100000, note: 12 }] };
+  assert.deepEqual(visitOf(doc, "vabc123"), { id: "vabc123", date: "2027-03-06", time: "10:30", dur: 90, note: "Avec les parents" });
+  assert.equal(visitOf(doc, "vbad0001"), null); assert.equal(visitOf(doc, "vbad0002"), null); assert.equal(visitOf(doc, "vnone999"), null); assert.equal(visitOf({}, "vabc123"), null);
+  assert.deepEqual(visitOf(doc, "vlong001"), { id: "vlong001", date: "2027-03-06", time: "09:00", dur: 480, note: "" });
+});
+
+test("a visit becomes one agenda event, always the same one, in the estate's time zone", async () => {
+  const { eventId, eventBody } = await import("../server/calendar.ts");
+  const id = eventId("d-123", "vabc123");
+  assert.match(id, /^[a-v0-9]{20,64}$/); assert.equal(id, eventId("d-123", "vabc123")); assert.notEqual(id, eventId("d-124", "vabc123"));
+  const deal = { id: "d-123", title: "Mariage Alba & Noé", contact: { name: "Alba Test", phone: "06 00 00 00 00", email: "alba@test.fr" } };
+  const e = eventBody({ id: "vabc123", date: "2027-03-06", time: "10:30", dur: 90, note: "Avec <b>les</b> parents" }, deal, "https://x.fr");
+  assert.equal(e.summary, "Visite : Mariage Alba & Noé");
+  assert.deepEqual(e.start, { dateTime: "2027-03-06T10:30:00", timeZone: "Europe/Paris" });
+  assert.deepEqual(e.end, { dateTime: "2027-03-06T12:00:00", timeZone: "Europe/Paris" });
+  assert.ok(e.description.includes("Alba Test") && e.description.includes("06 00 00 00 00") && e.description.includes("https://x.fr/#affaire-d-123") && e.description.includes("Avec les parents"));
+  assert.ok(!e.description.includes("<"));
+  // A visit that runs past midnight ends the next day, month ends included.
+  assert.deepEqual(eventBody({ id: "v1", date: "2027-01-31", time: "23:30", dur: 60, note: "" }, deal, "https://x.fr").end, { dateTime: "2027-02-01T00:30:00", timeZone: "Europe/Paris" });
+});

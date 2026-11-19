@@ -984,3 +984,17 @@ a.drow { color: inherit; text-decoration: none; }
 .sticky textarea { width: 100%; min-height: 110px; resize: vertical; background: #fff; border: 1px solid rgba(242,201,76,.8); border-radius: var(--r-sm); padding: var(--s2) var(--s3); line-height: 1.45; font: inherit; color: var(--ink); }
 .sticky textarea:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
 .sticky.editing .acts { align-items: center; }
+
+/* Visits: the form, the rows on a deal, the chip in the calendar */
+.vform { display: grid; grid-template-columns: repeat(3, minmax(0, 200px)); gap: var(--s3) var(--s4); align-items: end; }
+.vform .fld { margin: 0; min-width: 0; } .vform .fld.wide { grid-column: 1 / -1; }
+@media (max-width: 640px) { .vform { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kb.vis { background: var(--blue-tint); color: var(--blue-ink); }
+.vrow .link { font-size: 13px; white-space: nowrap; } .vrow.past { opacity: .6; }
+.vrow.editing { border: 1px solid var(--blue); border-radius: var(--r-md); background: var(--surface); padding: var(--s3) var(--s4); display: flex; flex-direction: column; gap: var(--s3); }
+.vrow.editing .cfoot { display: flex; gap: var(--s4); justify-content: flex-end; align-items: center; }
+.vsync { white-space: nowrap; display: inline-flex; align-items: center; gap: var(--s1); color: var(--ink-3); } .vsync.ok { color: var(--green-ink); }
+.vchip { position: absolute; top: var(--s2); left: 36px; max-width: calc(100% - 42px); height: 24px; padding: 0 var(--s2); display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(47,128,237,.35); border-radius: 12px; background: var(--surface); color: var(--blue-ink); font-size: 11px; font-weight: 700; z-index: 1; }
+.vchip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .vchip:hover { background: var(--blue-tint); }
+.vlist .link { text-align: left; align-items: flex-start; } .vlist .link .ico { color: var(--blue-ink); margin-top: 3px; } .vlist .link b { display: block; font-weight: 700; }
+.day:has(.vchip) .addday { top: auto; bottom: var(--s1); }

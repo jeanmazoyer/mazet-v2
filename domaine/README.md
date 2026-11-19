@@ -119,6 +119,24 @@ project.
   kept in the page's memory for two minutes. Each message sent is noted in the deal's history.
 - Not done yet: attachments on messages sent from the app.
 
+## Visits and Google Agenda
+
+A visit is planned from a deal (composer tab "Visite"): day, hour, length, a few words. It is kept in
+the deal (`visits`), listed above its documents, shown on its day in the calendar, and can be corrected
+or deleted (with a confirmation).
+
+An administrator may connect the estate's Google Agenda in Réglages (`/auth/agenda`, scope
+`calendar.events`, "Google Calendar API" enabled in the Google Cloud project). Each coming visit is then
+written as one event in the account's main calendar, updated when the visit or its deal changes, and
+removed with it.
+
+- The page names a deal and a visit; the server reads the visit from the saved deal and derives the
+  event's identifier from both. No other event of the calendar can be reached from a page.
+- Times are sent as local times with the zone `Europe/Paris`.
+- Disconnecting one Google connection (Drive, Gmail, Agenda) only hands the grant back to Google when
+  no other connection uses the same account: Google ends all of an account's grants at once.
+- Visits are not part of the iCal export, which exists to block booked dates on rental platforms.
+
 ## The rental agreement
 
 `web/contract.js` holds the estate's agreement in French and in English. A deal carries the language of

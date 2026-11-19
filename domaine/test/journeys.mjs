@@ -45,6 +45,26 @@ ok("deleting a note asks for a confirmation first", (await a.locator('[role="ale
 await a.click('[role="alertdialog"] [data-a="close-modal"]'); ok("declining keeps the note", (await a.locator(".sticky").count()) === 1 && (await a.locator('[role="alertdialog"]').count()) === 0);
 await a.click('.sticky [data-a="pin-del"]'); await a.click('[data-a="confirm-yes"]'); await settle(a); await settle(bob);
 ok("once confirmed the note is gone for everyone", (await a.locator(".sticky").count()) === 0 && (await bob.locator(".sticky").count()) === 0);
+// Visits: planned on the deal, corrected, shown in the calendar, written in Google Agenda (its answers are played here)
+ok("the activity tab is gone, a visit tab takes its place", (await a.locator('.composer [data-comp="Activité"]').count()) === 0 && (await a.locator('.composer [data-comp="Visite"]').count()) === 1);
+await a.click('[data-comp="Visite"]'); await a.fill("#vs-date", "2027-03-06"); await a.fill("#vs-time", "10:30"); await a.selectOption("#vs-dur", "90"); await a.fill("#vs-note", "Avec les parents"); await a.click('[data-a="visit-add"]'); await settle(a); await settle(bob);
+const visitId = await S(a, "S.deals[0].visits[0].id");
+ok("a planned visit is listed on the deal, above its documents, for everyone", (await a.locator(".vrow").innerText()).includes("samedi 6 mars 2027 à 10:30") && (await a.locator(".vrow").innerText()).includes("1 h 30 · Avec les parents") && (await bob.locator(".vrow").count()) === 1
+  && (await a.evaluate(() => { const row = document.querySelector(".vrow"), docs = [...document.querySelectorAll(".feed .blk h3")].find((h) => h.textContent.startsWith("Documents")); return Boolean(row.compareDocumentPosition(docs) & Node.DOCUMENT_POSITION_FOLLOWING); })));
+ok("without a connected agenda nothing is written in Google, and a page cannot reach another event", (await a.evaluate(([d, v]) => fetch("/api/calendar/visit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dealId: d, visitId: v }) }).then((r) => r.status), [id, visitId])) === 409
+  && (await a.request.post(`${BASE}/api/calendar/visit`, { data: { dealId: id, visitId: "vnone0000" } })).status() === 404 && (await a.request.post(`${BASE}/api/calendar/visit/remove`, { data: { dealId: id, visitId: "../primary" } })).status() === 400);
+ok("the team can neither start the agenda consent nor read its key", (await bob.evaluate(() => fetch("/api/state").then((r) => r.json()).then((st) => st.agenda.on === false && !("agenda" in st.settings)))) && (await a.evaluate(() => fetch("/api/settings/agenda").then((r) => r.status))) === 403);
+let calAsked = []; await a.context().route("**/api/calendar/**", (r) => { calAsked.push([new URL(r.request().url()).pathname, JSON.parse(r.request().postData() ?? "{}")]); return r.fulfill({ contentType: "application/json", body: '{"ok":true}' }); });
+await a.evaluate(() => { window.__app.S.agenda = { on: true, email: "domaine@test.local" }; });
+await a.click('[data-a="visit-edit"]'); await a.fill("#ve-time", "15:00"); await a.click('[data-a="visit-save"]'); await a.waitForSelector(".vsync.ok");
+ok("a corrected visit is saved and sent to the agenda as the same visit", (await S(a, "S.deals[0].visits[0].time")) === "15:00" && (await a.locator(".vrow").innerText()).includes("à 15:00") && calAsked.length === 1 && calAsked[0][0] === "/api/calendar/visit" && calAsked[0][1].dealId === id && calAsked[0][1].visitId === visitId, JSON.stringify(calAsked));
+await a.goto(`${BASE}/#reservations`); await a.waitForSelector(".cmonth"); await a.evaluate(() => { window.__app.S.month = "2027-03"; window.dispatchEvent(new HashChangeEvent("hashchange")); });
+ok("the calendar shows the visit on its day and in the coming visits", (await a.locator(".vchip").count()) === 1 && (await a.locator(".vchip").innerText()).includes("15:00") && (await a.locator(".vlist").innerText()).includes("Mariage test"));
+await a.click(".vchip"); await a.waitForSelector(".drawer.peek .vrow"); await a.click('.drawer.peek [data-a="visit-del"]'); await a.waitForSelector('[role="alertdialog"]');
+ok("deleting a visit asks for a confirmation first", (await S(a, "S.deals[0].visits.length")) === 1);
+await a.click('[data-a="confirm-yes"]'); await settle(a);
+ok("a deleted visit leaves the deal, the calendar and the agenda", (await S(a, "S.deals[0].visits.length")) === 0 && (await a.locator(".vchip").count()) === 0 && calAsked.some(([path, body]) => path === "/api/calendar/visit/remove" && body.visitId === visitId));
+await a.evaluate(() => { window.__app.S.agenda = { on: false }; }); await a.context().unroute("**/api/calendar/**"); await a.goto(`${BASE}/#affaire-${id}`); await a.waitForSelector(".dealhead");
 // Signing the deal creates the schedule; the other page follows
 await a.click('[data-stage="4"]'); await settle(a); await settle(bob);
 ok("stage and schedule reach the other page", (await bob.locator(".step.cur").innerText()).includes("Signé") && (await S(bob, "S.deals[0].payments.length")) === 3);

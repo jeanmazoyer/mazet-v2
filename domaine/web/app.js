@@ -89,7 +89,7 @@ function mk(id, title, kind, stage, amount, start, end, guests, sleeping, source
     emails: extra.emails ?? [],
     wa: extra.wa ?? [], optionUntil: extra.optionUntil ?? addDays(TODAY, 14), unread: extra.unread ?? {},
     providers: extra.providers ?? [], rooms: extra.rooms ?? [], quote: null, lostReason: "",
-    todos: extra.todos ?? [], pinned: extra.pinned ?? [], history: extra.history ?? [
+    todos: extra.todos ?? [], pinned: extra.pinned ?? [], visits: extra.visits ?? [], history: extra.history ?? [
       { type: "Modification", t: "Affaire créée", at: stamp(), by: me().name }],
   };
 }
@@ -106,7 +106,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, agenda: { on: false }, visitEdit: null, creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -406,9 +406,9 @@ function viewAffaire(id, peek = false) {
   const hist = d.history.filter((h) => S.histTab === "Toutes" || h.type === S.histTab);
   const ev = (h) => `<article class="ev"><span class="mk done">${ico("check", "xs")}</span><div class="tx"><div class="tt">${esc(h.t)}</div>${h.body ? `<div class="plain">${esc(h.body)}</div>` : ""}<div class="meta">${esc(h.at)} · ${h.type} · Par ${esc(h.by)}</div></div></article>`;
   const comp = S.composer, dv = (k, dflt = "") => S.draft[k] ?? dflt;
-  const composer = `<div class="composer"><div class="ctabs">${["Notes", "Activité", "E-mail", "WhatsApp", "Devis", "Événement"].map((t) => `<button class="${comp === t ? "on" : ""}" data-comp="${t}">${t === "WhatsApp" ? `<i class="wdot"></i>` : ""}${t}</button>`).join("")}</div>
+  const composer = `<div class="composer"><div class="ctabs">${["Notes", "Visite", "E-mail", "WhatsApp", "Devis", "Événement"].map((t) => `<button class="${comp === t ? "on" : ""}" data-comp="${t}">${t === "WhatsApp" ? `<i class="wdot"></i>` : ""}${t}</button>`).join("")}</div>
     <div class="cbody">${comp === "Notes" ? `<textarea id="note" class="stickyin" placeholder="Cliquez ici pour ajouter une note" aria-label="Nouvelle note">${esc(dv("note"))}</textarea><div class="cfoot"><span class="hint">La note reste affichée en haut de la fiche, au-dessus des documents.</span><button class="btn sm" data-a="note">Ajouter la note</button></div>`
-      : comp === "Activité" ? `<input id="todo" class="inp" value="${esc(dv("todo"))}" placeholder="Que faut-il faire ? (rappel, appel, visite)" aria-label="Nouvelle activité"><div class="cfoot"><select id="act-type" class="inp auto" aria-label="Type d'activité">${TASK_TYPES.map((o) => `<option ${dv("act-type", "Rappel") === o ? "selected" : ""}>${o}</option>`).join("")}</select><input id="act-due" class="inp auto" type="date" value="${dv("act-due", addDays(TODAY, 2))}" aria-label="Échéance"><button class="btn sm" data-a="todo">Ajouter à faire</button></div>`
+      : comp === "Visite" ? `<div class="vform">${visitFields("vs", { date: addDays(TODAY, 2), time: "10:00", dur: 60, note: "" })}</div><div class="cfoot"><span class="hint">${S.agenda.on ? "La visite s'affiche dans le calendrier et s'inscrit dans Google Agenda." : "La visite s'affiche dans le calendrier de l'application."}</span><button class="btn sm" data-a="visit-add">${ico("cal", "s")}Planifier la visite</button></div>`
       : comp === "E-mail" ? mailTab(d) : comp === "WhatsApp" ? waTab(d) : comp === "Devis" ? quoteTab(d) : eventTab(d)}</div></div>`;
   const menu = S.menu === "deal" ? `<div class="pop dealpop" role="menu" aria-label="Autres actions"><button class="mi" role="menuitem" data-a="sheet">${ico("doc", "s")}Fiche événement</button><button class="mi" role="menuitem" data-a="deal-dup">${ico("copy", "s")}Dupliquer l'affaire</button>${lost ? "" : `<button class="mi" role="menuitem" data-a="lose">${ico("close", "s")}Marquer comme perdue</button>`}${isAdmin() ? `<button class="mi danger" role="menuitem" data-a="deal-del">${ico("trash", "s")}Supprimer l'affaire</button>` : ""}</div>` : "";
   return topbar(peek ? "Fiche de l'affaire" : "Détail d'une affaire", (peek ? `<a class="btn alt" href="#affaire-${d.id}" data-go="affaire-${d.id}">Ouvrir en pleine page</a>` : "") + `<span class="menuwrap"><button class="btn alt sq" data-menu="deal" aria-label="Autres actions" aria-haspopup="menu" aria-expanded="${S.menu === "deal"}">${ico("dots", "m")}</button>${menu}</span><button class="btn alt" data-a="doc">${ico("doc", "s")}Ajouter un document</button>${!lost && d.stage < 5 ? `<button class="btn" data-a="advance">${d.stage < 4 ? "Passer à l'étape suivante" : "Marquer comme soldé"}</button>` : ""}` + (peek ? `<button class="iconbtn" data-a="peek-close" aria-label="Fermer la fiche">${ico("close", "m")}</button>` : ""), peek ? "" : "affaires")
@@ -431,6 +431,7 @@ function viewAffaire(id, peek = false) {
           return S.noteEdit && S.noteEdit.deal === d.id && S.noteEdit.i === i
             ? `<article class="sticky editing">${head}<textarea id="note-edit" aria-label="Modifier la note">${esc(S.draft["note-edit"] ?? p.body)}</textarea><footer><span class="acts"><button class="link" data-a="note-cancel">Annuler</button><button class="btn sm" data-a="note-save" data-i="${i}">Enregistrer</button></span></footer></article>`
             : `<article class="sticky">${head}<p>${esc(p.body)}</p><footer><small>${esc(p.at)} · ${esc(p.by)}${p.edited ? ` · modifiée le ${esc(p.edited)}` : ""}</small><span class="acts"><button class="link" data-a="note-edit" data-i="${i}">Modifier</button><button class="link" data-unpin="${i}" title="La note quitte le haut de la fiche et reste dans l'historique">Archiver</button><button class="link danger" data-a="pin-del" data-i="${i}">Supprimer</button></span></footer></article>`; }).join("")}</div></section>` : ""}
+        ${visitsBlock(d)}
         <section class="blk"><h3 class="h flex">Documents <span class="count num">${slotsFor(d).length - missingDocs(d)} sur ${slotsFor(d).length}</span>${d.driveFolder ? `<a class="link drivelink" href="https://drive.google.com/drive/folders/${encodeURIComponent(d.driveFolder)}" target="_blank" rel="noopener">Dossier Drive · ${d.drivePlace === "clients" ? "Clients" : "Prospects"}</a>` : d.folderUrl ? `<a class="link drivelink" href="${esc(d.folderUrl)}" target="_blank" rel="noopener">Dossier Drive</a>` : ""}<button class="link" data-a="doc">+ Ajouter</button></h3><div class="docs">${dealDocs(d)}</div>${stageDocNote(d) ? `<p class="docnote">${stageDocNote(d)}</p>` : ""}</section>
         ${auditBlock(d)}${mailsBlock(d)}
         <section class="blk"><h3 class="h">À faire</h3>
@@ -440,6 +441,42 @@ function viewAffaire(id, peek = false) {
         <div class="list">${hist.map(ev).join("") || `<span class="muted">Aucun élément.</span>`}</div></section>
       </div></div>`;
 }
+
+/* ---------- Visits: planned on a deal, shown in the calendar, written in Google Agenda ---------- */
+const DURS = [[30, "30 min"], [60, "1 h"], [90, "1 h 30"], [120, "2 h"], [180, "3 h"]], DOW = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+const durLabel = (n) => (DURS.find(([v]) => v === n) ?? [n, `${n} min`])[1];
+const visitDay = (iso) => `${DOW[new Date(iso + "T00:00:00Z").getUTCDay()]} ${longDay(iso)}`;
+const visitsOf = (d) => [...(d.visits ?? [])].sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
+// What the agenda event is made of: when one of these changes, the event is written again.
+const visitSig = (d, v) => [v.date, v.time, v.dur, v.note, d.title, d.contact.name, d.contact.phone, d.contact.email].join("|");
+const allVisits = () => S.deals.filter((d) => d.status !== "Perdu").flatMap((d) => (d.visits ?? []).map((v) => ({ ...v, deal: d }))).sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
+const visitFields = (p, v) => { const g = (k) => S.draft[`${p}-${k}`] ?? v[k];
+  return `<label class="fld"><span>Jour</span><input id="${p}-date" class="inp" type="date" value="${esc(g("date"))}"></label><label class="fld"><span>Heure</span><input id="${p}-time" class="inp" type="time" step="900" value="${esc(g("time"))}"></label>
+    <label class="fld"><span>Durée</span><select id="${p}-dur" class="inp">${DURS.map(([n, l]) => `<option value="${n}" ${Number(g("dur")) === n ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+    <label class="fld wide"><span>Précisions</span><input id="${p}-note" class="inp" value="${esc(g("note"))}" placeholder="Qui vient, où se retrouver" maxlength="300"></label>`; };
+// Reads the form `p` (new visit or correction). Null when the day or the hour is missing.
+const visitRead = (p) => { const date = val(`${p}-date`), time = val(`${p}-time`), dur = Number(val(`${p}-dur`)) || 60;
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}$/.test(time) ? { date, time, dur, note: val(`${p}-note`).trim().slice(0, 300) } : null; };
+const visitDrop = (p) => { for (const k of ["date", "time", "dur", "note"]) delete S.draft[`${p}-${k}`]; };
+function visitsBlock(d) {
+  const list = visitsOf(d); if (!list.length) return "";
+  return `<section class="blk"><h3 class="h flex">Visites <span class="count num">${list.length}</span></h3><div class="docs">${list.map((v) => { const past = v.date < TODAY;
+    if (S.visitEdit && S.visitEdit.deal === d.id && S.visitEdit.id === v.id) return `<div class="vrow editing"><div class="vform">${visitFields("ve", v)}</div><div class="cfoot"><button class="link" data-a="visit-cancel">Annuler</button><button class="btn sm" data-a="visit-save" data-id="${esc(v.id)}">Enregistrer</button></div></div>`;
+    const sync = !S.agenda.on || past ? "" : v.sent === visitSig(d, v) ? `<span class="mini vsync ok">${ico("check", "xs")}Dans Google Agenda</span>` : `<span class="mini vsync">Envoi vers l'agenda…</span>`;
+    return `<div class="drow vrow ${past ? "past" : ""}"><span class="kb vis">${ico("cal", "xs")}</span><span class="grow"><b>${visitDay(v.date)} à ${esc(v.time)}</b><small>${durLabel(v.dur)}${v.note ? " · " + esc(v.note) : ""}${past ? " · passée" : ""}</small></span>${sync}<button class="link" data-a="visit-edit" data-id="${esc(v.id)}">Modifier</button><button class="link danger" data-a="visit-del" data-id="${esc(v.id)}">Supprimer</button></div>`; }).join("")}</div></section>`;
+}
+// After a deal is saved: each coming visit whose event is not up to date is written in the agenda.
+const visitBusy = new Set();
+function visitSync(d) {
+  if (!S.agenda.on) return;
+  for (const v of d.visits ?? []) { const sig = visitSig(d, v), key = d.id + v.id;
+    if (v.sent === sig || visitBusy.has(key) || v.date < TODAY) continue;
+    visitBusy.add(key);
+    api("POST", "/api/calendar/visit", { dealId: d.id, visitId: v.id }).then((r) => { visitBusy.delete(key); const cur = deal(d.id), now = cur ? (cur.visits ?? []).find((x) => x.id === v.id) : null;
+      if (r.status !== 200) { if (r.status === 409) { S.notice = `Visite non inscrite dans l'agenda : ${r.data.error}.`; render(); } return; }
+      if (now && visitSig(cur, now) === sig) { now.sent = sig; render(); } }, () => visitBusy.delete(key)); }
+}
+const visitUnplan = (d, v) => { v.sent = ""; if (S.agenda.on) api("POST", "/api/calendar/visit/remove", { dealId: d.id, visitId: v.id }).then((r) => { if (r.status !== 200) { S.notice = "La visite est supprimée ici, mais son événement est resté dans Google Agenda : supprimez-le à la main."; render(); } }, () => null); };
 
 /* ---------- Réservations (calendar) ---------- */
 function calItems() {
@@ -455,6 +492,7 @@ function monthGrid(ym, mini = false) {
   const iso = (n) => `${ym}-${String(n).padStart(2, "0")}`, all = calItems(), items = all.filter((b) => b.end >= iso(1) && b.start <= iso(days)), cleaning = new Set();
   all.forEach((b) => { for (let k = 1; k <= S.buffer; k++) cleaning.add(addDays(b.end, k)); });
   const busy = (d) => all.some((b) => d >= b.start && d <= b.end), col = (d) => (off + Number(d.slice(8)) - 1) % 7;
+  const visits = mini ? [] : allVisits().filter((v) => v.date >= iso(1) && v.date <= iso(days));
   let out = "";
   for (let w = 0; w * 7 < off + days; w++) {
     const a = iso(Math.max(1, w * 7 - off + 1)), b = iso(Math.min(days, w * 7 - off + 7)), lanes = [];
@@ -466,8 +504,9 @@ function monthGrid(ym, mini = false) {
       return `<button class="bk ${it.cls} ${sH ? "start" : ""} ${eH ? "end" : ""}" style="grid-column:${c1}/${c2};grid-row:${lane + 1}" ${attr} title="${esc(it.label)}, ${range(it.start, it.end)}">${sH && !mini ? `<i class="bav">${esc(ini2(it.title))}</i>` : ""}<span>${esc(mini ? it.title : it.label)}</span></button>`; }).join("");
     let cells = "";
     for (let c = 0; c < 7; c++) { const n = w * 7 + c - off + 1; if (n < 1 || n > days) { cells += `<span class="void"></span>`; continue; }
-      const d = iso(n), on = busy(d), clean = !on && cleaning.has(d), past = d < TODAY, isFree = !on && !clean && !past && S.showFree;
-      cells += `<div class="day ${d === TODAY ? "today" : ""} ${clean ? "clean" : ""} ${past ? "past" : ""} ${isFree ? "free" : ""}"><span class="d num">${n}</span>${mini ? "" : `${clean ? `<span class="cl">Ménage</span>` : ""}${isFree ? `<span class="fr">Libre</span>` : ""}${!on && !past ? `<button class="addday" data-newday="${d}" title="Nouvelle affaire à partir de ce jour" aria-label="Nouvelle affaire à partir du ${longDay(d)}">+</button>` : ""}`}</div>`; }
+      const d = iso(n), on = busy(d), clean = !on && cleaning.has(d), past = d < TODAY, isFree = !on && !clean && !past && S.showFree, vs = visits.filter((v) => v.date === d);
+      const chip = vs.length ? `<button class="vchip" data-go="affaire-${vs[0].deal.id}" title="${esc(vs.map((v) => `Visite à ${v.time} : ${v.deal.title}`).join("\n"))}" aria-label="${esc(vs.map((v) => `Visite à ${v.time}, ${v.deal.title}`).join(" ; "))}">${ico("cal", "xs")}<span>${vs.length > 1 ? `${vs.length} visites` : esc(vs[0].time)}</span></button>` : "";
+      cells += `<div class="day ${d === TODAY ? "today" : ""} ${clean ? "clean" : ""} ${past ? "past" : ""} ${isFree ? "free" : ""}"><span class="d num">${n}</span>${chip}${mini ? "" : `${clean ? `<span class="cl">Ménage</span>` : ""}${isFree ? `<span class="fr">Libre</span>` : ""}${!on && !past ? `<button class="addday" data-newday="${d}" title="Nouvelle affaire à partir de ce jour" aria-label="Nouvelle affaire à partir du ${longDay(d)}">+</button>` : ""}`}</div>`; }
     out += `<div class="cw" style="--lanes:${Math.max(1, lanes.length)}"><div class="cts">${cells}</div><div class="cbars">${bars}</div></div>`;
   }
   return `<div class="cmonth ${mini ? "ymini" : ""}">${out}</div>`;
@@ -481,6 +520,7 @@ function viewReservations() {
   const rate = Math.round(booked.size / days * 100), sw = (k, label) => `<span class="sleg1"><i class="swatch ${k}"></i>${label}</span>`;
   return topbar("Calendrier des réservations", calSeg() + `<button class="btn" data-a="new">${ico("cal", "s")}Nouvelle réservation</button>`) + `<div class="cal calx"><aside class="side">
       ${section("taux", "Taux de remplissage", `<div class="fin-top"><span>${MONTHS[m - 1][0].toUpperCase() + MONTHS[m - 1].slice(1)} ${y}</span><b class="num">${rate} %</b></div><div class="bar"><i style="width:${rate}%"></i></div><span class="muted num">${booked.size} jours réservés sur ${days}</span>`)}
+      ${section("visites", "Visites à venir", `<div class="freelist vlist">${allVisits().filter((v) => v.date >= TODAY).slice(0, 6).map((v) => `<button class="link" data-go="affaire-${v.deal.id}">${ico("cal", "xs")}<span><b class="num">${fr(v.date)} à ${esc(v.time)}</b> ${esc(v.deal.title)}</span></button>`).join("") || `<span class="muted">Aucune visite prévue. Elles se planifient depuis la fiche d'une affaire, onglet « Visite ».</span>`}</div>`)}
       ${section("legende", "Légende", `<div class="legend">${sw("k-firm", "Réservation ferme")}${sw("k-option", "Option")}${sw("k-ext", "Calendrier importé (Airbnb)")}${sw("hatchsw", "Ménage")}</div><p class="help">Une pastille va du milieu du jour d'arrivée au milieu du jour de départ.</p>`)}
       ${section("menage", "Ménage entre deux séjours", `<div class="stepper"><button data-a="buf-minus" aria-label="Diminuer le délai" ${S.buffer <= 0 ? "disabled" : ""}>−</button><b class="num">${S.buffer} jours</b><button data-a="buf-plus" aria-label="Augmenter le délai" ${S.buffer >= 7 ? "disabled" : ""}>+</button></div><p class="help">Jours pleins à garder entre un départ et l'arrivée suivante. À 0, rien n'est demandé ; au-delà, une réservation plus rapprochée demande une confirmation.</p>`)}
       ${section("libres", "Prochains week-ends libres", `<div class="freelist">${freeWeekends().slice(0, 6).map((w) => `<button class="link" data-jump="${w.start.slice(0, 7)}">${ico("right", "xs")}${range(w.start, w.end)}</button>`).join("") || `<span class="muted">Aucun week-end libre d'ici 3 mois.</span>`}</div>`)}
@@ -617,6 +657,9 @@ function viewSettings() {
     ${card("Gmail", "Une fois la boîte du domaine connectée, les échanges avec chaque client se lisent dans sa fiche, onglet « E-mail », et on y répond sans quitter l'application. L'application ne cherche que les conversations avec les adresses de l'affaire ouverte, et n'envoie rien sans un clic sur « Envoyer ».",
       S.mail.on ? srow(`Connectée${S.mail.email ? " : " + esc(S.mail.email) : ""}`, "Les messages partent de cette boîte et se retrouvent dans ses « Messages envoyés ».", `<button class="btn alt sm" data-a="mail-off">Déconnecter</button>`)
         : srow("Non connectée", "L'onglet « E-mail » des affaires reste masqué.", `<a class="btn sm" href="/auth/gmail">Connecter la boîte Gmail</a>`))}
+    ${card("Google Agenda", "Une fois l'agenda du domaine connecté, chaque visite planifiée dans une affaire y est inscrite, puis mise à jour ou retirée quand on la modifie ou la supprime ici. L'application n'écrit que ses propres visites : elle ne lit ni ne touche aux autres événements.",
+      S.agenda.on ? srow(`Connecté${S.agenda.email ? " : " + esc(S.agenda.email) : ""}`, "Les visites vont dans l'agenda principal de ce compte. Partagez cet agenda pour les voir sur d'autres téléphones.", `<button class="btn alt sm" data-a="agenda-off">Déconnecter</button>`)
+        : srow("Non connecté", "Les visites restent visibles dans le calendrier de l'application.", `<a class="btn sm" href="/auth/agenda">Connecter Google Agenda</a>`))}
     ${card("Sauvegarde", "Une copie de toutes les données est faite chaque jour sur le serveur, et les 30 dernières sont gardées. Téléchargez-en une de temps en temps pour la ranger ailleurs.", srow("Dernière copie automatique", S.admin && S.admin.lastBackup ? `le ${fr(S.admin.lastBackup)}` : "pas encore faite", `<a class="btn alt sm" href="/api/backup" download>${ico("down", "s")}Télécharger</a>`))}
     ${card("Modèles de documents", "Le bouton « Créer » d'un document manquant part de ces modèles.", SLOTS.map((s) => srow(s.label, KLBL[s.k], sim("Ouvrir le modèle", `Dans l'application : le modèle « ${s.label} » s'ouvre dans Google Docs.`))).join(""))}
     ${card("Importer un planning", "Un fichier JSON : une ligne par séjour, ou une saison complète (paiements, documents, e-mails) préparée pour l'audit. Réimporter le même fichier met les séjours à jour.", `<label class="fld"><span>Fichier</span><input id="imp-file" class="inp filein" type="file" accept=".json,application/json"></label>`)}
@@ -1659,7 +1702,7 @@ document.addEventListener("click", (e) => {
     c.history = [{ type: "Modification", t: `Affaire créée par copie de « ${d.title} »`, at: stamp(), by: me().name }]; S.deals.unshift(c); S.flash = { text: "Copie créée à l'étape Demande : pensez à changer les dates." }; location.hash = "affaire-" + id; return; }
   if (ds.a === "deal-del" && d) ask("Supprimer cette affaire ?", `« ${esc(d.title)} » disparaît avec son historique, ses conversations et son échéancier.${d.stage >= 2 && d.status !== "Perdu" ? ` Les dates du ${range(d.start, d.end)} redeviennent libres.` : ""}`,
     "Pour garder une trace, marquez plutôt l'affaire comme perdue. Les documents restent dans Google Drive.", "Supprimer l'affaire", () => {
-      const at = S.deals.indexOf(d); S.deals.splice(at, 1); S.flash = { text: `« ${d.title} » est supprimée.`, undo: () => S.deals.splice(at, 0, d) }; location.hash = "affaires"; });
+      const at = S.deals.indexOf(d); S.deals.splice(at, 1); (d.visits ?? []).filter((v) => v.date >= TODAY).forEach((v) => visitUnplan(d, v)); S.flash = { text: `« ${d.title} » est supprimée.`, undo: () => S.deals.splice(at, 0, d) }; location.hash = "affaires"; });
 
   /* Deal: notes, tasks */
   if (ds.done) { const dd = d ?? deal(ds.deal), todo = dd ? dd.todos.find((x) => x.id === ds.done) : null;
@@ -1670,6 +1713,19 @@ document.addEventListener("click", (e) => {
   // Deleting a note cannot be taken back: it is asked for twice.
   if (ds.a === "pin-del" && d) { const p = d.pinned[Number(ds.i)], id = d.id;
     if (p) ask("Supprimer cette note ?", `« ${esc(p.body.length > 160 ? p.body.slice(0, 160) + "…" : p.body)} »`, "La note est effacée pour de bon. Pour la garder dans l'historique sans l'afficher en haut de la fiche, choisissez plutôt « Archiver ».", "Supprimer la note", () => { const cur = deal(id), at = cur ? cur.pinned.indexOf(p) : -1; if (at >= 0) { cur.pinned.splice(at, 1); S.noteEdit = null; S.flash = { text: "Note supprimée." }; } }); }
+  if (ds.a === "visit-add" && d) { const v = visitRead("vs");
+    if (!v) S.notice = "Choisissez le jour et l'heure de la visite."; else { d.visits = d.visits ?? []; d.visits.push({ id: "v" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...v, by: me().name, at: fr(TODAY) });
+      log(d, "Modification", `Visite planifiée le ${visitDay(v.date)} à ${v.time}`, v.note); visitDrop("vs"); S.notice = ""; S.flash = { text: `Visite planifiée le ${visitDay(v.date)} à ${v.time}.` }; } }
+  if (ds.a === "visit-edit" && d) { S.visitEdit = { deal: d.id, id: ds.id }; visitDrop("ve"); S.focus = "ve-date"; }
+  if (ds.a === "visit-cancel") { S.visitEdit = null; visitDrop("ve"); }
+  if (ds.a === "visit-save" && d) { const cur = (d.visits ?? []).find((x) => x.id === ds.id), v = visitRead("ve");
+    if (!v) S.notice = "Choisissez le jour et l'heure de la visite."; else if (cur) { const moved = cur.date !== v.date || cur.time !== v.time; Object.assign(cur, v);
+      if (moved) log(d, "Modification", `Visite déplacée au ${visitDay(v.date)} à ${v.time}`); S.visitEdit = null; visitDrop("ve"); S.notice = ""; } }
+  // A visit taken out is gone from the agenda too: it is asked for twice.
+  if (ds.a === "visit-del" && d) { const v = (d.visits ?? []).find((x) => x.id === ds.id), id = d.id;
+    if (v) ask("Supprimer cette visite ?", `Visite du ${visitDay(v.date)} à ${esc(v.time)}, pour « ${esc(d.title)} ».`, S.agenda.on ? "Elle disparaît du calendrier de l'application et de Google Agenda." : "Elle disparaît du calendrier de l'application.", "Supprimer la visite", () => { const cur = deal(id), at = cur ? (cur.visits ?? []).indexOf(v) : -1;
+      if (at >= 0) { cur.visits.splice(at, 1); log(cur, "Modification", `Visite du ${visitDay(v.date)} supprimée`); visitUnplan(cur, v); S.visitEdit = null; S.flash = { text: "Visite supprimée." }; } }); }
+  if (ds.a === "agenda-off") ask("Déconnecter Google Agenda ?", "Les visites déjà inscrites restent dans l'agenda : l'application ne les met simplement plus à jour.", "Les visites restent dans les affaires et dans le calendrier de l'application.", "Déconnecter", () => { api("DELETE", "/api/calendar").then((r) => { if (r.status === 200) S.agenda = { on: false }; else S.notice = "Déconnexion refusée."; render(); }); });
   if (ds.a === "note-edit" && d) { S.noteEdit = { deal: d.id, i: Number(ds.i) }; delete S.draft["note-edit"]; S.focus = "note-edit"; }
   if (ds.a === "note-cancel") { S.noteEdit = null; delete S.draft["note-edit"]; }
   if (ds.a === "note-save" && d) { const p = d.pinned[Number(ds.i)], body = val("note-edit").trim().slice(0, 4000);
@@ -1720,7 +1776,7 @@ document.addEventListener("click", (e) => {
   if (ds.jump) { S.month = ds.jump; S.showFree = true; }
   render();
 });
-const DRAFTS = ["mail-subject", "mail-body", "wa-body", "mail-att", "note", "note-edit", "todo"], DRAFT_RE = /^(n|dn|ic|iv|ls|tk|pv|rm|act|an|sg)-/, QUOTE_RE = /^ql-(\d+)-([lqp])$/;
+const DRAFTS = ["mail-subject", "mail-body", "wa-body", "mail-att", "note", "note-edit", "todo"], DRAFT_RE = /^(n|dn|ic|iv|ls|tk|pv|rm|act|an|sg|vs|ve)-/, QUOTE_RE = /^ql-(\d+)-([lqp])$/;
 const isDraft = (id) => Boolean(id) && (DRAFT_RE.test(id) || DRAFTS.includes(id));
 document.addEventListener("input", (e) => { const id = e.target.id, m = QUOTE_RE.exec(id ?? "");
   if (id === "mail-body") { S.draft[id] = clean(e.target.innerHTML); return; }
@@ -1992,7 +2048,7 @@ const usersOut = () => S.users.map((u) => ({ email: u.email, name: u.name, role:
 function applySettings(st) {
   const p = st.settings.prefs ?? {}, bank = st.settings.bank ?? {};
   S.buffer = p.buffer ?? 0; TERMS.deposit = p.deposit ?? 30; TERMS.hold = p.hold ?? 2500; S.plSeq = p.plSeq ?? { D: 0, F: 0 }; S.sources = p.sources ?? []; S.mailbox = p.mailbox ?? ""; S.lessor = p.lessor ?? {};
-  S.library = st.settings.library ?? []; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false };
+  S.library = st.settings.library ?? []; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false }; S.agenda = st.agenda ?? { on: false };
   const mine = st.user.email;
   S.users = [...st.users].sort((a, b) => Number(b.email === mine) - Number(a.email === mine)).map((u) => ({ email: u.email, name: u.name || u.email.split("@")[0], role: u.role === "admin" ? "Admin" : "Équipe", pending: u.pending }));
   for (const k of Object.keys(SETTINGS)) savedSettings[k] = JSON.stringify(SETTINGS[k]());
@@ -2028,7 +2084,7 @@ async function persist() {
       if (had === json) continue;
       wrote = true; saveState("Enregistrement");
       const r = had === undefined ? await api("POST", "/api/deals", { doc: JSON.parse(json) }) : await api("PUT", "/api/deals/" + encodeURIComponent(d.id), { doc: JSON.parse(json), version: d._v });
-      if (r.status === 200) { d._v = r.data.version; saved.set(d.id, json); driveSync(d); driveDocsSync(d); }
+      if (r.status === 200) { d._v = r.data.version; saved.set(d.id, json); driveSync(d); driveDocsSync(d); visitSync(d); }
       // Someone saved this deal in between: show their version rather than overwrite it.
       else if (r.status === 409 && r.data.deal) { putDeal(r.data.deal); S.notice = `« ${d.title} » a été modifiée ailleurs entre-temps. La page affiche la dernière version : votre dernière action est à refaire.`; redraw = true; }
       else if (r.status === 404) { S.deals = S.deals.filter((x) => x !== d); saved.delete(d.id); S.notice = `« ${d.title} » a été supprimée ailleurs.`; redraw = true; }
@@ -2178,6 +2234,10 @@ async function boot() {
   // Back from Google's consent screen for Drive: say how it went, then tidy the address.
   const back = /[?&]drive=(ok|refus)/.exec(location.search);
   if (back) { if (back[1] === "ok") S.flash = { text: "Google Drive est connecté." }; else S.notice = "Google Drive n'a pas été connecté. Si vous avez bien accepté l'autorisation, vérifiez que « Google Drive API » est activée dans la console Google Cloud du projet."; history.replaceState(null, "", "/#reglages"); }
+  const calBack = /[?&]agenda=(ok|refus)/.exec(location.search);
+  if (calBack) { if (calBack[1] === "ok") S.flash = { text: "Google Agenda est connecté. Les visites à venir y sont inscrites." }; else S.notice = "Google Agenda n'a pas été connecté. Si vous avez bien accepté l'autorisation, vérifiez que « Google Calendar API » est activée dans la console Google Cloud du projet."; history.replaceState(null, "", "/#reglages"); }
+  // Visits planned before the agenda was connected, or changed while it was unreachable.
+  S.deals.forEach(visitSync);
   const boxBack = /[?&]gmail=(ok|refus)/.exec(location.search);
   if (boxBack) { if (boxBack[1] === "ok") S.flash = { text: "La boîte Gmail est connectée." }; else S.notice = "La boîte Gmail n'a pas été connectée. Si vous avez bien coché les deux autorisations (lire et envoyer), vérifiez que « Gmail API » est activée dans la console Google Cloud du projet."; history.replaceState(null, "", "/#reglages"); }
   if (route().name === "connexion") history.replaceState(null, "", "#affaires");

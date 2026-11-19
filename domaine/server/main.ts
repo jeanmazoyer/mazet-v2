@@ -14,6 +14,7 @@ import { cookie, decideAccess, hashToken, mayBootstrap, readCookie, readIdToken,
 import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
+import { calAuthUrl, CalError, calSeen, CAL_SCOPE, deleteEvent, eventBody, eventId, putEvent, visitOf, VISIT_ID, type CalSetting } from "./calendar.ts";
 import { addressesOf, buildMime, cleanMailHtml, mailAuthUrl, MailError, mailSeen, MAIL_SCOPES, recipientFor, sendMail, threadHead, threadsFor, type MailSetting } from "./mail.ts";
 import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, lockDoc, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
 import { fetchIcal, type Source, type Stay } from "./ical.ts";
@@ -23,9 +24,9 @@ const CHANNEL = "domaine_changes";
 // Settings anyone signed in may write, and those only an administrator may.
 const SHARED_KEYS = ["library", "feeds", "agents"], ADMIN_KEYS = ["prefs", "bank"];
 // Settings the team does not even receive: the bank statement, and the secret of the calendar link.
-const PRIVATE_KEYS = ["bank", "ical_token", "drive", "gmail"];
+const PRIVATE_KEYS = ["bank", "ical_token", "drive", "gmail", "agenda"];
 // Settings that never leave the server at all: they hold a secret.
-const SECRET_KEYS = ["ical_token", "drive", "gmail"];
+const SECRET_KEYS = ["ical_token", "drive", "gmail", "agenda"];
 const UPLOAD_MIME = ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/csv",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
 const MAX_UPLOAD = 25 * 1024 * 1024, MAX_JSON = 3 * 1024 * 1024;
@@ -84,6 +85,7 @@ app.get("/auth/callback", async (c) => {
   if (!state || !code || state !== readCookie(c.req.header("cookie"), "oauth_state")) return deny("connexion interrompue, recommencez");
   if (state.startsWith("drive.")) return driveConnected(c.req.header("cookie"), code);
   if (state.startsWith("gmail.")) return mailConnected(c.req.header("cookie"), code);
+  if (state.startsWith("agenda.")) return calConnected(c.req.header("cookie"), code);
   const res = await fetch("https://oauth2.googleapis.com/token", { method: "POST", signal: AbortSignal.timeout(10_000),
     body: new URLSearchParams({ code, client_id: config.googleId, client_secret: config.googleSecret, redirect_uri: `${config.baseUrl}/auth/callback`, grant_type: "authorization_code" }) });
   const who = res.ok ? readIdToken(((await res.json()) as { id_token?: string }).id_token ?? "", config.googleId, Date.now()) : null;
@@ -147,6 +149,28 @@ async function mailConnected(cookies: string | undefined, code: string): Promise
   forgetToken(); await sql.notify(CHANNEL, JSON.stringify({ kind: "setting", key: "gmail", client: "" }));
   return backMail("ok");
 }
+/* ---------- Google Agenda: an administrator lets the app write the visits in the estate's calendar ---------- */
+const calSetting = async (): Promise<CalSetting | null> => { const [row] = await sql`select value from settings where key = 'agenda'`; return row && calSeen(row.value, "admin").on ? (row.value as CalSetting) : null; };
+const backCal = (note: string) => new Response(null, { status: 302, headers: [["location", `/?agenda=${note}#reglages`], ["set-cookie", cookie("oauth_state", "", 0)]] });
+app.get("/auth/agenda", async (c) => {
+  const u = await userFromCookie(c.req.header("cookie"));
+  if (!u || u.role !== "admin") return deny("réservé aux administrateurs");
+  if (!config.googleId) return backCal("refus");
+  const state = "agenda." + randomBytes(16).toString("base64url");
+  c.header("Set-Cookie", cookie("oauth_state", state, 600));
+  return c.redirect(calAuthUrl(config.googleId, config.baseUrl, state));
+});
+async function calConnected(cookies: string | undefined, code: string): Promise<Response> {
+  const u = await userFromCookie(cookies);
+  if (!u || u.role !== "admin") return deny("réservé aux administrateurs");
+  const got = await exchangeCode(code, config.googleId, config.googleSecret, config.baseUrl, [CAL_SCOPE]);
+  const who = got ? readIdToken(got.idToken, config.googleId, Date.now()) : null;
+  if (!got || !who) return backCal("refus");
+  const value: CalSetting = { refresh: got.refresh, email: who.email };
+  await sql`insert into settings (key, value) values ('agenda', ${sql.json(value as never)}) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+  forgetToken(); await sql.notify(CHANNEL, JSON.stringify({ kind: "setting", key: "agenda", client: "" }));
+  return backCal("ok");
+}
 if (config.devLogin) app.get("/auth/dev", async (c) => {
   const email = (c.req.query("email") ?? "dev@localhost").toLowerCase(), role = c.req.query("role") === "team" ? "team" : "admin";
   return new Response(null, { status: 302, headers: [["location", "/"], ["set-cookie", await signIn(email, c.req.query("name") ?? "Dev", role)]] });
@@ -165,6 +189,12 @@ app.use("/api/*", async (c, next) => {
   await next();
 });
 const adminOnly = (u: User) => u.role === "admin";
+// Handing a grant back to Google ends everything that account allowed this app, its other connections
+// included (Drive, mailbox, agenda). So it is only done when no other connection relies on the account.
+async function release(key: string, grant: { refresh: string; email: string }): Promise<void> {
+  const others = await sql`select value->>'email' as email from settings where key in ('drive', 'gmail', 'agenda') and key <> ${key}`;
+  if (!others.some((o) => o.email === grant.email)) await revoke(grant.refresh);
+}
 const notify = (c: { req: { header: (k: string) => string | undefined } }, event: Record<string, unknown>) =>
   sql.notify(CHANNEL, JSON.stringify({ ...event, client: c.req.header("x-client") ?? "" }));
 const readJson = async (c: { req: { text: () => Promise<string> } }): Promise<Record<string, unknown> | null> => {
@@ -186,10 +216,10 @@ app.get("/api/state", async (c) => {
   const u = c.get("user");
   const deals = await sql`select id, doc, version from deals order by updated_at desc`;
   const settings = Object.fromEntries((await sql`select key, value from settings`).filter((r) => adminOnly(u) ? !SECRET_KEYS.includes(r.key) : !PRIVATE_KEYS.includes(r.key)).map((r) => [r.key, r.value]));
-  const [drive] = await sql`select value from settings where key = 'drive'`, [gmail] = await sql`select value from settings where key = 'gmail'`;
+  const [drive] = await sql`select value from settings where key = 'drive'`, [gmail] = await sql`select value from settings where key = 'gmail'`, [agenda] = await sql`select value from settings where key = 'agenda'`;
   const users = adminOnly(u) ? await sql`select email, name, role, last_login is null as pending from users order by created_at` : [];
   const admin = adminOnly(u) ? { icalUrl: `${config.baseUrl}/ical/${await icalToken()}.ics`, lastBackup: await lastBackup() } : null;
-  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin, drive: driveSeen(drive ? drive.value : null, u.role), mail: mailSeen(gmail ? gmail.value : null, u.role), build: await buildId() });
+  return c.json({ user: { email: u.email, name: u.name, role: u.role }, deals: deals.map((r) => dealOut(r as never, u.role)), settings, users, admin, drive: driveSeen(drive ? drive.value : null, u.role), mail: mailSeen(gmail ? gmail.value : null, u.role), agenda: calSeen(agenda ? agenda.value : null, u.role), build: await buildId() });
 });
 app.get("/api/deals/:id", async (c) => {
   const [row] = await sql`select id, doc, version from deals where id = ${c.req.param("id")}`;
@@ -380,7 +410,7 @@ app.post("/api/drive/docs/lock", async (c) => {
 app.delete("/api/drive", async (c) => {
   if (!adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);
   const drive = await driveSetting();
-  if (drive) await revoke(drive.refresh);
+  if (drive) await release("drive", drive);
   await sql`delete from settings where key = 'drive'`; forgetToken();
   await notify(c, { kind: "setting", key: "drive" });
   return c.json({ ok: true });
@@ -428,16 +458,53 @@ app.post("/api/mail/send", async (c) => {
 app.delete("/api/mail", async (c) => {
   if (!adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);
   const box = await mailSetting();
-  if (box) await revoke(box.refresh);
+  if (box) await release("gmail", box);
   await sql`delete from settings where key = 'gmail'`; forgetToken();
   await notify(c, { kind: "setting", key: "gmail" });
+  return c.json({ ok: true });
+});
+
+/* ---------- Google Agenda: one event per visit ---------- */
+// The page names a deal and one of its visits. The server reads the visit from the saved deal and
+// derives the event's identifier itself: no other event of the calendar can be reached from a page.
+const calFailure = (c: { json: (body: unknown, status: 409 | 502) => Response }, e: unknown): Response => {
+  if ((e instanceof DriveError || e instanceof CalError) && e.status === 401) { forgetToken(); return c.json({ error: "Google Agenda n'est plus connecté : reconnectez-le dans les réglages" }, 409); }
+  if (e instanceof CalError && e.status === 403) return c.json({ error: "Google Agenda refuse l'accès : vérifiez que « Google Calendar API » est activée dans le projet Google Cloud" }, 409);
+  console.error("calendar call failed", e); return c.json({ error: "Google Agenda ne répond pas, réessayez" }, 502);
+};
+app.post("/api/calendar/visit", async (c) => {
+  const body = await readJson(c), dealId = String(body?.dealId ?? ""), doc = await dealDoc(dealId), visit = doc ? visitOf(doc as never, String(body?.visitId ?? "")) : null;
+  if (!doc || !visit) return c.json({ error: "visite introuvable" }, 404);
+  const cal = await calSetting();
+  if (!cal) return c.json({ error: "Google Agenda n'est pas connecté" }, 409);
+  try {
+    await putEvent(await accessToken(cal.refresh, config.googleId, config.googleSecret), eventId(dealId, visit.id), eventBody(visit, { ...(doc as never as { title?: unknown; contact?: never }), id: dealId }, config.baseUrl));
+    return c.json({ ok: true });
+  } catch (e) { return calFailure(c as never, e); }
+});
+app.post("/api/calendar/visit/remove", async (c) => {
+  const body = await readJson(c), dealId = String(body?.dealId ?? ""), visitId = String(body?.visitId ?? "");
+  if (!DEAL_ID.test(dealId) || !VISIT_ID.test(visitId)) return c.json({ error: "visite invalide" }, 400);
+  const cal = await calSetting();
+  if (!cal) return c.json({ error: "Google Agenda n'est pas connecté" }, 409);
+  try {
+    await deleteEvent(await accessToken(cal.refresh, config.googleId, config.googleSecret), eventId(dealId, visitId));
+    return c.json({ ok: true });
+  } catch (e) { return calFailure(c as never, e); }
+});
+app.delete("/api/calendar", async (c) => {
+  if (!adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);
+  const cal = await calSetting();
+  if (cal) await release("agenda", cal);
+  await sql`delete from settings where key = 'agenda'`; forgetToken();
+  await notify(c, { kind: "setting", key: "agenda" });
   return c.json({ ok: true });
 });
 
 /* ---------- Backup: everything the app holds, as one file ---------- */
 // Uploaded files are listed, not embedded: they live on their own volume.
 async function snapshot(): Promise<string> {
-  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings where key not in ('drive', 'gmail')`, sql`select id, deal_id, name, mime, size, created_at from files`]);
+  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings where key not in ('drive', 'gmail', 'agenda')`, sql`select id, deal_id, name, mime, size, created_at from files`]);
   return JSON.stringify({ format: "domaine-backup-1", at: new Date().toISOString(), users, deals, settings, files });
 }
 const backupDir = join(config.dataDir, "backups");

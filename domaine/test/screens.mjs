@@ -50,9 +50,9 @@ await p.click("#close-preview"); await p.click('[data-slot="contrat"][data-a="sl
 ok("without Drive, creating a contract offers to connect it first", (await p.locator('.modal a[href="/auth/drive"]').count()) === 1);
 await p.click('[data-a="confirm-yes"]'); await p.click("#doc-edit h2"); await p.keyboard.press("End"); await p.keyboard.type(" (modifié)"); await settle(); await p.reload(); await p.waitForSelector(".dealhead");
 ok("an edited contract is saved", ((await S("S.deals.find(d => d.id === 't-option').docs.find(x => x.slot === 'contrat').body")) ?? "").includes("(modifié)"));
-await p.click('[data-comp="Activité"]'); await p.fill("#todo", "Rappeler pour la visite"); await p.click('[data-a="todo"]'); await p.click('[data-comp="Événement"]'); await p.fill("#pv-name", "Traiteur Test"); await p.click('[data-a="pv-add"]');
+await p.click('[data-comp="Visite"]'); await p.fill("#vs-date", "2027-03-06"); await p.fill("#vs-time", "10:30"); await p.fill("#vs-note", "Avec les parents"); await p.click('[data-a="visit-add"]'); await p.click('[data-comp="Événement"]'); await p.fill("#pv-name", "Traiteur Test"); await p.click('[data-a="pv-add"]');
 await p.click('[data-edit="guests"]'); await p.fill("#e-guests", "42"); await p.keyboard.press("Enter"); await settle(); await p.reload(); await p.waitForSelector(".dealhead");
-ok("task, provider and an edited field are saved", (await S("(() => { const d = S.deals.find(x => x.id === 't-option'); return d.todos.length === 1 && d.providers.length === 1 && d.guests === 42; })()")));
+ok("visit, provider and an edited field are saved", (await S("(() => { const d = S.deals.find(x => x.id === 't-option'); return d.visits.length === 1 && d.visits[0].time === '10:30' && d.providers.length === 1 && d.guests === 42; })()")));
 ok("the history names the person who did it", (await S("S.deals.find(d => d.id === 't-option').history[0].by")) === "Alice");
 await p.goto(`${BASE}/#affaire-t-signe`); await p.waitForSelector(".dealhead");
 await p.click('[data-pay="settle"][data-id="dep"]'); await p.click('[data-pay="confirm-settle"]'); await settle();
@@ -80,7 +80,8 @@ ok("a wrong calendar link gives nothing", (await p.evaluate(() => fetch("/ical/n
 await p.goto(`${BASE}/#affaires`); await p.waitForSelector(".board");
 await p.keyboard.press("Control+k"); await p.keyboard.type("fictif");
 ok("search finds a deal and its contact", (await p.locator(".searchm .pick").count()) >= 2); await p.keyboard.press("Escape");
-await p.goto(`${BASE}/#taches`); await p.waitForTimeout(300); ok("the task shows in the task list", (await p.locator(".row.task").count()) === 1);
+await p.goto(`${BASE}/#taches`); await p.waitForTimeout(300); await p.click('[data-a="task-new"]'); await p.fill("#tk-text", "Rappeler pour la visite"); await p.click('[data-a="task-add"]'); await p.waitForTimeout(300);
+ok("a task added from the task page shows in the list", (await p.locator(".row.task").count()) === 1);
 await p.evaluate(() => { window.__app.S.deals = []; return window.__app.persist(); }); await settle();
 console.log(out.join("\n")); console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page error");
 console.log(out.filter((l) => l.startsWith("FAIL")).length + " failed of " + out.length);
