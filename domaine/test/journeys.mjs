@@ -121,7 +121,7 @@ await a.click("#close-preview"); await a.waitForSelector(".drawer", { state: "de
 await a.evaluate(() => { const S = window.__app.S; S.deals = S.deals.filter((d) => d.title !== "Contrat bilingue"); S.lessor = {}; return window.__app.persist(); }); await settle(a);
 
 // A season file (fictional people): stays with payments, documents and remarks, then the audit page
-const season = { format: "domaine-import-1", season: 2027, mailbox: "accueil@test.local", deals: [
+const season = { format: "domaine-import-1", season: 2027, mailbox: "accueil@test.local", lessor: { name: "SARL Importée", city: "Nîmes", signer: "<b>Signataire</b>" }, deals: [
   { id: "t27-ok", title: "Mariage Alba & Noé", kind: "Mariage", stage: 4, status: "Gagné", amount: 8000, start: "2027-08-06", end: "2027-08-09", guests: 60, sleeping: 20, signed: "2027-01-10", contact: { name: "Alba Test", email: "alba@test.local" },
     payments: [{ id: "dep", kind: "Acompte", amount: 2400, due: "2027-01-10", status: "paid", paidOn: "2027-01-12", bank: "VIR ALBA TEST ACOMPTE" }, { id: "bal", kind: "Solde", amount: 5600, due: "2027-06-06", status: "due" }, { id: "hold", kind: "Caution", amount: 2500, due: "2027-08-06", status: "held", hold: true, how: "Chèque" }],
     docs: [{ t: "Contrat signé.pdf", k: "pdf", d: "2027-01-10", st: "Signé", slot: "contrat", url: "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view" }, { t: "Avenant", k: "gdoc", d: "2027-01-11", st: "Brouillon", url: "https://docs.google.com/document/d/1ZyXwVuTsRqPoNmLk/edit" }, { t: "Piège", k: "pdf", d: "2027-01-10", url: "javascript:alert(1)" }],
@@ -131,6 +131,7 @@ const season = { format: "domaine-import-1", season: 2027, mailbox: "accueil@tes
 writeFileSync("/tmp/domaine-season.json", JSON.stringify(season));
 await a.goto(`${BASE}/#reglages`); await a.waitForSelector("#imp-file"); await a.setInputFiles("#imp-file", "/tmp/domaine-season.json"); await a.waitForSelector(".audit"); await settle(a);
 ok("a season file: valid stays in, invalid ones skipped, the audit opens", (await S(a, "S.deals.filter(d => d.id.startsWith('t27-')).length")) === 1 && (await a.locator(".flash").innerText()).includes("2 ignorés"), await a.locator(".flash").innerText().catch(() => ""));
+ok("the season file fills in the lessor where nothing was typed", (await S(a, "S.lessor.name")) === "SARL Importée" && (await S(a, "S.lessor.city")) === "Nîmes");
 ok("only Google Drive links are kept on documents", (await S(a, "S.deals.find(d => d.id === 't27-ok').docs.length")) === 2);
 ok("the audit lists the stay and flags the contract dates", (await a.locator('[data-aopen="t27-ok"] .ac.bad').count()) === 1 && (await a.locator('[data-aopen="t27-ok"] .st').innerText()) === "Bloquant");
 await a.click('[data-aopen="t27-ok"]'); const treat = a.locator('.aitems li.warn [data-aok]').first(), before = await a.locator(".aitems li.seen").count(); await treat.click(); await settle(a);

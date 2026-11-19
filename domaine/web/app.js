@@ -1843,6 +1843,8 @@ function importSeason(file) {
   const time = (v, dflt) => (typeof v === "string" && /^\d{2}:\d{2}$/.test(v) ? v : dflt), web = (v) => (typeof v === "string" && /^https:\/\/(drive|docs)\.google\.com\//.test(v) ? v.slice(0, 300) : ""), list = (v) => (Array.isArray(v) ? v : []);
   let added = 0, updated = 0, skipped = 0;
   if (/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(file.mailbox ?? "")) S.mailbox = file.mailbox;
+  // The lessor's details for the agreements: taken from the file where nothing was typed by hand yet.
+  if (file.lessor && typeof file.lessor === "object") ["name", "address", "phone", "email", "place", "reception", "signer", "city"].forEach((k) => { if (!S.lessor[k] && str(file.lessor[k], 160)) S.lessor = { ...S.lessor, [k]: str(file.lessor[k], 160) }; });
   list(file.deals).forEach((r) => {
     if (!r || !/^[a-z0-9-]{3,40}$/.test(r.id ?? "") || !str(r.title, 80) || !isDay(r.start) || !isDay(r.end) || r.end < r.start) { skipped++; return; }
     const c = r.contact ?? {}, guests = Math.round(num(r.guests)), stage = Number.isInteger(r.stage) ? Math.max(0, Math.min(5, r.stage)) : 4;
