@@ -297,6 +297,8 @@ const FIELDS = {
       if (d.stage >= 2) { const taken = overlap(a, b, d.id); if (taken) return `Ces dates sont déjà réservées (${taken.title}).`;
         const close = bufferClash(a, b, d.id); if (close) { S.modal = "buffer"; S.pending = { id: d.id, a, b, other: close.title }; return HOLD_EDIT; } }
       d.start = a; d.end = b; } },
+  eventPart: { label: "Part réception", show: (d) => (d.eventPart ? `${eur(d.eventPart)}<small>TVA à 20 %, le reste (hébergement) à 10 %</small>` : ""), edit: (d) => `<input id="e-eventpart" type="number" min="0" step="50" value="${d.eventPart ?? 0}" aria-label="Part du loyer pour la réception, en euros">`,
+    save: (d) => { const n = Number(val("e-eventpart")); if (!(n >= 0) || n > d.amount) return "La part réception ne peut pas dépasser le montant de l'affaire."; d.eventPart = n; } },
   lang: { label: "Langue", show: (d) => LANGS[d.lang] ?? LANGS.fr, edit: (d) => `<select id="e-lang" aria-label="Langue des documents">${Object.entries(LANGS).map(([k, l]) => `<option value="${k}" ${k === (d.lang ?? "fr") ? "selected" : ""}>${l}</option>`).join("")}</select>`, save: (d) => { d.lang = LANGS[val("e-lang")] ? val("e-lang") : "fr"; } },
   kind: { label: "Type", show: (d) => d.kind, edit: (d) => `<select id="e-kind" aria-label="Type">${Object.keys(KIND).map((k) => `<option ${k === d.kind ? "selected" : ""}>${k}</option>`).join("")}</select>`, save: (d) => { d.kind = val("e-kind"); } },
   arrival: { label: "Arrivée", show: (d) => d.arrival, edit: (d) => `<input id="e-arrival" type="time" value="${d.arrival}" aria-label="Heure d'arrivée">`, save: (d) => { if (!val("e-arrival")) return "Indiquez une heure."; d.arrival = val("e-arrival"); } },
@@ -416,7 +418,7 @@ function viewAffaire(id, peek = false) {
         ${lost || d.stage >= 5 ? "" : `<p class="stepnote"><b>Pour passer à « ${STAGES[d.stage + 1]} » :</b> ${STEP_NEXT[d.stage]} <span>Cliquez sur une étape pour y aller directement.</span></p>`}</div>
       <div class="split"><aside class="panel">
         ${section("resume", "Résumé", `<div class="f"><span class="k">Statut</span><div class="v"><span class="status"><select id="e-status" data-status aria-label="Statut">${["En cours", "Gagné", "Perdu"].map((s) => `<option ${s === d.status ? "selected" : ""}>${s}</option>`).join("")}</select></span></div></div>
-          ${field(d, "title")}${field(d, "amount")}
+          ${field(d, "title")}${field(d, "amount")}${field(d, "eventPart")}
           <div class="f"><span class="k">Échéance</span><div class="v">${d.payments.length === 0 ? `<span class="due none">À la signature</span>` : overdue ? `<span class="due num">${fr(overdue.due)} ${ico("alert", "s")}</span>` : `<span class="due ok num">${rec >= exp ? "Tout est réglé" : fr((income(d).find((p) => p.status === "due") ?? { due: d.start }).due)}</span>`}</div></div>
           ${field(d, "source")}`)}
         ${section("sejour", "Séjour", ["dates", ...(d.stage === 2 || d.stage === 3 ? ["option"] : []), "kind", "lang", "arrival", "departure", "guests", "sleeping", "tenants"].map((k) => field(d, k)).join(""))}
@@ -604,7 +606,7 @@ function viewSettings() {
       srow("Relevé importé", S.bankStatement.length ? `${S.bankStatement.length} encaissement${S.bankStatement.length > 1 ? "s" : ""}, du ${fr(S.bankStatement.reduce((m, t) => (t.on < m ? t.on : m), "9999"))} au ${fr(S.bankStatement.reduce((m, t) => (t.on > m ? t.on : m), "0000"))} · importé ${esc(S.lastBank)}` : "Aucun relevé pour l'instant", S.bankStatement.length ? `<button class="btn alt sm" data-a="sync-all">${ico("sync", "s")}Rapprocher</button>` : "")
       + `<label class="fld"><span>Importer un relevé</span><input id="bank-file" class="inp filein" type="file" accept=".csv,text/csv"></label>`)}
     ${card("Bailleur", "Ces informations sont reprises dans les contrats, en français comme en anglais. Elles restent dans l'application : elles ne sont écrites nulle part dans son code.",
-      [["ls-name", "name", "Société"], ["ls-address", "address", "Adresse du bailleur"], ["ls-phone", "phone", "Téléphone"], ["ls-email", "email", "E-mail"], ["ls-place", "place", "Adresse du bien loué"], ["ls-reception", "reception", "Téléphone de l'accueil"], ["ls-signer", "signer", "Signataire pour le propriétaire"], ["ls-city", "city", "Ville de signature"]]
+      LESSOR_FIELDS.map(([k, label]) => ["ls-" + k, k, label])
         .map(([id, k, label]) => `<label class="fld"><span>${label}</span><input id="${id}" class="inp" value="${esc(S.draft[id] ?? S.lessor[k] ?? "")}"></label>`).join("") + `<div class="srow"><span class="grow"></span><button class="btn sm" data-a="lessor-save">Enregistrer</button></div>`)}
     ${card("Google Drive", "Une fois connecté, « Créer » sur un contrat ou une caution fabrique un vrai document Google Docs, rempli depuis l'affaire et modifiable dans le panneau. L'application ne voit que les documents qu'elle crée. Ils sont privés : partagez le dossier avec les personnes qui doivent y accéder.",
       S.drive.on ? srow(`Connecté${S.drive.email ? " : " + esc(S.drive.email) : ""}`, "Un dossier par affaire dans « Les jardins de Campagne » : dans « Prospects » dès sa création, déplacé dans « Clients » à la signature.", `${S.drive.folder ? `<a class="btn alt sm" href="https://drive.google.com/drive/folders/${encodeURIComponent(S.drive.folder)}" target="_blank" rel="noopener">Ouvrir le dossier</a>` : ""}<button class="btn alt sm" data-a="drive-off">Déconnecter</button>`)
@@ -691,6 +693,8 @@ const fileBody = (x) => (x.k === "pdf" ? `<iframe class="fileview" src="/api/fil
 // What the rental agreement says about one stay, in the deal's language. Every value is escaped and
 // marked here, so the template only places them.
 const LANGS = { fr: "Français", en: "English" };
+const LESSOR_FIELDS = [["name", "Société"], ["legal", "Forme, capital, SIRET, RCS"], ["address", "Adresse du bailleur"], ["phone", "Téléphone"], ["email", "E-mail"], ["signer", "Gérant (signataire)"], ["place", "Adresse du bien loué"], ["reception", "Téléphone de l'accueil"], ["city", "Ville de signature"],
+  ["regno", "Numéro d'enregistrement du meublé de tourisme"], ["tax", "Taxe de séjour (tarif à indiquer au contrat)"], ["mediator", "Médiateur de la consommation (nom, adresse, site)"]];
 const NATURE = { fr: { Mariage: "Mariage et séjour de vacances", Séjour: "Séjour de vacances", Séminaire: "Séminaire", Anniversaire: "Anniversaire et séjour de vacances", Retraite: "Retraite", Famille: "Séjour" },
   en: { Mariage: "Wedding and vacation", Séjour: "Vacation", Séminaire: "Seminar", Anniversaire: "Birthday and vacation", Retraite: "Retreat", Famille: "Stay" } };
 function contractValues(d) {
@@ -703,7 +707,9 @@ function contractValues(d) {
   const hour = (t) => { if (!en) return t; const [h, mn] = t.split(":").map(Number); return `${h % 12 || 12}${mn ? ":" + String(mn).padStart(2, "0") : ""} ${h < 12 ? "AM" : "PM"}`; };
   const pay = (id) => d.payments.find((p) => p.id === id), dep = pay("dep")?.amount ?? Math.round(d.amount * TERMS.deposit / 100), hold = d.payments.find((p) => p.hold)?.amount ?? TERMS.hold, n = nights(d.start, d.end);
   const two = d.start ? (() => { const t = utc(d.start); t.setUTCMonth(t.getUTCMonth() - 2); return t.toISOString().slice(0, 10); })() : "";
-  return { brand: esc(L.brand || "Les Jardins de Campagne"), lessor: m(L.name), lessorAddress: m(L.address), lessorPhone: m(L.phone), lessorEmail: m(L.email), place: m(L.place || L.address), reception: m(L.reception || L.phone), signer: m(L.signer), city: m(L.city),
+  const ev = Math.min(d.eventPart ?? 0, d.amount);
+  return { legal: m(L.legal), regno: m(L.regno), mediator: m(L.mediator), tax: m(L.tax), split: ev > 0, stayPart: m(money(d.amount - ev)), eventPart: m(money(ev)),
+    brand: esc(L.brand || "Les Jardins de Campagne"), lessor: m(L.name), lessorAddress: m(L.address), lessorPhone: m(L.phone), lessorEmail: m(L.email), place: m(L.place || L.address), reception: m(L.reception || L.phone), signer: m(L.signer), city: m(L.city),
     tenants: m(d.tenants.filter(Boolean).join(en ? " and " : " et ") || d.contact.name), email: m(d.contact.email), phone: m(d.contact.phone), address: m(d.contact.address), guests: m(d.guests || ""), occupants: m(d.sleeping || 22),
     nature: m((en ? NATURE.en : NATURE.fr)[d.kind] ?? d.kind), nights: m(d.start ? `${n} ${en ? (n > 1 ? "nights" : "night") : n > 1 ? "nuits" : "nuit"}` : ""), start: m(day(d.start)), end: m(day(d.end)), arrival: m(hour(d.arrival)), departure: m(hour(d.departure)),
     amount: m(money(d.amount)), pct: m(d.amount ? `${Math.round(dep / d.amount * 100)} %` : `${TERMS.deposit} %`), deposit: m(money(dep)), balance: m(money(Math.max(0, d.amount - dep))), balanceDue: m(date(pay("bal")?.due ?? two)), hold: m(money(hold)), holdDue: m(date(d.start ? addDays(d.start, -2) : "")) };
@@ -1530,7 +1536,7 @@ document.addEventListener("click", (e) => {
       else { d0.docs.push(newSlotDoc(sl)); S.preview = { deal: d0.id, i: d0.docs.length - 1 }; S.toast = "Nouvelle version créée en brouillon."; } } }
   if (ds.a === "doc-resync") { const cur = previewed(); if (cur && cur.d) ask("Remettre ce document à jour ?", "Son contenu sera remplacé par le modèle, rempli avec la fiche de l'affaire.", "Ce qui a été tapé à la main dans Google Docs sera perdu.", "Remplacer le contenu", () => driveDocsSync(cur.d, cur.x)); }
   if (ds.a === "doc-bare") { S.docBare = !S.docBare; try { localStorage.setItem("docBare", S.docBare ? "1" : "0"); } catch (_) { /* private window: the choice lasts for this visit only */ } }
-  if (ds.a === "lessor-save" && isAdmin()) { S.lessor = Object.fromEntries(["name", "address", "phone", "email", "place", "reception", "signer", "city"].map((k) => { const v = val("ls-" + k).trim().slice(0, 160); delete S.draft["ls-" + k]; return [k, v]; })); S.flash = { text: "Bailleur enregistré : les contrats en cours le reprennent." }; S.deals.forEach((o) => driveDocsSync(o)); }
+  if (ds.a === "lessor-save" && isAdmin()) { S.lessor = Object.fromEntries(LESSOR_FIELDS.map(([k]) => k).map((k) => { const v = val("ls-" + k).trim().slice(0, 160); delete S.draft["ls-" + k]; return [k, v]; })); S.flash = { text: "Bailleur enregistré : les contrats en cours le reprennent." }; S.deals.forEach((o) => driveDocsSync(o)); }
   if (ds.a === "drive-off") ask("Déconnecter Google Drive ?", "Les documents déjà créés restent dans Drive et dans les affaires.", "« Créer » refera des documents internes à l'application.", "Déconnecter", () => { api("DELETE", "/api/drive").then((r) => { if (r.status === 200) S.drive = { on: false }; else S.notice = "Déconnexion refusée."; render(); }); });
   if (ds.a === "src-del") { const s = S.sources.find((x) => x.id === ds.id);
     if (s) ask("Retirer ce calendrier ?", `Les réservations importées de « ${esc(s.kind)}, ${esc(s.name)} » disparaîtront du calendrier, et leurs dates redeviendront libres ici.`, "Rien n'est modifié sur la plateforme d'origine.", "Retirer le calendrier", () => {
@@ -1844,7 +1850,7 @@ function importSeason(file) {
   let added = 0, updated = 0, skipped = 0;
   if (/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(file.mailbox ?? "")) S.mailbox = file.mailbox;
   // The lessor's details for the agreements: taken from the file where nothing was typed by hand yet.
-  if (file.lessor && typeof file.lessor === "object") ["name", "address", "phone", "email", "place", "reception", "signer", "city"].forEach((k) => { if (!S.lessor[k] && str(file.lessor[k], 160)) S.lessor = { ...S.lessor, [k]: str(file.lessor[k], 160) }; });
+  if (file.lessor && typeof file.lessor === "object") LESSOR_FIELDS.map(([k]) => k).forEach((k) => { if (!S.lessor[k] && str(file.lessor[k], 160)) S.lessor = { ...S.lessor, [k]: str(file.lessor[k], 160) }; });
   list(file.deals).forEach((r) => {
     if (!r || !/^[a-z0-9-]{3,40}$/.test(r.id ?? "") || !str(r.title, 80) || !isDay(r.start) || !isDay(r.end) || r.end < r.start) { skipped++; return; }
     const c = r.contact ?? {}, guests = Math.round(num(r.guests)), stage = Number.isInteger(r.stage) ? Math.max(0, Math.min(5, r.stage)) : 4;
