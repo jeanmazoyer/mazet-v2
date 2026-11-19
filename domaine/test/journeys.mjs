@@ -121,6 +121,9 @@ await a.click('.docs .drow >> nth=0'); await a.waitForSelector(".drawer iframe.f
 ok("a signed PDF kept in Drive is shown in the panel by the Drive viewer", (await a.locator(".drawer iframe.fileview").getAttribute("src")) === "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/preview");
 await a.click("#close-preview"); await a.click('.docs .drow >> nth=1'); await a.waitForSelector(".drawer iframe.fileview");
 ok("a Google Docs draft opens in the panel in edit mode", (await a.locator(".drawer iframe.fileview").getAttribute("src")) === "https://docs.google.com/document/d/1ZyXwVuTsRqPoNmLk/edit");
+const box = await a.locator(".drawer.wide").boundingBox(), frame = await a.locator(".drawer iframe.fileview").boundingBox();
+ok("a Drive document gets a wide panel and its whole height", box.width >= 1100 && frame.width >= box.width - 4 && frame.height >= 600, JSON.stringify({ box, frame }));
+await a.click('[data-a="doc-bare"]'); ok("« Page seule » asks Google Docs for the page alone", (await a.locator(".drawer iframe.fileview").getAttribute("src")).endsWith("/edit?rm=minimal")); await a.click('[data-a="doc-bare"]');
 await a.click("#close-preview");
 // With Drive connected (its answers are played by the test), both ways of creating from a model make a Google Docs file
 let asked = []; await a.context().route("**/api/drive/**", (r) => { asked.push(JSON.parse(r.request().postData() ?? "{}")); return r.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "1DocFromDrive0001", url: "https://docs.google.com/document/d/1DocFromDrive0001/edit", folder: "1FolderOfTheDeal01" }) }); });

@@ -932,3 +932,10 @@ a.drow { color: inherit; text-decoration: none; }
 @media (max-width: 900px) { .ahead { grid-template-columns: 1fr auto 20px; } .ahead .acells { grid-column: 1 / -1; order: 5; } .ahead .cell.r { display: none; } }
 .h.flex .drivelink + .link { margin-left: var(--s4); }
 .fld textarea.inp { height: auto; min-height: 76px; padding: var(--s2) var(--s3); resize: vertical; line-height: 1.45; }
+
+/* A Drive document takes a wide panel and all of its height: the Google Docs editor needs the room. */
+.drawer.wide { width: min(1320px, calc(100% - 64px)); }
+.drawer.wide .stage { padding: 0; overflow: hidden; display: flex; }
+.drawer.wide .paper { flex: 1; display: flex; border: 0; margin: 0; max-width: none; min-height: 0; padding: 0; }
+.drawer.wide .fileview { flex: 1; height: auto; }
+@media (max-width: 900px) { .drawer.wide { width: 100%; } }

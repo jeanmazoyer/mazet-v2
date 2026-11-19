@@ -105,7 +105,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, creating: "",
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, creating: "", docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -689,7 +689,7 @@ const driveId = (u) => (/\/d\/([\w-]{10,})/.exec(u ?? "") ?? [])[1] ?? "";
 const driveLive = (x) => x.k === "gdoc" && x.st !== "Signé" && x.st !== "Finalisé";
 function docBody(d, x) {
   if (x.url) { const id = driveId(x.url);
-    return id ? `<iframe class="fileview" src="https://${x.k === "gdoc" ? "docs.google.com/document" : "drive.google.com/file"}/d/${id}/${driveLive(x) ? "edit" : "preview"}" title="${esc(x.t)}" referrerpolicy="no-referrer" allow="clipboard-read; clipboard-write"></iframe>`
+    return id ? `<iframe class="fileview" src="https://${x.k === "gdoc" ? "docs.google.com/document" : "drive.google.com/file"}/d/${id}/${driveLive(x) ? (S.docBare ? "edit?rm=minimal" : "edit") : "preview"}" title="${esc(x.t)}" referrerpolicy="no-referrer" allow="clipboard-read; clipboard-write"></iframe>`
       : `<h1>${esc(x.t)}</h1><p class="c">Rangé dans Google Drive</p><p>Ce document s'ouvre dans Google Drive avec le bouton en bas du panneau.</p>`; }
   if (x.fileId) return fileBody(x);
   if (x.body) return x.body;
@@ -1074,10 +1074,10 @@ function previewPanel() {
     final: del + pdf + (x.slot === "devis" && sign ? mail("alt") + sign : mail("")),
     signing: pdf + `<button class="btn" data-a="sig-view">Simuler la signature du client</button>`,
     signed: del + pdf + mail("alt") + `<button class="btn" data-a="doc-open">Ouvrir dans Drive</button>`,
-    file: del + (x.url ? `<a class="btn" href="${esc(x.url)}" target="_blank" rel="noopener">Ouvrir dans Google Drive</a>` : x.fileId ? `<a class="btn" href="/api/files/${x.fileId}" target="_blank" rel="noopener">Ouvrir le fichier</a>` : pdf) }[mode];
+    file: del + (x.url ? `${driveLive(x) ? `<button class="btn alt" data-a="doc-bare" title="${S.docBare ? "Revenir à l'éditeur Google Docs complet" : "N'afficher que la page, sans barre d'outils ni onglets"}">${S.docBare ? "Éditeur complet" : "Page seule"}</button>` : ""}<a class="btn" href="${esc(x.url)}" target="_blank" rel="noopener">Ouvrir dans Google Drive</a>` : x.fileId ? `<a class="btn" href="/api/files/${x.fileId}" target="_blank" rel="noopener">Ouvrir le fichier</a>` : pdf) }[mode];
   const pill = mode === "pldraft" || mode === "final" || fixed;
   return `<div class="scrim" data-a="close-preview"></div>
-    <aside class="drawer" role="dialog" aria-modal="true" aria-label="Aperçu du document">
+    <aside class="drawer ${x.url && !sheet ? "wide" : ""}" role="dialog" aria-modal="true" aria-label="Aperçu du document">
       <header><span class="kb ${x.k}">${BADGE[x.k]}</span><div class="grow">${S.docEdit && plain && !fixed && mode !== "final" ? `<div class="rename"><input id="doc-name" class="inp" value="${esc(x.t)}" aria-label="Nom du document"><button class="btn green sm" data-a="doc-rename-ok">Enregistrer</button></div>` : `<b>${esc(x.t)}${plain && !fixed && mode !== "final" ? `<button class="iconbtn inline" data-a="doc-rename" title="Renommer" aria-label="Renommer le document">${ico("pen", "s")}</button>` : ""}</b>`}<small>${KLBL[x.k]} · ${fr(x.d)} · ${d ? esc(d.title) : "Non classé"}</small></div>${plain ? (pill ? `<span class="tag ${DOC_ST[x.st ?? "Brouillon"]}">${x.st ?? "Brouillon"}</span>` : `<span class="status"><select data-docstatus aria-label="Statut du document">${Object.keys(DOC_ST).map((o) => `<option ${(x.st ?? "Brouillon") === o ? "selected" : ""}>${o}</option>`).join("")}</select></span>`) : ""}<button class="iconbtn" id="close-preview" data-a="close-preview" aria-label="Fermer l'aperçu">${ico("close", "m")}</button></header>
       ${meta}${state}
       <div class="stage">${body}</div>
@@ -1474,6 +1474,7 @@ document.addEventListener("click", (e) => {
     if (name.length < 2) S.modalErr = "Donnez un nom au logement."; else if (!/^https:\/\/\S+\.\S+/.test(url)) S.modalErr = "Collez le lien iCal complet : il commence par https://";
     else { S.sources.push({ id: "s" + Date.now(), kind: S.draft["ic-kind"] ?? "Airbnb", name, url, last: "" }); S.modal = null; S.draft = {}; S.flash = { text: "Calendrier ajouté : lecture en cours." }; render(); persist().then(syncFeeds); return; } }
   if (ds.a === "src-sync") { syncFeeds(); return; }
+  if (ds.a === "doc-bare") { S.docBare = !S.docBare; try { localStorage.setItem("docBare", S.docBare ? "1" : "0"); } catch (_) { /* private window: the choice lasts for this visit only */ } }
   if (ds.a === "drive-off") ask("Déconnecter Google Drive ?", "Les documents déjà créés restent dans Drive et dans les affaires.", "« Créer » refera des documents internes à l'application.", "Déconnecter", () => { api("DELETE", "/api/drive").then((r) => { if (r.status === 200) S.drive = { on: false }; else S.notice = "Déconnexion refusée."; render(); }); });
   if (ds.a === "src-del") { const s = S.sources.find((x) => x.id === ds.id);
     if (s) ask("Retirer ce calendrier ?", `Les réservations importées de « ${esc(s.kind)}, ${esc(s.name)} » disparaîtront du calendrier, et leurs dates redeviendront libres ici.`, "Rien n'est modifié sur la plateforme d'origine.", "Retirer le calendrier", () => {
