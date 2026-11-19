@@ -246,3 +246,37 @@ test("an attachment is found by its place in the message, and a signature image 
   assert.ok(attachmentHeaders('a"b\r\n.pdf', "application/pdf")["content-disposition"].includes("filename*=UTF-8''a%22b%0D%0A.pdf"));
   assert.equal(attachmentHeaders("x", "image/png")["x-content-type-options"], "nosniff");
 });
+
+test("a message goes to several people only when each of them is an address of the deal", async () => {
+  const { recipientsFor } = await import("../server/mail.ts");
+  const doc = { contact: { email: "alba@test.fr" }, mailAddrs: ["noe@test.fr"] };
+  assert.deepEqual(recipientsFor(doc, []), ["alba@test.fr"]);
+  assert.deepEqual(recipientsFor(doc, ["NOE@test.fr", "alba@test.fr", "noe@test.fr"]), ["noe@test.fr", "alba@test.fr"]);
+  assert.equal(recipientsFor(doc, ["alba@test.fr", "boss@corp.com"]), null);
+  assert.equal(recipientsFor({ contact: { email: "" } }, []), null);
+});
+
+test("a written message keeps its font, size and colour, and nothing that could run or track", async () => {
+  const { cleanMailHtml } = await import("../server/mail.ts");
+  const out = cleanMailHtml('<p><font face="Georgia" size="5" color="#c0392b" onclick="x()">Titre</font> <s>ancien</s> <strike>prix</strike></p><font face="x\'); background:url(http://t/p" color="expression(1)" size="99">z</font><blockquote style="margin:0 0 0 40px">cité</blockquote>');
+  assert.ok(out.includes('<font face="Georgia" size="5" color="#c0392b">Titre</font>'), out);
+  assert.ok(out.includes("<s>ancien</s>") && out.includes("<strike>prix</strike>") && out.includes("<blockquote>cité</blockquote>"));
+  assert.ok(out.includes("<font>z</font>") && !out.includes("onclick") && !out.includes("url(") && !out.includes("expression") && !out.includes("style="));
+});
+
+test("files joined to a message travel as attachments around its text", async () => {
+  const { buildMime, uploadBody } = await import("../server/mail.ts");
+  const mime = buildMime({ from: "d@test.fr", to: "alba@test.fr, noe@test.fr", subject: "Devis", html: "<p>Voici</p>", files: [{ name: "Devis été.pdf", type: "application/pdf", bytes: Buffer.from("%PDF-1") }, { name: 'a"b\r\n.txt', type: "text/plain\r\nX: y", bytes: Buffer.from("x") }] }, "B1");
+  assert.ok(mime.includes("To: alba@test.fr, noe@test.fr\r\n"));
+  assert.ok(mime.includes('Content-Type: multipart/mixed; boundary="B1m"') && mime.includes('Content-Type: multipart/alternative; boundary="B1"'));
+  assert.ok(mime.includes("Content-Type: application/pdf\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename*=UTF-8''Devis%20%C3%A9t%C3%A9.pdf\r\n\r\n" + Buffer.from("%PDF-1").toString("base64")));
+  // A file name or type cannot add a header, and an unknown type travels as plain bytes.
+  assert.ok(mime.includes("Content-Type: application/octet-stream\r\n") && !mime.includes("\r\nX: y") && mime.includes("filename*=UTF-8''a%22b%0D%0A.txt"));
+  assert.ok(mime.trimEnd().endsWith("--B1m--"));
+  // Without a file the message keeps its simple two-part shape.
+  assert.ok(buildMime({ from: "d@test.fr", to: "a@test.fr", subject: "s", html: "<p>x</p>", files: [] }, "B2").includes('Content-Type: multipart/alternative; boundary="B2"\r\n\r\n--B2'));
+  const up = uploadBody("RAW MESSAGE", "abc123", "U1");
+  assert.equal(up.type, 'multipart/related; boundary="U1"');
+  assert.equal(up.body, '--U1\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{"threadId":"abc123"}\r\n--U1\r\nContent-Type: message/rfc822\r\n\r\nRAW MESSAGE\r\n--U1--');
+  assert.ok(uploadBody("RAW", "", "U2").body.includes("\r\n\r\n{}\r\n"));
+});

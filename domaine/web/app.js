@@ -106,7 +106,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, agenda: { on: false }, visitEdit: null, creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, agenda: { on: false }, visitEdit: null, mailkit: { templates: [], signature: "" }, mailSkip: {}, mailFiles: [], mailSign: true, mailUp: false, tplQ: "", creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -634,7 +634,7 @@ function viewStats() {
 /* ---------- Settings ---------- */
 const stepper = (minus, plus, label, lo, hi) => `<div class="stepper"><button data-a="${minus}" aria-label="Diminuer" ${lo ? "disabled" : ""}>−</button><b class="num">${label}</b><button data-a="${plus}" aria-label="Augmenter" ${hi ? "disabled" : ""}>+</button></div>`;
 // The settings: sections listed on the left, grouped by subject; the chosen one on the right.
-const SET_GROUPS = [["Le domaine", ["bailleur", "utilisateurs"]], ["Réservations", ["pipeline", "echeancier", "menage", "calendriers"]], ["Connexions", ["drive", "gmail", "agenda"]], ["Données", ["banque", "modeles", "import", "sauvegarde"]]];
+const SET_GROUPS = [["Le domaine", ["bailleur", "utilisateurs"]], ["Réservations", ["pipeline", "echeancier", "menage", "calendriers"]], ["Connexions", ["drive", "gmail", "agenda"]], ["Données", ["banque", "modeles", "emails", "import", "sauvegarde"]]];
 const SET_KEYS = SET_GROUPS.flatMap(([, keys]) => keys);
 function viewSettings() {
   if (!isAdmin()) return topbar("Réglages", "") + `<div class="content"><div class="card lockcard"><span class="nic">${ico("lock", "s")}</span><div><b>Réglages réservés aux administrateurs</b><p class="muted">Vous utilisez l'application avec le rôle Équipe. Les étapes, l'échéancier, les calendriers, la banque et les utilisateurs se modifient avec un compte administrateur.</p></div><button class="btn alt" data-a="role" data-role="admin">Revenir en administrateur</button></div></div>`;
@@ -670,6 +670,10 @@ function viewSettings() {
         + row("Importer un relevé", "Le nouveau relevé remplace le précédent.", `<input id="bank-file" class="inp filein" type="file" accept=".csv,text/csv" aria-label="Importer un relevé">`) },
     modeles: { icon: "doc", label: "Modèles de documents", sub: "Le bouton « Créer » d'un document manquant part de ces modèles.",
       body: () => SLOTS.map((sl) => row(sl.label, KLBL[sl.k], sim("Ouvrir le modèle", `Dans l'application : le modèle « ${sl.label} » s'ouvre dans Google Docs.`))).join("") },
+    emails: { icon: "mail", label: "Modèles d'e-mail et signature", sub: "Les modèles se créent depuis un message : écrivez-le dans une affaire, puis « Choisir un modèle », « Enregistrer le brouillon comme modèle ». La signature s'ajoute sous chaque message envoyé, tant que le bouton de signature est actif.",
+      body: () => `<div class="setrow"><span class="grow"><b>Signature</b><small>Nom, fonction, téléphone : quelques lignes de texte simple.</small><textarea id="mk-sign" class="inp signin" rows="4" aria-label="Signature" placeholder="Bien cordialement,&#10;Prénom Nom&#10;Les jardins de Campagne">${esc(S.draft["mk-sign"] ?? S.mailkit.signature ?? "")}</textarea></span><span class="ctl"><button class="btn sm" data-a="sign-save">Enregistrer</button></span></div>`
+        + Object.keys(MAIL_TPL).map((n) => row(esc(n), "Fourni avec l'application", `<span class="mini">${ico("lock", "xs")}Fixe</span>`)).join("")
+        + S.mailkit.templates.map((t) => row(esc(t.name), esc(t.subject || "(sans objet)"), `<button class="iconbtn" data-a="tpl-del" data-id="${esc(t.id)}" aria-label="Supprimer le modèle ${esc(t.name)}">${ico("trash", "s")}</button>`)).join("") },
     import: { icon: "down", label: "Importer un planning", sub: "Un fichier JSON : une ligne par séjour, ou une saison complète (paiements, documents, e-mails) préparée pour l'audit. Réimporter le même fichier met les séjours à jour.",
       body: () => row("Fichier à importer", "Chaque champ est vérifié à l'import.", `<input id="imp-file" class="inp filein" type="file" accept=".json,application/json" aria-label="Fichier à importer">`) },
     sauvegarde: { icon: "shield", label: "Sauvegarde", sub: "Une copie de toutes les données est faite chaque jour sur le serveur, et les 30 dernières sont gardées. Téléchargez-en une de temps en temps pour la ranger ailleurs.",
@@ -853,6 +857,12 @@ function lostModal() {
     <label class="fld"><span>Raison</span><select id="ls-reason" class="inp">${opts("ls-reason", LOST, LOST[0])}</select></label>
     <label class="fld"><span>Précision (facultatif)</span><input id="ls-note" class="inp" value="${esc(dval("ls-note"))}"></label>`,
     `<button class="btn red" data-a="lost-ok">Marquer comme perdue</button>`, "small");
+}
+function tplSaveModal() {
+  if (S.modal !== "tpl-save") return "";
+  return shell("Enregistrer le brouillon comme modèle", `<p>L'objet et le texte du message en cours deviennent un modèle. Les champs insérés depuis l'affaire (prénom, dates, montant) seront remplis à nouveau pour chaque affaire.</p>
+    <label class="fld"><span>Nom du modèle</span><input id="tp-name" class="inp" value="${esc(dval("tp-name"))}" placeholder="Ex. Réponse à une demande de mariage" maxlength="60"></label><p class="muted">Un modèle du même nom est remplacé.</p>`,
+    `<button class="btn" data-a="tpl-save-ok">Enregistrer le modèle</button>`, "small");
 }
 function taskModal() {
   if (S.modal !== "task") return "";
@@ -1041,14 +1051,17 @@ function simulateReply(d, channel, subject) {
 /* ---------- Rich text: one toolbar for the e-mail editor and for editable documents ---------- */
 // Whatever comes out of an editable area goes through this list of allowed tags before it is
 // stored or shown again: formatting only, no script, no style, no event attribute.
-const RICH_TAGS = new Set(["B", "STRONG", "I", "EM", "U", "A", "UL", "OL", "LI", "BR", "P", "DIV", "SPAN", "H1", "H2", "H3", "TABLE", "TBODY", "THEAD", "TR", "TD", "TH", "MARK", "SMALL"]);
+const RICH_TAGS = new Set(["B", "STRONG", "I", "EM", "U", "A", "UL", "OL", "LI", "BR", "P", "DIV", "SPAN", "H1", "H2", "H3", "H4", "TABLE", "TBODY", "THEAD", "TR", "TD", "TH", "MARK", "SMALL", "S", "STRIKE", "BLOCKQUOTE", "HR", "FONT"]);
+// A <font> keeps a font, a size or a colour, each in a shape that can hold nothing else. A field of the deal keeps its name.
+const FONT_OK = { face: /^[A-Za-z][A-Za-z ,-]{1,60}$/, size: /^[1-7]$/, color: /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20})$/ };
 function clean(html) {
   const t = document.createElement("template"); t.innerHTML = html;
   const walk = (node) => { [...node.children].forEach((el) => {
     if (["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "LINK", "META"].includes(el.tagName)) { el.remove(); return; }
     walk(el);
     if (!RICH_TAGS.has(el.tagName)) { el.replaceWith(...el.childNodes); return; }
-    [...el.attributes].forEach((a) => { const keep = a.name === "class" || a.name === "colspan" || (a.name === "href" && el.tagName === "A" && /^(https?:|mailto:)/i.test(a.value)); if (!keep) el.removeAttribute(a.name); });
+    [...el.attributes].forEach((a) => { const keep = a.name === "class" || a.name === "colspan" || (a.name === "href" && el.tagName === "A" && /^(https?:|mailto:)/i.test(a.value))
+      || (el.tagName === "FONT" && FONT_OK[a.name] && FONT_OK[a.name].test(a.value)) || (a.name === "data-var" && el.tagName === "SPAN" && Object.hasOwn(MAIL_VARS, a.value)); if (!keep) el.removeAttribute(a.name); });
     if (el.tagName === "A") { el.setAttribute("target", "_blank"); el.setAttribute("rel", "noopener"); }
   }); };
   walk(t.content); return t.innerHTML;
@@ -1080,6 +1093,30 @@ function insertInMail(text) {
   if (mailRange && el.contains(mailRange.startContainer)) { s.removeAllRanges(); s.addRange(mailRange); } else { s.selectAllChildren(el); s.collapseToEnd(); }
   document.execCommand("insertText", false, text); S.draft["mail-body"] = clean(el.innerHTML);
 }
+// Runs a formatting command where the caret was in the message, then keeps the result as the draft.
+function mailExec(cmd, arg, html = false) {
+  const el = document.getElementById("mail-body"); if (!el) return; el.focus(); const sl = getSelection();
+  if (mailRange && el.contains(mailRange.startContainer)) { sl.removeAllRanges(); sl.addRange(mailRange); } else { sl.selectAllChildren(el); sl.collapseToEnd(); }
+  document.execCommand("styleWithCSS", false, false); document.execCommand(html ? "insertHTML" : cmd, false, arg); S.draft["mail-body"] = clean(el.innerHTML);
+}
+const varSpan = (k, d) => `<span class="var" data-var="${esc(k)}">${esc(MAIL_VARS[k](d) ?? "")}</span>`;
+// A draft kept as a template: each field of the deal becomes its name between braces, filled again for the next deal.
+const toTemplate = (html) => { const t = document.createElement("template"); t.innerHTML = html; t.content.querySelectorAll("span[data-var]").forEach((el) => el.replaceWith(`{{${el.dataset.var}}}`)); return clean(t.innerHTML); };
+// What leaves is plain text: the mark around a field only matters while the message is being written.
+const flatVars = (html) => { const t = document.createElement("template"); t.innerHTML = html; t.content.querySelectorAll("span[data-var]").forEach((el) => el.replaceWith(...el.childNodes)); return t.innerHTML; };
+const fillVars = (text, d, asHtml) => text.replace(/\{\{([^{}]{1,40})\}\}/g, (m, k) => (Object.hasOwn(MAIL_VARS, k) ? (asHtml ? varSpan(k, d) : String(MAIL_VARS[k](d) ?? "")) : m));
+const mailTemplates = (d) => [...Object.keys(MAIL_TPL).map((name) => ({ id: "std:" + name, name, std: true })), ...S.mailkit.templates.map((t) => ({ ...t, std: false }))];
+function useTemplate(d, id) {
+  const std = id.startsWith("std:") ? MAIL_TPL[id.slice(4)] : null, own = S.mailkit.templates.find((t) => t.id === id);
+  if (std) { const [sub, html] = std(d); S.draft["mail-subject"] = sub; S.draft["mail-body"] = html + (signature() ? "" : signOff()); }
+  else if (own) { S.draft["mail-subject"] = fillVars(own.subject ?? "", d, false); S.draft["mail-body"] = fillVars(clean(own.html ?? ""), d, true); }
+  S.focus = "mail-body";
+}
+const signature = () => (S.mailkit.signature ?? "").trim();
+const signatureHtml = () => `<br><div>-- <br>${esc(signature()).replace(/\n/g, "<br>")}</div>`;
+const mailAddrs = (d) => [...new Set([d.contact.email, ...(d.mailAddrs ?? [])].map((a) => (typeof a === "string" ? a.trim().toLowerCase() : "")).filter((a) => /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(a)))].slice(0, 6);
+const mailTo = (d) => mailAddrs(d).filter((a) => !(S.mailSkip[d.id] ?? []).includes(a));
+const dropDraft = () => { delete S.draft["mail-body"]; delete S.draft["mail-subject"]; S.mailFiles = []; };
 
 /* ---------- E-mail: templates and the deal's own information ---------- */
 const signOff = () => `<p>Bien cordialement,<br>${esc(me().name)}<br>Les jardins de Campagne</p>`;
@@ -1095,7 +1132,7 @@ const MAIL_VARS = { "Prénom": firstName, "Dates du séjour": (d) => range(d.sta
 /* ---------- E-mail, live: the deal's conversations, read from the estate's mailbox ---------- */
 // Kept in memory only, and read again after two minutes: Gmail stays the one place where mail lives.
 const MAIL_FRESH_MS = 120000, mails = new Map();
-const mailKey = (d) => (d.contact.email ?? "").trim().toLowerCase();
+const mailKey = (d) => mailAddrs(d).join(",");
 function loadMails(d, force = false) {
   const cur = mails.get(d.id), key = mailKey(d);
   if (cur && cur.key === key && (cur.state === "loading" || (!force && Date.now() - cur.at < MAIL_FRESH_MS))) return cur;
@@ -1110,39 +1147,77 @@ const mailCur = (d, m) => (S.mailThread[d.id] === "new" ? null : m.threads.find(
 const fileSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1).replace(".", ",")} Mo` : `${Math.max(1, Math.round(n / 1024))} Ko`);
 const threadLine = (t) => { const last = t.messages[t.messages.length - 1]; return `${t.messages.length} message${t.messages.length > 1 ? "s" : ""} · ${when(last.at)}`; };
 function liveMailTab(d) {
-  const m = loadMails(d), cur = mailCur(d, m), to = mailKey(d), n = m.threads.length;
-  const pick = (id, label, first, list) => `<select id="${id}" class="inp sm auto" aria-label="${label}"><option value="">${first}</option>${list.map((o) => `<option>${o}</option>`).join("")}</select>`;
-  const state = m.state === "loading" ? "Lecture de la boîte…" : m.state === "err" ? esc(m.error) : !to ? "Ajoutez l'adresse e-mail du contact dans la fiche pour lire ses messages ici." : n ? `${n} conversation${n > 1 ? "s" : ""} avec ${esc(d.contact.name)}` : `Aucun échange avec ${esc(d.contact.name)} dans la boîte pour l'instant.`;
+  const m = loadMails(d), cur = mailCur(d, m), all = mailAddrs(d), to = mailTo(d), n = m.threads.length;
+  const state = m.state === "loading" ? "Lecture de la boîte…" : m.state === "err" ? esc(m.error) : !all.length ? "Ajoutez l'adresse e-mail du contact dans la fiche pour lire ses messages ici." : n ? `${n} conversation${n > 1 ? "s" : ""} avec ${esc(d.contact.name)}` : `Aucun échange avec ${esc(d.contact.name)} dans la boîte pour l'instant.`;
   const head = `<div class="mailhead"><span class="hint ${m.state === "err" ? "bad" : ""}">${state}</span><span class="sp"></span>${cur ? `<button class="btn sm" data-a="mail-new">${ico("mail", "s")}Nouvelle conversation</button>` : ""}<button class="iconbtn sm ${m.state === "loading" ? "spin" : ""}" data-a="mail-reload" title="Actualiser" aria-label="Actualiser les conversations">${ico("sync", "s")}</button></div>`;
   const list = n > 1 ? `<div class="mthreads">${m.threads.map((t) => `<button class="mthread ${cur && cur.id === t.id ? "on" : ""}" data-a="mail-thread" data-id="${esc(t.id)}"><b>${esc(t.subject || "(sans objet)")}</b><small class="num">${threadLine(t)}</small></button>`).join("")}</div>` : "";
   const thread = cur ? `<div class="thread" id="thread">${cur.messages.map((x) => `<article class="mail ${x.mine ? "out" : ""}">
       <header><span class="av">${initials(mailWho(x.from) || "?")}</span><div class="grow"><b>${esc(mailWho(x.from))}</b><small>à ${esc(mailWho(x.to))}</small></div><time>${esc(when(x.at))}</time></header>
       <div class="rich">${clean(x.html) || `<span class="hint">(message sans texte)</span>`}</div>${(x.files ?? []).length ? `<div class="mfiles">${x.files.map((f) => `<a class="mini att" href="/api/mail/attachment?dealId=${encodeURIComponent(d.id)}&messageId=${encodeURIComponent(x.id)}&n=${Number(f.n)}" target="_blank" rel="noopener" title="Ouvrir ${esc(f.name)}">${ico("clip", "xs")}${esc(f.name || "pièce jointe")}${f.size ? `<small class="num">${fileSize(f.size)}</small>` : ""}</a>`).join("")}</div>` : ""}</article>`).join("")}</div>` : "";
-  const subject = cur ? `<div class="msubject"><span class="hint">Réponse dans</span><b>${esc(cur.subject || "(sans objet)")}</b></div>` : `<input id="mail-subject" class="inp" value="${esc(S.draft["mail-subject"] ?? "")}" placeholder="Objet" aria-label="Objet">`;
-  return `${head}${list}${thread}${subject}
-    <div class="editor"><div class="rte" role="toolbar" aria-label="Mise en forme du message">${rteBar()}<button class="tb" data-cmd="link" title="Lien" aria-label="Insérer un lien">${ico("link", "s")}</button><span class="linkbox" hidden><input class="inp sm" placeholder="https://" aria-label="Adresse du lien"><button class="btn sm" data-cmd="linkok">OK</button></span>
-        <span class="sp"></span>${pick("mail-tpl", "Partir d'un modèle", "Modèles", Object.keys(MAIL_TPL).filter((k) => k !== "Envoi du devis"))}${pick("mail-var", "Insérer une information de l'affaire", "Insérer", Object.keys(MAIL_VARS))}</div>
-      <div id="mail-body" class="rich edit" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message" data-ph="${cur ? "Répondre à" : "Écrire à"} ${esc(d.contact.name)}">${S.draft["mail-body"] ?? ""}</div></div>
-    <div class="cfoot"><span class="hint">${to ? `Envoyé depuis ${S.mail.email ? esc(S.mail.email) : "la boîte du domaine"}, à ${esc(to)}` : "Sans adresse e-mail dans la fiche, rien ne peut être envoyé."}</span><button class="btn sm" data-a="mail-send" ${to && !S.mailBusy ? "" : "disabled"}>${ico("send", "s")}${S.mailBusy ? "Envoi…" : "Envoyer"}</button></div>`;
+  return `${head}${list}${thread}${mailComposer(d, cur, all, to)}`;
 }
-// Nothing leaves without this click. The server decides the recipient (the deal's own address) and
-// checks that a reply goes into one of the deal's conversations.
-function mailSend(d) {
-  const box = document.getElementById("mail-body"), text = box ? box.innerText.trim() : "", html = box ? clean(box.innerHTML) : "";
+// The message being written: who it is from and for, its subject, a template or a field of the deal to
+// start from, the text, its formatting, then what goes with it (files, signature) and the send button.
+const MAIL_FONTS = ["Arial", "Georgia", "Times New Roman", "Courier New", "Verdana"], MAIL_SIZES = [["2", "Petit"], ["3", "Normal"], ["5", "Grand"], ["6", "Très grand"]];
+const MAIL_COLORS = [["#232930", "Noir"], ["#6b7280", "Gris"], ["#2f80ed", "Bleu"], ["#27ae60", "Vert"], ["#c0392b", "Rouge"], ["#e67e22", "Orange"]];
+function mailComposer(d, cur, all, to) {
+  const out = all.filter((a) => !to.includes(a)), name = (a) => (a === (d.contact.email ?? "").trim().toLowerCase() && d.contact.name ? `${esc(d.contact.name)} (${esc(a)})` : esc(a));
+  const q = S.tplQ.trim().toLowerCase(), tpls = mailTemplates(d).filter((t) => !q || t.name.toLowerCase().includes(q));
+  const tb = (cmd, label, title, arg = "") => `<button class="tb" data-cmd="${cmd}" ${arg ? `data-arg="${arg}"` : ""} title="${title}" aria-label="${title}">${label}</button>`;
+  const sel = (id, title, first, opts) => `<select id="${id}" class="tbsel" aria-label="${title}" title="${title}"><option value="">${first}</option>${opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select>`;
+  const docs = d.docs.filter((x) => x.fileId && (!x.admin || isAdmin()) && !S.mailFiles.some((f) => f.id === x.fileId));
+  const tplMenu = S.menu === "mailtpl" ? `<div class="pop tplpop" role="menu" aria-label="Modèles d'e-mail"><label class="tplq">${ico("search", "s")}<input id="tpl-q" value="${esc(S.tplQ)}" placeholder="Chercher" aria-label="Chercher un modèle"></label>
+      <div class="tpllist">${tpls.map((t) => `<button class="mi" role="menuitem" data-a="tpl-use" data-id="${esc(t.id)}">${ico(t.std ? "lock" : "doc", "s")}<span>${esc(t.name)}</span></button>`).join("") || `<span class="muted">Aucun modèle à ce nom.</span>`}</div><hr>
+      <button class="mi" role="menuitem" data-a="tpl-save">${ico("plus", "s")}Enregistrer le brouillon comme modèle…</button>${isAdmin() ? `<button class="mi" role="menuitem" data-go="reglages-emails">${ico("gear", "s")}Gérer les modèles</button>` : ""}</div>` : "";
+  const attMenu = S.menu === "mailatt" ? `<div class="pop attpop" role="menu" aria-label="Joindre un fichier"><button class="mi" role="menuitem" data-a="mail-pick">${ico("down", "s")}Depuis l'ordinateur…</button>${docs.length ? `<hr><span class="muted">Documents de l'affaire</span>` : ""}${docs.map((x) => `<button class="mi" role="menuitem" data-a="mail-attach" data-id="${esc(x.fileId)}">${ico("doc", "s")}<span>${esc(x.t)}</span></button>`).join("")}</div>` : "";
+  return `<div class="mcomp">
+    <div class="mline"><span class="k">De</span><b class="from">${S.mail.email ? esc(S.mail.email) : "la boîte du domaine"}</b></div>
+    <div class="mline"><span class="k">À</span><div class="mto">${to.map((a) => `<span class="rcpt">${name(a)}<button data-a="mail-to-del" data-id="${esc(a)}" aria-label="Retirer ${esc(a)} de ce message" title="Retirer de ce message">${ico("close", "xs")}</button></span>`).join("")}${out.map((a) => `<button class="rcpt off" data-a="mail-to-add" data-id="${esc(a)}" title="Remettre ce destinataire">+ ${esc(a)}</button>`).join("")}
+      <input id="mail-to-new" class="tonew" value="${esc(S.draft["mail-to-new"] ?? "")}" placeholder="${all.length ? "Ajouter une adresse" : "Adresse e-mail du client"}" aria-label="Ajouter un destinataire à l'affaire" inputmode="email"></div></div>
+    <div class="mline"><span class="k">Objet</span>${cur ? `<b class="resub">Re: ${esc((cur.subject || "(sans objet)").replace(/^(re\s*:\s*)+/i, ""))}</b>` : `<input id="mail-subject" class="subj" value="${esc(S.draft["mail-subject"] ?? "")}" placeholder="Objet du message" aria-label="Objet">`}</div>
+    <div class="mline tools"><span class="menuwrap"><button class="tlink ${S.menu === "mailtpl" ? "on" : ""}" data-menu="mailtpl" aria-haspopup="menu" aria-expanded="${S.menu === "mailtpl"}">Choisir un modèle<i class="caret">▾</i></button>${tplMenu}</span>
+      <select id="mail-var" class="tlink" aria-label="Insérer un champ de l'affaire"><option value="">Insérer un champ</option>${Object.keys(MAIL_VARS).map((o) => `<option>${o}</option>`).join("")}</select></div>
+    <div id="mail-body" class="rich edit" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message" data-ph="${cur ? "Répondre à" : "Écrire à"} ${esc(d.contact.name)}">${S.draft["mail-body"] ?? ""}</div>
+    ${S.mailSign && signature() ? `<div class="msign" aria-label="Signature ajoutée à l'envoi">-- <br>${esc(signature()).replace(/\n/g, "<br>")}</div>` : ""}
+    <div class="rte bottom" role="toolbar" aria-label="Mise en forme du message">${tb("undo", "↶", "Annuler")}${tb("redo", "↷", "Rétablir")}<i class="tsep"></i>${sel("mail-font", "Police", "Police", MAIL_FONTS.map((f) => [f, f]))}${sel("mail-size", "Taille du texte", "Taille", MAIL_SIZES)}<i class="tsep"></i>
+      ${tb("bold", "B", "Gras").replace('class="tb"', 'class="tb bold"')}${tb("italic", "I", "Italique").replace('class="tb"', 'class="tb italic"')}${tb("underline", "U", "Souligné").replace('class="tb"', 'class="tb underline"')}${sel("mail-color", "Couleur du texte", "Couleur", MAIL_COLORS)}<i class="tsep"></i>
+      ${tb("insertOrderedList", "1.", "Liste numérotée")}${tb("insertUnorderedList", ico("list", "s"), "Liste à puces")}${tb("outdent", "⇤", "Diminuer le retrait")}${tb("indent", "⇥", "Augmenter le retrait")}${tb("formatBlock", "❝", "Citation", "blockquote")}<i class="tsep"></i>
+      <button class="tb" data-cmd="link" title="Lien" aria-label="Insérer un lien">${ico("link", "s")}</button><span class="linkbox" hidden><input class="inp sm" placeholder="https://" aria-label="Adresse du lien"><button class="btn sm" data-cmd="linkok">OK</button></span>
+      ${tb("strikeThrough", "<s>S</s>", "Barré")}${tb("removeFormat", ico("close", "s"), "Effacer la mise en forme")}</div>
+    ${S.mailFiles.length || S.mailUp ? `<div class="mfiles out">${S.mailFiles.map((f) => `<span class="mini att">${ico("clip", "xs")}${esc(f.name)}${f.size ? `<small class="num">${fileSize(f.size)}</small>` : ""}<button data-a="mail-unattach" data-id="${esc(f.id)}" aria-label="Retirer ${esc(f.name)}">${ico("close", "xs")}</button></span>`).join("")}${S.mailUp ? `<span class="hint">Envoi du fichier…</span>` : ""}</div>` : ""}
+    <div class="mactions"><span class="menuwrap"><button class="iconbtn ${S.menu === "mailatt" ? "on" : ""}" data-menu="mailatt" title="Joindre un fichier" aria-label="Joindre un fichier" aria-haspopup="menu" aria-expanded="${S.menu === "mailatt"}">${ico("clip", "m")}</button>${attMenu}</span><input id="mail-file" type="file" multiple hidden>
+      <button class="iconbtn ${S.mailSign && signature() ? "on" : ""}" data-a="mail-sign" title="${signature() ? (S.mailSign ? "Signature ajoutée : cliquer pour l'enlever" : "Ajouter la signature") : "Écrire une signature"}" aria-label="Signature" aria-pressed="${Boolean(S.mailSign && signature())}">${ico("pen", "m")}</button>
+      <span class="sp"></span><span class="hint">${to.length ? "" : "Aucun destinataire"}</span>
+      <button class="iconbtn" data-a="mail-drop" title="Effacer le brouillon" aria-label="Effacer le brouillon">${ico("trash", "m")}</button>
+      <button class="btn" data-a="mail-send" ${to.length && !S.mailBusy && !S.mailUp ? "" : "disabled"}>${S.mailBusy ? "Envoi…" : "Envoyer"}</button></div></div>`;
+}
+function addRecipient() {
+  const r = ctx(), d = r.name === "affaire" ? deal(r.id) : null, a = (S.draft["mail-to-new"] ?? "").trim().toLowerCase(); if (!d || !a) return;
+  if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(a)) { S.notice = "Cette adresse e-mail n'est pas valable."; render(); return; }
+  if (mailAddrs(d).length >= 6 && !mailAddrs(d).includes(a)) { S.notice = "Une affaire garde six adresses au plus."; render(); return; }
+  if (!(d.contact.email ?? "").trim()) d.contact.email = a; else if (!mailAddrs(d).includes(a)) d.mailAddrs = [...(d.mailAddrs ?? []), a];
+  S.mailSkip[d.id] = (S.mailSkip[d.id] ?? []).filter((x) => x !== a); delete S.draft["mail-to-new"]; const box = document.getElementById("mail-to-new"); if (box) box.value = ""; S.notice = ""; S.focus = "mail-to-new"; render();
+}
+// Nothing leaves without this click. The server checks every recipient against the deal's own addresses,
+// that a reply goes into one of the deal's conversations, and that each file belongs to the deal.
+async function mailSend(d) {
+  const box = document.getElementById("mail-body"), text = box ? box.innerText.trim() : "", html = box ? flatVars(clean(box.innerHTML)) : "";
   if (S.mailBusy) return;
-  const m = mails.get(d.id) ?? { threads: [] }, cur = mailCur(d, m), subject = cur ? "" : val("mail-subject").trim();
+  const m = mails.get(d.id) ?? { threads: [] }, cur = mailCur(d, m), subject = cur ? "" : val("mail-subject").trim(), to = mailTo(d);
   if (!text) { S.notice = "Le message est vide."; render(); return; }
   if (!cur && !subject) { S.notice = "Donnez un objet au message."; S.focus = "mail-subject"; render(); return; }
   S.mailBusy = true; S.notice = ""; render();
-  api("POST", "/api/mail/send", { dealId: d.id, subject, html, threadId: cur ? cur.id : "" }).then((r) => {
-    S.mailBusy = false; const now = deal(d.id);
-    if (r.status !== 200) { S.notice = `E-mail non envoyé : ${r.data.error ?? "erreur"}.`; render(); return; }
-    delete S.draft["mail-body"]; delete S.draft["mail-subject"];
-    if (now) { log(now, "E-mail", `E-mail envoyé : ${cur ? cur.subject || "(sans objet)" : subject}`, text); S.mailThread[d.id] = r.data.threadId ?? (cur ? cur.id : "new"); }
-    S.flash = { text: `E-mail envoyé à ${mailKey(d)}.` }; persist(); render();
-    // Gmail needs a moment before a message just sent shows up in a search.
-    setTimeout(() => { const again = deal(d.id); if (again) { loadMails(again, true); render(); } }, 1500);
-  }, () => { S.mailBusy = false; S.notice = "E-mail non envoyé : serveur injoignable."; render(); });
+  const fail = (why) => { S.mailBusy = false; S.notice = `E-mail non envoyé : ${why}.`; render(); };
+  // An address just added lives in the deal: it must be saved before the server is asked to write to it.
+  try { await persist(); } catch (_) { fail("l'affaire n'a pas pu être enregistrée"); return; }
+  const r = await api("POST", "/api/mail/send", { dealId: d.id, subject, html: html + (S.mailSign && signature() ? signatureHtml() : ""), threadId: cur ? cur.id : "", to, files: S.mailFiles.map((f) => f.id) }).catch(() => null);
+  if (!r) { fail("serveur injoignable"); return; }
+  if (r.status !== 200) { fail(r.data.error ?? "erreur"); return; }
+  S.mailBusy = false; const now = deal(d.id), sent = S.mailFiles.map((f) => f.name);
+  if (now) { log(now, "E-mail", `E-mail envoyé : ${cur ? cur.subject || "(sans objet)" : subject}`, text + (sent.length ? `\n\nPièces jointes : ${sent.join(", ")}` : "")); S.mailThread[d.id] = r.data.threadId ?? (cur ? cur.id : "new"); }
+  dropDraft(); S.flash = { text: `E-mail envoyé à ${to.join(", ")}.` }; persist(); render();
+  // Gmail needs a moment before a message just sent shows up in a search.
+  setTimeout(() => { const again = deal(d.id); if (again) { loadMails(again, true); render(); } }, 1500);
 }
 function mailTab(d) {
   if (S.mail.on) return liveMailTab(d);
@@ -1436,7 +1511,7 @@ function render() {
   const body = VIEWS[r.name](r);
   document.getElementById("app").className = "app" + (S.railOpen ? " wide" : "");
   paint(rail(active) + `<main class="main">${S.stale ? `<div class="notice stale" role="status">${ico("sync", "s")}<span>Une nouvelle version de l'application est en ligne. Ce que vous êtes en train de saisir n'est pas perdu tant que vous restez sur cette page.</span><button class="btn sm" data-a="reload">Recharger</button></div>` : ""}${S.notice ? `<div class="notice" role="alert">${ico("alert", "s")}<span>${esc(S.notice)}</span></div>` : ""}${S.flash ? `<div class="flash" role="status">${ico("check", "s")}<span>${esc(S.flash.text)}</span>${S.flash.undo ? `<button class="link" data-a="undo">Annuler</button>` : ""}</div>` : ""}${body}</main>`
-    + menus() + peekPanel() + previewPanel() + newDealModal() + pickerModal() + datesModal() + docNewModal() + lostModal() + taskModal() + icsModal() + userModal() + extModal() + searchModal() + agentModal() + sigReqModal() + signModal() + bufferModal() + confirmModal());
+    + menus() + peekPanel() + previewPanel() + newDealModal() + pickerModal() + datesModal() + docNewModal() + lostModal() + tplSaveModal() + taskModal() + icsModal() + userModal() + extModal() + searchModal() + agentModal() + sigReqModal() + signModal() + bufferModal() + confirmModal());
   queueSave();
   if (r.name === "openspace") drawWires();
   for (const id of ["thread", "chat"]) { const el = document.getElementById(id); if (el) el.scrollTop = el.scrollHeight; }
@@ -1669,6 +1744,23 @@ document.addEventListener("click", (e) => {
 
   /* Conversations */
   if (ds.a === "mail-send" && d && S.mail.on) { mailSend(d); return; }
+  if (ds.a === "tpl-use" && d) { useTemplate(d, ds.id); S.tplQ = ""; }
+  if (ds.a === "tpl-save") { S.modal = "tpl-save"; S.modalErr = ""; S.draft["tp-name"] = ""; S.focus = "tp-name"; S.tplQ = ""; }
+  if (ds.a === "tpl-save-ok") { const name = (S.draft["tp-name"] ?? "").trim().slice(0, 60), html = toTemplate(S.draft["mail-body"] ?? "");
+    if (name.length < 2) S.modalErr = "Donnez un nom au modèle."; else if (!html.replace(/<[^>]+>/g, "").trim()) S.modalErr = "Le brouillon est vide : écrivez d'abord le message.";
+    else { const same = S.mailkit.templates.find((t) => t.name.toLowerCase() === name.toLowerCase()), tpl = { id: same ? same.id : "t" + Date.now().toString(36), name, subject: S.draft["mail-subject"] ?? "", html };
+      S.mailkit.templates = [...S.mailkit.templates.filter((t) => t.id !== tpl.id), tpl].slice(-40); S.modal = null; delete S.draft["tp-name"]; S.flash = { text: same ? `Modèle « ${name} » remplacé.` : `Modèle « ${name} » enregistré.` }; } }
+  if (ds.a === "tpl-del") { const t = S.mailkit.templates.find((x) => x.id === ds.id);
+    if (t) ask("Supprimer ce modèle ?", `« ${esc(t.name)} » ne sera plus proposé dans les e-mails.`, "Les messages déjà envoyés avec ce modèle ne changent pas.", "Supprimer le modèle", () => { S.mailkit.templates = S.mailkit.templates.filter((x) => x.id !== t.id); S.flash = { text: "Modèle supprimé." }; }); }
+  if (ds.a === "sign-save") { S.mailkit.signature = (S.draft["mk-sign"] ?? S.mailkit.signature ?? "").slice(0, 1000); delete S.draft["mk-sign"]; S.flash = { text: "Signature enregistrée." }; }
+  if (ds.a === "mail-sign") { if (signature()) S.mailSign = !S.mailSign; else if (isAdmin()) { location.hash = "reglages-emails"; return; } else S.notice = "Aucune signature n'est enregistrée : un administrateur l'écrit dans les réglages."; }
+  if (ds.a === "mail-to-del" && d) S.mailSkip[d.id] = [...new Set([...(S.mailSkip[d.id] ?? []), ds.id])];
+  if (ds.a === "mail-to-add" && d) S.mailSkip[d.id] = (S.mailSkip[d.id] ?? []).filter((a) => a !== ds.id);
+  if (ds.a === "mail-pick") { document.getElementById("mail-file")?.click(); }
+  if (ds.a === "mail-attach" && d) { const x = d.docs.find((o) => o.fileId === ds.id); if (x && S.mailFiles.length < 10) S.mailFiles.push({ id: x.fileId, name: x.t, size: x.size ?? 0 }); }
+  if (ds.a === "mail-unattach") S.mailFiles = S.mailFiles.filter((f) => f.id !== ds.id);
+  if (ds.a === "mail-drop") { const has = (S.draft["mail-body"] ?? "").replace(/<[^>]+>/g, "").trim() || S.mailFiles.length;
+    if (has) ask("Effacer ce brouillon ?", "Le texte, l'objet et les pièces jointes de ce message sont retirés.", "Rien n'a été envoyé.", "Effacer le brouillon", dropDraft); else dropDraft(); }
   if (ds.a === "mail-thread" && d) { S.mailThread[d.id] = ds.id; S.composer = "E-mail"; S.mailJump = true; }
   if (ds.a === "mail-new" && d) { S.mailThread[d.id] = "new"; S.composer = "E-mail"; S.focus = "mail-subject"; S.mailJump = true; }
   if (ds.a === "mail-reload" && d) loadMails(d, true);
@@ -1787,10 +1879,11 @@ document.addEventListener("click", (e) => {
   if (ds.jump) { S.month = ds.jump; S.showFree = true; }
   render();
 });
-const DRAFTS = ["mail-subject", "mail-body", "wa-body", "mail-att", "note", "note-edit", "todo"], DRAFT_RE = /^(n|dn|ic|iv|ls|tk|pv|rm|act|an|sg|vs|ve)-/, QUOTE_RE = /^ql-(\d+)-([lqp])$/;
+const DRAFTS = ["mail-subject", "mail-body", "mail-to-new", "wa-body", "mail-att", "note", "note-edit", "todo"], DRAFT_RE = /^(n|dn|ic|iv|ls|tk|pv|rm|act|an|sg|vs|ve|tp|mk)-/, QUOTE_RE = /^ql-(\d+)-([lqp])$/;
 const isDraft = (id) => Boolean(id) && (DRAFT_RE.test(id) || DRAFTS.includes(id));
 document.addEventListener("input", (e) => { const id = e.target.id, m = QUOTE_RE.exec(id ?? "");
   if (id === "mail-body") { S.draft[id] = clean(e.target.innerHTML); return; }
+  if (id === "tpl-q") { S.tplQ = e.target.value; render(); return; }
   if (id === "doc-edit") { const cur = previewed(); if (cur) cur.x.body = clean(e.target.innerHTML); return; }
   if (id === "ag-name" || id === "ag-mission") { const a = selAgent(); if (a) { a[id === "ag-name" ? "name" : "mission"] = e.target.value; const b = id === "ag-name" ? document.querySelector(`.agent[data-agent="${a.id}"] header b`) : null; if (b) b.textContent = e.target.value; } return; }
   const LIVE = { q: "q", cq: "cq", dq: "dq", mq: "mq" };
@@ -1804,7 +1897,11 @@ document.addEventListener("input", (e) => { const id = e.target.id, m = QUOTE_RE
   else if (isDraft(id)) { S.draft[id] = e.target.value; if (S.modalErr) { S.modalErr = ""; render(); } } });
 document.addEventListener("change", (e) => { const r = ctx(), id = e.target.id, v = e.target.value;
   if (id === "mail-tpl") { const md = deal(r.id); if (md && MAIL_TPL[v]) { const [sub, html] = MAIL_TPL[v](md); S.draft["mail-subject"] = sub; S.draft["mail-body"] = html + signOff(); S.focus = "mail-body"; render(); } return; }
-  if (id === "mail-var") { const md = deal(r.id); if (md && MAIL_VARS[v]) insertInMail(MAIL_VARS[v](md)); e.target.value = ""; return; }
+  if (id === "mail-var") { const md = deal(r.id); if (md && Object.hasOwn(MAIL_VARS, v)) { if (S.mail.on) mailExec("", varSpan(v, md) + "&nbsp;", true); else insertInMail(MAIL_VARS[v](md)); } e.target.value = ""; return; }
+  if (id === "mail-font" || id === "mail-size" || id === "mail-color") { if (v) mailExec({ "mail-font": "fontName", "mail-size": "fontSize", "mail-color": "foreColor" }[id], v); e.target.value = ""; return; }
+  if (id === "mail-file") { const md = deal(r.id), picked = [...(e.target.files ?? [])].slice(0, 10 - S.mailFiles.length); e.target.value = ""; if (!md || !picked.length) return;
+    S.mailUp = true; S.notice = ""; render();
+    (async () => { for (const f of picked) { try { const up = await uploadFile(f, md.id); S.mailFiles.push({ id: up.id, name: up.name, size: up.size }); } catch (err) { S.notice = `« ${f.name} » n'a pas pu être joint : ${err.message}`; } } S.mailUp = false; render(); })(); return; }
   if (id && id.startsWith("ag-")) { const a = selAgent(); if (a && id === "ag-trigger") a.trigger = v; return; }
   if (e.target.matches("[data-docstatus]") && S.preview) { const cur = previewed();
     if (cur && cur.x.st !== "Signé") { const x = cur.x, was = inDraft(x); if (cur.d) log(cur.d, "Document", `${x.t} : ${x.st ?? "Brouillon"} → ${v}`); x.st = v;
@@ -1848,6 +1945,8 @@ document.addEventListener("keydown", (e) => {
   if (e.target.id === "wa-body") { document.querySelector('[data-a="wa-send"]')?.click(); return; }
   if (e.target.id === "gq") { document.querySelector(".searchm .pick")?.click(); return; }
   if (e.target.id === "todo") { document.querySelector('[data-a="todo"]')?.click(); return; }
+  if (e.target.id === "mail-to-new") { e.preventDefault(); addRecipient(); return; }
+  if (e.target.id === "tp-name") { document.querySelector('[data-a="tpl-save-ok"]')?.click(); return; }
   if (e.target.matches(".eform input")) { e.target.closest(".eform").querySelector(".btn")?.click(); return; }
   if (e.target.matches(".payform input")) { e.target.closest(".acts").querySelector(".btn.green")?.click(); return; }
   if (e.target.matches(".modal input")) { document.querySelector(".modal > footer .btn:not(.alt)")?.click(); return; }
@@ -2053,13 +2152,14 @@ const plain = (d) => { const { _v, _hidden, ...rest } = d; return JSON.stringify
 const SETTINGS = {
   prefs: () => ({ buffer: S.buffer, deposit: TERMS.deposit, hold: TERMS.hold, plSeq: S.plSeq, sources: S.sources, mailbox: S.mailbox, lessor: S.lessor }),
   library: () => S.library,
+  mailkit: () => S.mailkit,
   bank: () => ({ lines: S.bankStatement, last: S.lastBank }),
 };
 const usersOut = () => S.users.map((u) => ({ email: u.email, name: u.name, role: u.role === "Équipe" ? "team" : "admin" }));
 function applySettings(st) {
   const p = st.settings.prefs ?? {}, bank = st.settings.bank ?? {};
   S.buffer = p.buffer ?? 0; TERMS.deposit = p.deposit ?? 30; TERMS.hold = p.hold ?? 2500; S.plSeq = p.plSeq ?? { D: 0, F: 0 }; S.sources = p.sources ?? []; S.mailbox = p.mailbox ?? ""; S.lessor = p.lessor ?? {};
-  S.library = st.settings.library ?? []; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false }; S.agenda = st.agenda ?? { on: false };
+  S.library = st.settings.library ?? []; S.mailkit = { templates: [], signature: "", ...(st.settings.mailkit ?? {}) }; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false }; S.agenda = st.agenda ?? { on: false };
   const mine = st.user.email;
   S.users = [...st.users].sort((a, b) => Number(b.email === mine) - Number(a.email === mine)).map((u) => ({ email: u.email, name: u.name || u.email.split("@")[0], role: u.role === "admin" ? "Admin" : "Équipe", pending: u.pending }));
   for (const k of Object.keys(SETTINGS)) savedSettings[k] = JSON.stringify(SETTINGS[k]());

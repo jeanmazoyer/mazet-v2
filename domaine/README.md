@@ -121,7 +121,16 @@ project.
   that the message belongs to one of the deal's conversations. PDF and common images open in the
   browser; anything else is downloaded, never displayed. Images placed inside a message's text
   (signatures) are not listed as attachments.
-- Not done yet: attachments on messages sent from the app.
+- The composer shows the sender, the recipients and the subject as lines. A recipient typed there is
+  added to the deal (`mailAddrs`, six addresses at most), so its messages are found too. The server
+  refuses any recipient that is not an address of the deal.
+- Files joined to a message are files stored for that deal (uploaded from the composer or already among
+  its documents); the server refuses a file of another deal. A message with files goes through Gmail's
+  upload address.
+- Templates and the signature are a shared setting (`mailkit`). A draft saved as a template keeps the
+  fields inserted from the deal as `{{Prénom}}`-style names, filled again for each deal.
+- Formatting kept in a message: a `<font>` may carry a font, a size or a colour, each checked against a
+  strict shape, on the page and again on the server. No other attribute, no style, no image.
 
 ## Visits and Google Agenda
 

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { gzipSync } from "node:zlib";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -15,14 +15,14 @@ import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
 import { calAuthUrl, CalError, calSeen, CAL_SCOPE, deleteEvent, eventBody, eventId, putEvent, visitOf, VISIT_ID, type CalSetting } from "./calendar.ts";
-import { addressesOf, buildMime, cleanMailHtml, mailAuthUrl, MailError, mailSeen, MAIL_SCOPES, attachmentHeaders, readAttachment, recipientFor, sendMail, threadHead, threadsFor, type MailSetting } from "./mail.ts";
+import { addressesOf, buildMime, cleanMailHtml, mailAuthUrl, MailError, mailSeen, MAIL_SCOPES, attachmentHeaders, readAttachment, recipientsFor, sendMail, threadHead, threadsFor, type MailSetting } from "./mail.ts";
 import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, lockDoc, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
 import { fetchIcal, type Source, type Stay } from "./ical.ts";
 
 const app = new Hono<{ Variables: { user: User } }>();
 const CHANNEL = "domaine_changes";
 // Settings anyone signed in may write, and those only an administrator may.
-const SHARED_KEYS = ["library", "feeds", "agents"], ADMIN_KEYS = ["prefs", "bank"];
+const SHARED_KEYS = ["library", "feeds", "agents", "mailkit"], ADMIN_KEYS = ["prefs", "bank"];
 // Settings the team does not even receive: the bank statement, and the secret of the calendar link.
 const PRIVATE_KEYS = ["bank", "ical_token", "drive", "gmail", "agenda"];
 // Settings that never leave the server at all: they hold a secret.
@@ -450,8 +450,20 @@ app.get("/api/mail/attachment", async (c) => {
 app.post("/api/mail/send", async (c) => {
   const body = await readJson(c), doc = await dealDoc(String(body?.dealId ?? ""));
   if (!doc) return c.json({ error: "affaire introuvable" }, 404);
-  const to = recipientFor(doc as never, String(body?.to ?? "")), html = cleanMailHtml(String(body?.html ?? "")), threadId = String(body?.threadId ?? "");
-  if (!to) return c.json({ error: "Cette affaire n'a pas d'adresse e-mail valable" }, 400);
+  const dealId = String(body?.dealId ?? ""), asked = Array.isArray(body?.to) ? body.to.map(String) : body?.to ? [String(body.to)] : [];
+  const to = recipientsFor(doc as never, asked), html = cleanMailHtml(String(body?.html ?? "")), threadId = String(body?.threadId ?? "");
+  if (!to) return c.json({ error: asked.length ? "Un destinataire n'est pas une adresse de cette affaire" : "Cette affaire n'a pas d'adresse e-mail valable" }, 400);
+  // Only files stored for this very deal can be joined, and the team cannot join one reserved to administrators.
+  const wanted = Array.isArray(body?.files) ? body.files.map(String) : [], files = [];
+  if (wanted.length > 10 || wanted.some((id) => !/^[0-9a-f-]{36}$/.test(id))) return c.json({ error: "pièce jointe invalide" }, 400);
+  for (const id of wanted) {
+    const [row] = await sql`select name, mime, size, admin_only from files where id = ${id} and deal_id = ${dealId}`;
+    if (!row || (row.admin_only && !adminOnly(c.get("user")))) return c.json({ error: "pièce jointe introuvable dans cette affaire" }, 400);
+    const bytes = await readFile(join(config.dataDir, "files", id)).catch(() => null);
+    if (!bytes) return c.json({ error: "pièce jointe introuvable dans cette affaire" }, 400);
+    files.push({ name: String(row.name), type: String(row.mime), bytes });
+  }
+  if (files.reduce((n, f) => n + f.bytes.length, 0) > 20 * 1024 * 1024) return c.json({ error: "Les pièces jointes dépassent 20 Mo au total" }, 413);
   if (!html.replace(/<[^>]+>/g, "").trim() || html.length > 100_000 || (threadId && !/^[0-9a-f]{8,32}$/.test(threadId))) return c.json({ error: "message invalide" }, 400);
   const box = await mailSetting();
   if (!box) return c.json({ error: "La boîte Gmail n'est pas connectée" }, 409);
@@ -461,9 +473,9 @@ app.post("/api/mail/send", async (c) => {
     const head = threadId ? await threadHead(token, threadId, addressesOf(doc as never), box.email) : null;
     if (threadId && !head) return c.json({ error: "Cette conversation n'appartient pas à l'affaire" }, 400);
     const subject = String(body?.subject ?? "").trim().slice(0, 200) || (head ? `Re: ${head.subject.replace(/^(re\s*:\s*)+/i, "")}` : "(sans objet)");
-    const mime = buildMime({ from: box.email, to, subject, html, ...(head?.messageId ? { inReplyTo: head.messageId, references: head.messageId } : {}) }, "b" + randomBytes(12).toString("hex"));
-    const sent = await sendMail(token, mime, head ? threadId : "");
-    console.warn(`e-mail sent for deal ${String(body?.dealId)} by ${c.get("user").email}`);
+    const mime = buildMime({ from: box.email, to: to.join(", "), subject, html, files, ...(head?.messageId ? { inReplyTo: head.messageId, references: head.messageId } : {}) }, "b" + randomBytes(12).toString("hex"));
+    const sent = await sendMail(token, mime, head ? threadId : "", files.length > 0);
+    console.warn(`e-mail sent for deal ${dealId} by ${c.get("user").email}`);
     return c.json({ ok: true, threadId: sent.threadId });
   } catch (e) { return mailFailure(c as never, e); }
 });

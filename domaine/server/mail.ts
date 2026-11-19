@@ -33,6 +33,12 @@ export function recipientFor(doc: Record<string, unknown>, asked: string): strin
   const known = addressesOf(doc), want = asked.trim().toLowerCase();
   return want ? (known.includes(want) ? want : null) : known[0] ?? null;
 }
+/** Who a message goes to when several are asked for: every one of them must be an address of the deal. */
+export function recipientsFor(doc: Record<string, unknown>, asked: string[]): string[] | null {
+  const known = addressesOf(doc), want = [...new Set(asked.map((a) => a.trim().toLowerCase()).filter(Boolean))];
+  if (!want.length) return known.length ? [known[0]] : null;
+  return want.every((a) => known.includes(a)) ? want : null;
+}
 /** The Gmail search for those addresses (braces mean "any of"). */
 export function mailQuery(addresses: string[]): string {
   return `{${addresses.map((a) => `from:"${a}" to:"${a}"`).join(" ")}}`;
@@ -43,7 +49,10 @@ export function concerns(messages: Array<{ from: string; to: string }>, addresse
   return messages.some((m) => [...addressesIn(m.from), ...addressesIn(m.to)].some((a) => addresses.includes(a)));
 }
 
-const TAGS = new Set(["p", "br", "b", "strong", "i", "em", "u", "ul", "ol", "li", "h1", "h2", "h3", "h4", "blockquote", "div", "span", "table", "thead", "tbody", "tr", "td", "th", "hr", "a"]);
+const TAGS = new Set(["p", "br", "b", "strong", "i", "em", "u", "ul", "ol", "li", "h1", "h2", "h3", "h4", "blockquote", "div", "span", "table", "thead", "tbody", "tr", "td", "th", "hr", "a", "s", "strike", "font"]);
+// The only attributes a <font> may carry, each with a shape that cannot hold anything but a font, a size or a colour.
+const FONT_ATTRS: Array<[string, RegExp]> = [["face", /^[A-Za-z][A-Za-z ,-]{1,60}$/], ["size", /^[1-7]$/], ["color", /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20})$/]];
+const attrOf = (attrs: string, name: string) => { const m = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i").exec(attrs); return (m?.[1] ?? m?.[2] ?? "").trim(); };
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
 /** Mail content made safe to show and to send: simple formatting tags, no attribute except a web or mail link. */
 export function cleanMailHtml(html: string): string {
@@ -51,8 +60,9 @@ export function cleanMailHtml(html: string): string {
     .replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g, (m: string, tag: string, attrs: string) => {
       const t = tag.toLowerCase(); if (!TAGS.has(t)) return "";
       if (m.startsWith("</")) return `</${t}>`;
+      if (t === "font") return `<font${FONT_ATTRS.map(([name, shape]) => { const v = attrOf(attrs, name); return shape.test(v) ? ` ${name}="${v}"` : ""; }).join("")}>`;
       if (t !== "a") return `<${t}>`;
-      const href = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attrs), url = (href?.[1] ?? href?.[2] ?? "").trim();
+      const url = attrOf(attrs, "href");
       return /^(https?:\/\/|mailto:)/i.test(url) ? `<a href="${esc(url.replace(/&amp;/g, "&"))}" target="_blank" rel="noopener noreferrer">` : "<a>";
     }).trim();
 }
@@ -90,14 +100,27 @@ export function readMessage(msg: { id: string; internalDate?: string; payload?: 
 
 const wrap = (b64: string) => b64.replace(/(.{76})/g, "$1\r\n");
 const oneLine = (s: string) => s.replace(/[\r\n]+/g, " ").trim();
-/** A two-part (plain text and HTML) message, ready for Gmail. Headers cannot be injected through its fields. */
-export function buildMime(m: { from: string; to: string; subject: string; html: string; inReplyTo?: string; references?: string }, boundary: string): string {
+export type OutFile = { name: string; type: string; bytes: Buffer };
+const OUT_TYPE = /^[a-z]+\/[a-z0-9.+-]+$/;
+/**
+ * A message ready for Gmail: plain text and HTML, plus the files joined to it when there are some.
+ * Headers cannot be injected through its fields, a file's name or its type.
+ */
+export function buildMime(m: { from: string; to: string; subject: string; html: string; inReplyTo?: string; references?: string; files?: OutFile[] }, boundary: string): string {
   for (const v of [m.from, m.to, m.inReplyTo ?? "", m.references ?? ""]) if (/[\r\n]/.test(v)) throw new Error("invalid header");
-  const html = cleanMailHtml(m.html), text = html.replace(/<br\s*\/?>|<\/(p|div|li|h\d|tr)>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\n{3,}/g, "\n\n").trim();
+  const html = cleanMailHtml(m.html), text = html.replace(/<br\s*\/?>|<\/(p|div|li|h\d|tr|blockquote)>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\n{3,}/g, "\n\n").trim();
+  const files = m.files ?? [], outer = `${boundary}m`;
   const head = [`From: ${m.from}`, `To: ${m.to}`, `Subject: =?UTF-8?B?${Buffer.from(oneLine(m.subject), "utf8").toString("base64")}?=`, "MIME-Version: 1.0",
-    ...(m.inReplyTo ? [`In-Reply-To: ${m.inReplyTo}`, `References: ${m.references || m.inReplyTo}`] : []), `Content-Type: multipart/alternative; boundary="${boundary}"`];
+    ...(m.inReplyTo ? [`In-Reply-To: ${m.inReplyTo}`, `References: ${m.references || m.inReplyTo}`] : [])];
   const part = (type: string, body: string) => `--${boundary}\r\nContent-Type: ${type}; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrap(Buffer.from(body, "utf8").toString("base64"))}\r\n`;
-  return `${head.join("\r\n")}\r\n\r\n${part("text/plain", text)}${part("text/html", `<div>${html}</div>`)}--${boundary}--`;
+  const words = `Content-Type: multipart/alternative; boundary="${boundary}"\r\n\r\n${part("text/plain", text)}${part("text/html", `<div>${html}</div>`)}--${boundary}--`;
+  if (!files.length) return `${head.join("\r\n")}\r\n${words}`;
+  const joined = files.map((f) => `--${outer}\r\nContent-Type: ${OUT_TYPE.test(f.type) ? f.type : "application/octet-stream"}\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename*=UTF-8''${encodeURIComponent(f.name || "piece-jointe")}\r\n\r\n${wrap(f.bytes.toString("base64"))}\r\n`).join("");
+  return `${head.join("\r\n")}\r\nContent-Type: multipart/mixed; boundary="${outer}"\r\n\r\n--${outer}\r\n${words}\r\n${joined}--${outer}--`;
+}
+/** What Gmail's upload address expects for a large message: what it is about, then the message itself. */
+export function uploadBody(mime: string, threadId: string, boundary: string): { type: string; body: string } {
+  return { type: `multipart/related; boundary="${boundary}"`, body: `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(threadId ? { threadId } : {})}\r\n--${boundary}\r\nContent-Type: message/rfc822\r\n\r\n${mime}\r\n--${boundary}--` };
 }
 export const toRaw = (mime: string) => Buffer.from(mime, "utf8").toString("base64url");
 
@@ -137,7 +160,14 @@ export async function readAttachment(token: string, messageId: string, n: number
   const got = await gmail<{ data?: string }>(token, `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(file.id)}`, {}, 45_000);
   return { name: file.name, type: file.type, bytes: Buffer.from(got.data ?? "", "base64url") };
 }
-/** Sends a message from the mailbox, inside a thread when one is given. */
-export async function sendMail(token: string, mime: string, threadId = ""): Promise<{ id: string; threadId: string }> {
-  return gmail(token, "/messages/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ raw: toRaw(mime), ...(threadId ? { threadId } : {}) }) });
+/**
+ * Sends a message from the mailbox, inside a thread when one is given. A message that carries files
+ * goes through Gmail's upload address, made for large messages.
+ */
+export async function sendMail(token: string, mime: string, threadId = "", large = false): Promise<{ id: string; threadId: string }> {
+  if (!large) return gmail(token, "/messages/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ raw: toRaw(mime), ...(threadId ? { threadId } : {}) }) });
+  const up = uploadBody(mime, threadId, "u" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+  const res = await fetch("https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=multipart", { method: "POST", signal: AbortSignal.timeout(90_000), headers: { authorization: `Bearer ${token}`, "content-type": up.type }, body: up.body });
+  if (!res.ok) throw new MailError([401, 403, 404].includes(res.status) ? res.status : 502, `Gmail a refusé (${res.status})`);
+  return (await res.json()) as { id: string; threadId: string };
 }

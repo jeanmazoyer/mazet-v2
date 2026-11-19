@@ -1033,3 +1033,35 @@ a.mini.att:hover { border-color: var(--blue); color: var(--blue-ink); } a.mini.a
   .setmain { padding: var(--s5) var(--s4); }
   .setform { grid-template-columns: minmax(0, 1fr); } .setform label { text-align: left; } .setform > span:empty { display: none; }
 }
+
+/* The message being written: lines for sender, recipients and subject, then the text and its tools */
+.mcomp { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; min-width: 0; }
+.mline { display: flex; align-items: center; gap: var(--s4); min-height: 48px; padding: var(--s2) var(--s4); border-bottom: 1px solid var(--line-soft); min-width: 0; }
+.mline .k { color: var(--ink-3); font-size: 14px; min-width: 44px; flex: none; }
+.mline .from, .mline .resub { font-weight: 700; overflow-wrap: anywhere; }
+.mline .subj, .mline .tonew { border: 0; outline: none; background: none; font: inherit; color: var(--ink); min-width: 0; }
+.mline .subj { flex: 1; font-size: 15px; } .mline .tonew { flex: 1 1 160px; height: 32px; }
+.mto { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; flex: 1; min-width: 0; }
+.rcpt { display: inline-flex; align-items: center; gap: var(--s2); height: 32px; padding: 0 var(--s2) 0 var(--s3); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); font-size: 14px; max-width: 100%; overflow-wrap: anywhere; }
+.rcpt button { border: 0; background: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: var(--ink-3); } .rcpt button:hover { background: var(--tray); color: var(--ink); }
+.rcpt.off { border-style: dashed; color: var(--ink-3); padding: 0 var(--s3); } .rcpt.off:hover { border-color: var(--blue); color: var(--blue-ink); }
+.mline.tools { gap: var(--s5); min-height: 44px; }
+.tlink { border: 0; background: none; font: inherit; font-weight: 700; font-size: 14px; color: var(--ink-2); display: inline-flex; align-items: center; gap: var(--s1); height: 32px; padding: 0 var(--s2); border-radius: var(--r-sm); cursor: pointer; }
+.tlink:hover, .tlink.on { background: var(--tray); color: var(--ink); } select.tlink { appearance: auto; max-width: 190px; }
+.pop.tplpop, .pop.attpop { position: absolute; left: 0; width: 340px; max-width: 86vw; gap: 2px; }
+.pop.tplpop { top: calc(100% + var(--s1)); } .pop.attpop { bottom: calc(100% + var(--s1)); }
+.tplq { display: flex; align-items: center; gap: var(--s2); border: 1px solid var(--blue); border-radius: var(--r-md); padding: 0 var(--s3); height: var(--h-md); margin-bottom: var(--s1); color: var(--ink-3); }
+.tplq input { border: 0; outline: none; background: none; flex: 1; min-width: 0; font: inherit; color: var(--ink); }
+.tpllist { max-height: 240px; overflow: auto; display: flex; flex-direction: column; } .tpllist .mi span, .attpop .mi span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pop.tplpop hr, .pop.attpop hr { border: 0; border-top: 1px solid var(--line-soft); margin: var(--s1) 0; width: 100%; }
+.mcomp #mail-body { min-height: 180px; padding: var(--s4); outline: none; border: 0; }
+.mcomp .var { background: var(--blue-tint); border-radius: 3px; padding: 0 2px; }
+.msign { padding: 0 var(--s4) var(--s3); color: var(--ink-3); font-size: 14px; line-height: 1.45; }
+.mcomp .rte.bottom { border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); background: var(--inset); padding: var(--s1) var(--s3); display: flex; align-items: center; gap: 2px; flex-wrap: wrap; position: relative; }
+.tbsel { height: 30px; border: 0; background: none; font: inherit; font-size: 13px; color: var(--ink-2); border-radius: var(--r-sm); max-width: 92px; cursor: pointer; appearance: auto; }
+.tlink .caret { font-style: normal; font-size: 12px; color: var(--ink-3); } .tbsel:hover { background: var(--tray); }
+.mfiles.out { padding: var(--s3) var(--s4) 0; margin: 0; } .mfiles.out .att { display: inline-flex; align-items: center; gap: var(--s1); margin: 0; }
+.mfiles.out .att button { border: 0; background: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: var(--ink-3); } .mfiles.out .att button:hover { background: var(--line); color: var(--ink); }
+.mactions { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4); }
+.mactions .sp { flex: 1; } .mactions .iconbtn.on { background: var(--blue-tint); color: var(--blue-ink); } .mactions .btn { min-width: 108px; justify-content: center; }
+.signin { width: 100%; max-width: 520px; margin-top: var(--s3); resize: vertical; line-height: 1.45; padding: var(--s2) var(--s3); height: auto; }

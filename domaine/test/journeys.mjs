@@ -90,7 +90,7 @@ ok("a web page is refused as an upload", (await a.evaluate(async () => { const f
 await a.click("#close-preview"); await a.goto(`${BASE}/#reglages-echeancier`); await a.waitForSelector(".setmain"); await a.click('[data-a="dep-plus"]'); await settle(a);
 await a.reload(); await a.waitForSelector(".setmain");
 ok("a setting survives a reload", (await S(a, "TERMS.deposit")) === 35);
-ok("cards of features not plugged in are not shown", !(await a.locator(".setx").innerText()).includes("Pennylane") && (await a.locator(".setnav a").count()) === 13 && (await a.locator(".setmain h2").innerText()) === "Échéancier par défaut");
+ok("cards of features not plugged in are not shown", !(await a.locator(".setx").innerText()).includes("Pennylane") && (await a.locator(".setnav a").count()) === 14 && (await a.locator(".setmain h2").innerText()) === "Échéancier par défaut");
 const team = await person("carol@test.local", "team");
 ok("the team does not receive the bank statement or the calendar secret", await team.evaluate(() => fetch("/api/state").then((r) => r.json()).then((s) => !("bank" in s.settings) && !("ical_token" in s.settings) && s.admin === null)));
 ok("the team cannot download a backup", (await team.evaluate(() => fetch("/api/backup").then((r) => r.status))) === 403); await team.goto(`${BASE}/#reglages`); await team.waitForSelector(".lockcard");
@@ -237,12 +237,37 @@ ok("an attachment is a link that opens that file of that message, and the head o
 ok("what a message carries is shown as text and formatting only", (await a.locator("#thread img, #thread script").count()) === 0 && (await a.evaluate(() => window.__hit)) === undefined && (await a.locator("#thread .rich b").first().innerText()) === "libre");
 await a.click("#mail-body"); await a.keyboard.type("Merci Alba, "); await a.click('.rte [data-cmd="bold"]'); await a.keyboard.type("à bientôt"); await settle(a);
 await a.click('[data-a="mail-send"]'); await a.waitForSelector(".flash, .toast, [role=status]", { timeout: 3000 }).catch(() => null); await settle(a);
-ok("an answer goes into its conversation, formatted, and the page never chooses the recipient", mailAsked.length === 1 && mailAsked[0].dealId === mailDeal && mailAsked[0].threadId === "aaa0000000000001" && /<b>à bientôt<\/b>/.test(mailAsked[0].html) && !("to" in mailAsked[0]), JSON.stringify(mailAsked));
+ok("an answer goes into its conversation, formatted, and the page never chooses the recipient", mailAsked.length === 1 && mailAsked[0].dealId === mailDeal && mailAsked[0].threadId === "aaa0000000000001" && /<b>à bientôt<\/b>/.test(mailAsked[0].html) && JSON.stringify(mailAsked[0].to) === '["alba@test.local"]', JSON.stringify(mailAsked));
 ok("a sent e-mail is written in the deal's history and the message box is emptied", (await S(a, `S.deals.find(d => d.id === '${mailDeal}').history[0].t`)) === "E-mail envoyé : Mariage en juin" && (await a.locator("#mail-body").innerText()).trim() === "");
 await a.click('[data-a="mail-new"]'); await a.waitForSelector("#mail-subject"); await a.click("#mail-body"); await a.keyboard.type("Bonjour"); await a.click('[data-a="mail-send"]'); await settle(a);
 ok("a new conversation is not sent without a subject", mailAsked.length === 1 && (await a.locator("#mail-subject").count()) === 1);
 await a.fill("#mail-subject", "Votre visite"); await a.click('[data-a="mail-send"]'); await settle(a);
 ok("a new conversation is sent with its subject, outside any thread", mailAsked.length === 2 && mailAsked[1].subject === "Votre visite" && mailAsked[1].threadId === "");
+// The composer: sender, recipients and subject as lines, templates, fields of the deal, files, signature
+await a.click('[data-a="mail-new"]'); await a.waitForSelector("#mail-subject");
+ok("the message shows who it is from, who it is for and its subject", (await a.locator(".mline .from").innerText()) === "domaine@test.local" && (await a.locator(".mto .rcpt").count()) === 1 && (await a.locator(".mto .rcpt").innerText()).includes("alba@test.local"));
+await a.fill("#mail-to-new", "pas une adresse"); await a.press("#mail-to-new", "Enter"); const refused = await a.locator(".mto .rcpt").count();
+await a.fill("#mail-to-new", "Noe@test.local"); await a.press("#mail-to-new", "Enter"); await a.waitForSelector(".mto .rcpt:nth-of-type(2)");
+ok("a second recipient is added to the deal, an invalid address is not", refused === 1 && (await S(a, `S.deals.find(d => d.id === '${mailDeal}').mailAddrs.join()`)) === "noe@test.local" && (await a.locator(".mto .rcpt").count()) === 2);
+await a.click('[data-menu="mailtpl"]'); await a.waitForSelector(".tplpop"); const allTpl = await a.locator(".tplpop .tpllist .mi").count(); await a.fill("#tpl-q", "relance"); await a.waitForTimeout(200);
+ok("templates are offered in a list that can be searched", allTpl >= 4 && (await a.locator(".tplpop .tpllist .mi").count()) === 1);
+await a.click('.tplpop [data-a="tpl-use"]'); await a.waitForTimeout(200);
+ok("choosing a template fills the subject and the text", (await a.inputValue("#mail-subject")).startsWith("Rappel") && (await a.locator("#mail-body").innerText()).includes("Bonjour") && (await a.locator(".tplpop").count()) === 0);
+await a.click('[data-a="mail-drop"]'); await a.click('[data-a="confirm-yes"]'); await a.waitForTimeout(200);
+ok("the bin empties the draft after a confirmation", (await a.locator("#mail-body").innerText()).trim() === "" && (await a.inputValue("#mail-subject")) === "");
+await a.fill("#mail-subject", "Votre arrivée"); await a.click("#mail-body"); await a.keyboard.type("Bonjour "); await a.selectOption("#mail-var", "Prénom"); await a.keyboard.type(", à très vite"); await settle(a);
+ok("a field of the deal is inserted with its value", (await a.locator('#mail-body span[data-var="Prénom"]').count()) === 1 && (await a.locator("#mail-body").innerText()).includes("à très vite"));
+await a.click('[data-menu="mailtpl"]'); await a.click('[data-a="tpl-save"]'); await a.fill("#tp-name", "Accueil maison"); await a.click('[data-a="tpl-save-ok"]'); await settle(a);
+ok("a draft is kept as a template, its fields ready for another deal", (await S(a, "S.mailkit.templates.length")) === 1 && (await S(a, "S.mailkit.templates[0].html")).includes("{{Prénom}}") && (await a.evaluate(() => fetch("/api/state").then((r) => r.json()).then((st) => st.settings.mailkit.templates[0].name))) === "Accueil maison");
+await a.setInputFiles("#mail-file", { name: "Plan d'accès.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") }); await a.waitForSelector(".mfiles.out .att");
+await a.evaluate(() => { window.__app.S.mailkit.signature = "Alice\nLes jardins de Campagne"; window.dispatchEvent(new HashChangeEvent("hashchange")); }); await a.waitForSelector(".msign");
+await a.locator('#mail-body').click(); await a.click('.rte [data-cmd="strikeThrough"]'); await a.keyboard.type("x"); await a.selectOption("#mail-color", "#c0392b"); await a.keyboard.type("y"); await a.click('[data-a="mail-send"]'); await settle(a); await settle(a);
+const big = mailAsked[2] ?? {};
+ok("the message leaves for both recipients with its file and its signature, formatting kept", JSON.stringify(big.to) === '["alba@test.local","noe@test.local"]' && (big.files ?? []).length === 1 && /^[0-9a-f-]{36}$/.test(big.files[0]) && big.html.includes("Les jardins de Campagne") && big.html.includes("<strike>") && big.html.includes('color="#c0392b"') && !big.html.includes("data-var"), JSON.stringify(big).slice(0, 600));
+ok("once sent, the draft and its files are gone, and the history names the file", (await a.locator(".mfiles.out").count()) === 0 && (await S(a, `S.deals.find(d => d.id === '${mailDeal}').history[0].body`)).includes("Plan d'accès.pdf"));
+ok("the real server refuses a file of another deal and a recipient outside the deal", (await a.request.post(`${BASE}/api/mail/send`, { data: { dealId: mailDeal, subject: "x", html: "<p>x</p>", files: ["00000000-0000-0000-0000-000000000000"] } })).status() === 400
+  && (await a.request.post(`${BASE}/api/mail/send`, { data: { dealId: mailDeal, subject: "x", html: "<p>x</p>", to: ["alba@test.local", "boss@corp.com"] } })).status() === 400);
+await a.evaluate(() => { const { S } = window.__app; S.mailkit = { templates: [], signature: "" }; return window.__app.persist(); });
 await a.waitForTimeout(1800); await a.evaluate(() => { const { S, mails } = window.__app; S.mail = { on: false }; mails.clear(); S.composer = "Notes"; S.notice = ""; window.dispatchEvent(new HashChangeEvent("hashchange")); });
 await a.context().unroute("**/api/mail?**"); await a.context().unroute("**/api/mail/send");
 await a.click('[data-comp="Événement"]'); ok("the information sheet is shown as text, never as markup", (await a.locator(".evt").innerText()).includes("Terrasse <b>ouest</b>"));
