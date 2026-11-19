@@ -14,7 +14,7 @@ import { cookie, decideAccess, mayBootstrap, readCookie, readIdToken, signIn, si
 import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
-import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, forgetToken, revoke, type DriveSetting } from "./drive.ts";
+import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, folderName, forgetToken, moveQuery, readFolder, revoke, updateFolder, type DriveSetting } from "./drive.ts";
 import { fetchIcal, type Source, type Stay } from "./ical.ts";
 
 const app = new Hono<{ Variables: { user: User } }>();
@@ -116,7 +116,8 @@ async function driveConnected(cookies: string | undefined, code: string): Promis
     // The same account connecting again keeps its folder: the documents already created stay reachable.
     const before = await driveSetting();
     const folder = before && before.email === who.email ? before.folder : await createFolder(got.access, "Les jardins de Campagne");
-    const value: DriveSetting = { refresh: got.refresh, email: who.email, folder };
+    const same = before && before.email === who.email ? before : null;
+    const value: DriveSetting = { refresh: got.refresh, email: who.email, folder, ...(same?.prospects ? { prospects: same.prospects } : {}), ...(same?.clients ? { clients: same.clients } : {}) };
     await sql`insert into settings (key, value) values ('drive', ${sql.json(value as never)}) on conflict (key) do update set value = excluded.value, updated_at = now()`;
     forgetToken(); await sql.notify(CHANNEL, JSON.stringify({ kind: "setting", key: "drive", client: "" }));
     return backTo("ok");
@@ -266,28 +267,57 @@ async function syncFeeds(): Promise<{ feeds: Stay[]; errors: string[] }> {
 }
 app.post("/api/feeds/sync", async (c) => c.json(await syncFeeds()));
 
-/* ---------- Documents created in Google Drive ---------- */
-app.post("/api/drive/docs", async (c) => {
-  const body = await readJson(c), dealId = String(body?.dealId ?? ""), title = String(body?.title ?? "").trim().slice(0, 120), html = String(body?.html ?? ""), given = String(body?.folder ?? "");
-  if (!DEAL_ID.test(dealId) || !title || !html || html.length > 300_000) return c.json({ error: "document invalide" }, 400);
-  const [deal] = await sql`select doc from deals where id = ${dealId}`;
-  if (!deal) return c.json({ error: "affaire introuvable" }, 404);
+/* ---------- Google Drive: one folder per stay, and the documents created in it ---------- */
+// "Prospects" and "Clients" are made the first time they are needed. One request at a time does it,
+// so two people clicking together do not end up with two folders of the same name.
+let makingPlaces: Promise<DriveSetting> | null = null;
+function withPlaces(drive: DriveSetting, token: string): Promise<DriveSetting> {
+  if (drive.prospects && drive.clients) return Promise.resolve(drive);
+  makingPlaces ??= (async () => {
+    const value: DriveSetting = { ...drive, prospects: drive.prospects ?? await createFolder(token, "Prospects", drive.folder), clients: drive.clients ?? await createFolder(token, "Clients", drive.folder) };
+    await sql`update settings set value = ${sql.json(value as never)}, updated_at = now() where key = 'drive'`;
+    return value;
+  })().finally(() => { makingPlaces = null; });
+  return makingPlaces;
+}
+/**
+ * The folder of one stay, where it belongs: in "Clients" once signed, in "Prospects" before. A known
+ * folder is renamed or moved when needed; one that was deleted in Drive is made again.
+ */
+async function dealFolder(token: string, drive: DriveSetting, given: string, name: string, client: boolean): Promise<string> {
+  const places = await withPlaces(drive, token), want = (client ? places.clients : places.prospects) as string;
+  const known = DRIVE_ID.test(given) ? await readFolder(token, given) : null;
+  if (!known) return createFolder(token, name, want);
+  const query = moveQuery(known.parents, want);
+  if (query || known.name !== name) await updateFolder(token, given, name, query);
+  return given;
+}
+const driveFailure = (c: { json: (body: unknown, status: 409 | 502) => Response }, e: unknown): Response => {
+  if (e instanceof DriveError && e.status === 401) { forgetToken(); return c.json({ error: "Google Drive n'est plus connecté : reconnectez-le dans les réglages" }, 409); }
+  console.error("drive call failed", e); return c.json({ error: "Google Drive ne répond pas, réessayez" }, 502);
+};
+const folderAsk = (body: Record<string, unknown> | null) => ({ dealId: String(body?.dealId ?? ""), given: String(body?.folder ?? ""), name: folderName(String(body?.name ?? "")), client: body?.client === true });
+app.post("/api/drive/folder", async (c) => {
+  const ask = folderAsk(await readJson(c));
+  if (!DEAL_ID.test(ask.dealId)) return c.json({ error: "affaire invalide" }, 400);
   const drive = await driveSetting();
   if (!drive) return c.json({ error: "Google Drive n'est pas connecté" }, 409);
   try {
     const token = await accessToken(drive.refresh, config.googleId, config.googleSecret);
-    // One folder per stay inside the app's folder. With this grant the app cannot write anywhere else.
-    const name = `${String((deal.doc as Doc).start ?? "").slice(0, 10)} ${String((deal.doc as Doc).title ?? dealId)}`.trim().slice(0, 120);
-    const folder = DRIVE_ID.test(given) ? given : await createFolder(token, name, drive.folder);
-    const id = await createDoc(token, title, docHtml(title, html), folder).catch(async (e) => {
-      // The stay's folder was removed in Drive: make a new one rather than fail.
-      if (!(e instanceof DriveError) || e.status !== 404 || folder !== given) throw e;
-      return createDoc(token, title, docHtml(title, html), await createFolder(token, name, drive.folder)); });
+    return c.json({ folder: await dealFolder(token, drive, ask.given, ask.name, ask.client) });
+  } catch (e) { return driveFailure(c as never, e); }
+});
+app.post("/api/drive/docs", async (c) => {
+  const body = await readJson(c), ask = folderAsk(body), title = String(body?.title ?? "").trim().slice(0, 120), html = String(body?.html ?? "");
+  if (!DEAL_ID.test(ask.dealId) || !title || !html || html.length > 300_000) return c.json({ error: "document invalide" }, 400);
+  const drive = await driveSetting();
+  if (!drive) return c.json({ error: "Google Drive n'est pas connecté" }, 409);
+  try {
+    const token = await accessToken(drive.refresh, config.googleId, config.googleSecret);
+    const folder = await dealFolder(token, drive, ask.given, ask.name, ask.client);
+    const id = await createDoc(token, title, docHtml(title, html), folder);
     return c.json({ id, url: `https://docs.google.com/document/d/${id}/edit`, folder });
-  } catch (e) {
-    if (e instanceof DriveError && e.status === 401) { forgetToken(); return c.json({ error: "Google Drive n'est plus connecté : reconnectez-le dans les réglages" }, 409); }
-    console.error("drive document failed", e); return c.json({ error: "Google Drive ne répond pas, réessayez" }, 502);
-  }
+  } catch (e) { return driveFailure(c as never, e); }
 });
 app.delete("/api/drive", async (c) => {
   if (!adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);

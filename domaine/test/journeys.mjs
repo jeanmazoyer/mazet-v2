@@ -72,6 +72,8 @@ ok("the server refuses a setting or a deletion from the team", (await team.evalu
 ok("the team can neither start the Drive consent nor disconnect it", (await team.evaluate(() => fetch("/auth/drive").then((r) => new URL(r.url).origin === location.origin))) && (await team.evaluate(() => fetch("/api/drive", { method: "DELETE" }).then((r) => r.status))) === 403);
 ok("the Drive grant cannot be read back, even by an administrator", (await a.evaluate(() => fetch("/api/settings/drive").then((r) => r.status))) === 403 && (await S(a, "S.drive.on")) === false);
 ok("without a connection the server creates no Drive document", (await a.evaluate((id) => fetch("/api/drive/docs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dealId: id, title: "Caution", html: "<p>x</p>" }) }).then((r) => r.status), id)) === 409);
+ok("without a connection the server makes no Drive folder either", (await a.evaluate((id) => fetch("/api/drive/folder", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dealId: id, name: "Séjour", client: false }) }).then((r) => r.status), id)) === 409
+  && (await S(a, "S.deals.every(d => !d.driveFolder)")));
 await a.goto(`${BASE}/#reglages`); await a.waitForSelector(".setcard");
 ok("the settings offer to connect Google Drive", (await a.locator('a[href="/auth/drive"]').count()) === 1);
 

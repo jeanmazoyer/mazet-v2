@@ -420,7 +420,7 @@ function viewAffaire(id) {
       </aside>
       <div class="feed">
         ${composer}
-        <section class="blk"><h3 class="h flex">Documents <span class="count num">${slotsFor(d).length - missingDocs(d)} sur ${slotsFor(d).length}</span><button class="link" data-a="doc">+ Ajouter</button></h3><div class="docs">${dealDocs(d)}</div>${stageDocNote(d) ? `<p class="docnote">${stageDocNote(d)}</p>` : ""}</section>
+        <section class="blk"><h3 class="h flex">Documents <span class="count num">${slotsFor(d).length - missingDocs(d)} sur ${slotsFor(d).length}</span>${d.driveFolder ? `<a class="link drivelink" href="https://drive.google.com/drive/folders/${encodeURIComponent(d.driveFolder)}" target="_blank" rel="noopener">Dossier Drive · ${d.drivePlace === "clients" ? "Clients" : "Prospects"}</a>` : ""}<button class="link" data-a="doc">+ Ajouter</button></h3><div class="docs">${dealDocs(d)}</div>${stageDocNote(d) ? `<p class="docnote">${stageDocNote(d)}</p>` : ""}</section>
         ${auditBlock(d)}${mailsBlock(d)}
         ${d.pinned.length ? `<section class="blk"><h3 class="h">Épinglées</h3><div class="list">${d.pinned.map((p, i) => `<article class="ev"><span class="mk">${ico("pin", "s")}</span><div class="tx"><div class="tt">${esc(p.t)}</div><div class="meta">${esc(p.at)} · Par ${esc(p.by)}</div><div class="note">${esc(p.body)}</div><div class="pinacts"><button class="link" data-unpin="${i}">Désépingler</button><button class="link danger" data-a="pin-del" data-i="${i}">Supprimer</button></div></div></article>`).join("")}</div></section>` : ""}
         <section class="blk"><h3 class="h">À faire</h3>
@@ -599,7 +599,7 @@ function viewSettings() {
       srow("Relevé importé", S.bankStatement.length ? `${S.bankStatement.length} encaissement${S.bankStatement.length > 1 ? "s" : ""}, du ${fr(S.bankStatement.reduce((m, t) => (t.on < m ? t.on : m), "9999"))} au ${fr(S.bankStatement.reduce((m, t) => (t.on > m ? t.on : m), "0000"))} · importé ${esc(S.lastBank)}` : "Aucun relevé pour l'instant", S.bankStatement.length ? `<button class="btn alt sm" data-a="sync-all">${ico("sync", "s")}Rapprocher</button>` : "")
       + `<label class="fld"><span>Importer un relevé</span><input id="bank-file" class="inp filein" type="file" accept=".csv,text/csv"></label>`)}
     ${card("Google Drive", "Une fois connecté, « Créer » sur un contrat ou une caution fabrique un vrai document Google Docs, rempli depuis l'affaire et modifiable dans le panneau. L'application ne voit que les documents qu'elle crée. Ils sont privés : partagez le dossier avec les personnes qui doivent y accéder.",
-      S.drive.on ? srow(`Connecté${S.drive.email ? " : " + esc(S.drive.email) : ""}`, "Un sous-dossier par séjour, dans le dossier « Les jardins de Campagne ».", `${S.drive.folder ? `<a class="btn alt sm" href="https://drive.google.com/drive/folders/${encodeURIComponent(S.drive.folder)}" target="_blank" rel="noopener">Ouvrir le dossier</a>` : ""}<button class="btn alt sm" data-a="drive-off">Déconnecter</button>`)
+      S.drive.on ? srow(`Connecté${S.drive.email ? " : " + esc(S.drive.email) : ""}`, "Un dossier par affaire dans « Les jardins de Campagne » : dans « Prospects » dès sa création, déplacé dans « Clients » à la signature.", `${S.drive.folder ? `<a class="btn alt sm" href="https://drive.google.com/drive/folders/${encodeURIComponent(S.drive.folder)}" target="_blank" rel="noopener">Ouvrir le dossier</a>` : ""}<button class="btn alt sm" data-a="drive-off">Déconnecter</button>`)
         : srow("Non connecté", "Les documents créés restent pour l'instant dans l'application.", `<a class="btn sm" href="/auth/drive">Connecter Google Drive</a>`))}
     ${card("Sauvegarde", "Une copie de toutes les données est faite chaque jour sur le serveur, et les 30 dernières sont gardées. Téléchargez-en une de temps en temps pour la ranger ailleurs.", srow("Dernière copie automatique", S.admin && S.admin.lastBackup ? `le ${fr(S.admin.lastBackup)}` : "pas encore faite", `<a class="btn alt sm" href="/api/backup" download>${ico("down", "s")}Télécharger</a>`))}
     ${card("Modèles de documents", "Le bouton « Créer » d'un document manquant part de ces modèles.", SLOTS.map((s) => srow(s.label, KLBL[s.k], sim("Ouvrir le modèle", `Dans l'application : le modèle « ${s.label} » s'ouvre dans Google Docs.`))).join(""))}
@@ -1344,8 +1344,8 @@ document.addEventListener("click", (e) => {
     // With Drive connected, a contract or a deposit form becomes a real Google Docs file, filled from the deal.
     if (sl && sl.k === "gdoc" && S.drive.on) { if (!S.creating) { const x = newSlotDoc(sl), title = `${sl.label} - ${d.title}`.slice(0, 120); S.creating = sl.key;
         const fail = (why) => { S.creating = ""; S.notice = `Document non créé : ${why}.`; render(); };
-        api("POST", "/api/drive/docs", { dealId: d.id, title, html: docBody(d, x), folder: d.driveFolder ?? "" }).then((r) => { if (r.status !== 200) { fail(r.data.error || "refus du serveur"); return; }
-          S.creating = ""; d.driveFolder = r.data.folder; d.docs.push({ ...x, t: title, url: r.data.url }); log(d, "Document", `${sl.label} créé dans Google Drive`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = ""; render(); }, () => fail("serveur injoignable")); } }
+        api("POST", "/api/drive/docs", { dealId: d.id, title, html: docBody(d, x), folder: d.driveFolder ?? "", ...driveWant(d) }).then((r) => { if (r.status !== 200) { fail(r.data.error || "refus du serveur"); return; }
+          S.creating = ""; d.driveFolder = r.data.folder; d.drivePlace = driveWant(d).client ? "clients" : "prospects"; d.driveName = driveWant(d).name; d.docs.push({ ...x, t: title, url: r.data.url }); log(d, "Document", `${sl.label} créé dans Google Drive`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = ""; render(); }, () => fail("serveur injoignable")); } }
     else if (sl) { const local = () => { d.docs.push(newSlotDoc(sl)); log(d, "Document", `${sl.label} créé ${sl.k === "pl" ? "en brouillon" : "depuis un modèle"}`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = sl.k === "pl" ? "Brouillon créé." : "Créé en brouillon à partir du modèle : modifiez-le directement ici."; };
       // An administrator who has not connected Drive is told so: the real Google Docs file is one click away.
       if (sl.k === "gdoc" && isAdmin()) ask("Google Drive n'est pas connecté", "Pour que « Créer » fabrique un vrai document Google Docs, privé et modifiable dans le panneau, connectez d'abord Google Drive (une seule fois).", "Sans connexion, le document reste un brouillon interne à l'application.", "Créer dans l'application", () => { local(); render(); }, { href: "/auth/drive", label: "Connecter Google Drive" });
@@ -1866,7 +1866,7 @@ async function persist() {
       if (had === json) continue;
       wrote = true; saveState("Enregistrement");
       const r = had === undefined ? await api("POST", "/api/deals", { doc: JSON.parse(json) }) : await api("PUT", "/api/deals/" + encodeURIComponent(d.id), { doc: JSON.parse(json), version: d._v });
-      if (r.status === 200) { d._v = r.data.version; saved.set(d.id, json); }
+      if (r.status === 200) { d._v = r.data.version; saved.set(d.id, json); driveSync(d); }
       // Someone saved this deal in between: show their version rather than overwrite it.
       else if (r.status === 409 && r.data.deal) { putDeal(r.data.deal); S.notice = `« ${d.title} » a été modifiée ailleurs entre-temps. La page affiche la dernière version : votre dernière action est à refaire.`; redraw = true; }
       else if (r.status === 404) { S.deals = S.deals.filter((x) => x !== d); saved.delete(d.id); S.notice = `« ${d.title} » a été supprimée ailleurs.`; redraw = true; }
@@ -1884,6 +1884,20 @@ async function persist() {
   } finally {
     saving = false; if (again) { again = false; queueSave(); }
   }
+}
+// One Drive folder per stay: in "Prospects" until it is signed, in "Clients" afterwards, named after
+// the stay. Asked for once a deal is saved, and again only when its place or its name changes. A stay
+// that is over gets no folder of its own accord.
+const driveBusy = new Set();
+const driveWant = (d) => ({ client: d.stage >= 4 && d.status !== "Perdu", name: `${d.title} ${range(d.start, d.end)}` });
+function driveSync(d) {
+  if (!S.drive.on || driveBusy.has(d.id) || !(d.driveFolder || d.end >= TODAY)) return;
+  const w = driveWant(d), place = w.client ? "clients" : "prospects";
+  if (d.driveFolder && d.drivePlace === place && d.driveName === w.name) return;
+  driveBusy.add(d.id);
+  api("POST", "/api/drive/folder", { dealId: d.id, folder: d.driveFolder ?? "", ...w }).then((r) => { driveBusy.delete(d.id); const cur = deal(d.id);
+    if (r.status !== 200) { if (r.status === 409) { S.notice = `Dossier Drive non mis à jour : ${r.data.error}.`; render(); } return; }
+    if (cur) { cur.driveFolder = r.data.folder; cur.drivePlace = place; cur.driveName = w.name; render(); } }, () => driveBusy.delete(d.id));
 }
 async function syncFeeds() {
   saveState("Lecture des calendriers");

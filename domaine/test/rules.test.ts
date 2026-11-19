@@ -81,3 +81,18 @@ test("a document sent to Drive carries text and layout only", () => {
 test("a new document is a Google Docs file in the one folder given", () => {
   assert.deepEqual(docMeta("Caution", "f1"), { name: "Caution", mimeType: "application/vnd.google-apps.document", parents: ["f1"] });
 });
+
+const { moveQuery, folderName } = await import("../server/drive.ts");
+test("a stay's folder moves only when it is not where it should be", () => {
+  assert.equal(moveQuery(["clients"], "clients"), "");
+  assert.equal(moveQuery(["prospects"], "clients"), "addParents=clients&removeParents=prospects");
+  // A folder left at the root by an earlier version, or filed in two places, ends up in one place only.
+  assert.equal(moveQuery(["root", "prospects"], "prospects"), "removeParents=root");
+  assert.equal(moveQuery([], "prospects"), "addParents=prospects");
+});
+test("a folder name is plain text of a reasonable length", () => {
+  assert.equal(folderName("  Mariage Lola & Lucas\n22 au 24 juillet 2027 "), "Mariage Lola & Lucas 22 au 24 juillet 2027");
+  assert.equal(folderName("a/b\\c"), "a b c");
+  assert.equal(folderName("x".repeat(300)).length, 120);
+  assert.equal(folderName(" \n "), "Séjour");
+});

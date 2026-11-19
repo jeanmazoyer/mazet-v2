@@ -89,9 +89,11 @@ marked as dealt with no longer counts. Credits of the statement that no stay cla
 
 An administrator connects a Google account from the settings page. From then on, "Créer" on a contract or
 a security deposit makes a real Google Docs file, filled from the deal and edited inside the panel. The
-grant asked for is `drive.file`: the app reaches only the files and folders it created. Documents go in
-"Les jardins de Campagne / <date and title of the stay>" and are private to the connected account; sharing
-that folder in Drive is what gives other people access. The grant is stored on the server only: it is never
+grant asked for is `drive.file`: the app reaches only the files and folders it created. Every deal gets its
+own folder as soon as it is saved: under "Les jardins de Campagne / Prospects" until it is signed, moved to
+"Les jardins de Campagne / Clients" afterwards, renamed when the deal's title or dates change. Documents are
+created in that folder. Everything is private to the connected account; sharing a folder in Drive is what
+gives other people access. Deleting a deal or a document here never deletes anything in Drive. The grant is stored on the server only: it is never
 sent to a page and is left out of the backups.
 
 Needs, in the Google Cloud project of the sign-in client: the Google Drive API enabled, and the consent

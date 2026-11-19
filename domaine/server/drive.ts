@@ -5,7 +5,8 @@ import type { Role } from "./auth.ts";
 
 export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 export const DRIVE_ID = /^[\w-]{10,80}$/;
-export type DriveSetting = { refresh: string; email: string; folder: string };
+// `folder` is the app's own folder. Inside it, stays not yet signed live in `prospects`, signed ones in `clients`.
+export type DriveSetting = { refresh: string; email: string; folder: string; prospects?: string; clients?: string };
 
 /** Where an administrator is sent to let the app create documents in their Drive. */
 export function driveAuthUrl(clientId: string, baseUrl: string, state: string): string {
@@ -35,6 +36,19 @@ export function docHtml(title: string, body: string): string {
       return `<${t}${cls ? ` class="${cls[1]}"` : ""}>`;
     });
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>body{font-family:Lato,Arial,sans-serif;font-size:11pt;line-height:1.45}h1{font-size:18pt;text-align:center}h2{font-size:13pt}p.c{text-align:center;color:#666}table{width:100%;border-collapse:collapse}td,th{padding:4pt 6pt;vertical-align:top}</style></head><body>${clean}</body></html>`;
+}
+
+/** A folder name as Drive shows it: one line of plain text, no path separator, 120 characters at most. */
+export function folderName(raw: string): string {
+  return raw.replace(/[\\/\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) || "Séjour";
+}
+
+/** The change of parents that leaves a folder in `want` and nowhere else. Empty when it is already there. */
+export function moveQuery(parents: string[], want: string): string {
+  const out = parents.filter((p) => p !== want), q = new URLSearchParams();
+  if (!parents.includes(want)) q.set("addParents", want);
+  if (out.length) q.set("removeParents", out.join(","));
+  return q.toString().replace(/%2C/g, ",");
 }
 
 /** How a new document is described to Drive: a Google Docs file, in one folder the app created. */
@@ -69,10 +83,21 @@ export async function accessToken(refresh: string, clientId: string, secret: str
 }
 export const forgetToken = () => { cached = null; };
 
-async function driveJson(token: string, url: string, init: RequestInit): Promise<{ id: string }> {
+async function driveJson(token: string, url: string, init: RequestInit): Promise<{ id: string; name?: string; parents?: string[]; trashed?: boolean }> {
   const res = await fetch(url, { ...init, signal: wait(), headers: { authorization: `Bearer ${token}`, ...(init.headers as Record<string, string>) } });
   if (!res.ok) throw new DriveError(res.status === 401 || res.status === 403 ? 401 : res.status === 404 ? 404 : 502, `Google Drive a refusé (${res.status})`);
-  return (await res.json()) as { id: string };
+  return (await res.json()) as { id: string; name?: string; parents?: string[]; trashed?: boolean };
+}
+/** Where a folder is and what it is called. Null when it is gone or in the bin. */
+export async function readFolder(token: string, id: string): Promise<{ name: string; parents: string[] } | null> {
+  try {
+    const f = await driveJson(token, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,name,parents,trashed`, { method: "GET" });
+    return f.trashed ? null : { name: f.name ?? "", parents: f.parents ?? [] };
+  } catch (e) { if (e instanceof DriveError && e.status === 404) return null; throw e; }
+}
+/** Renames a folder and, when `query` says so, moves it (see moveQuery). */
+export async function updateFolder(token: string, id: string, name: string, query: string): Promise<void> {
+  await driveJson(token, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id${query ? "&" + query : ""}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
 }
 /** A folder, private unless its parent is shared. */
 export async function createFolder(token: string, name: string, parent = ""): Promise<string> {
