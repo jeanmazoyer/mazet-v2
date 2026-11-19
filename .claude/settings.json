@@ -15,7 +15,17 @@
       "mcp__Gmail__search_threads",
       "mcp__Gmail__get_thread",
       "mcp__Gmail__get_message",
-      "mcp__Gmail__list_labels"
+      "mcp__Gmail__list_labels",
+      "mcp__ZEVRA_MCP__search_tools",
+      "mcp__ZEVRA_MCP__call_tool",
+      "mcp__ZEVRA_MCP__list_servers",
+      "mcp__Pappers__recherche-articles-loi",
+      "mcp__Pappers__details-article-loi",
+      "mcp__Pappers__recherche-decisions-justice",
+      "mcp__Pappers__details-decision-justice",
+      "mcp__Pappers__question-juridique",
+      "mcp__Pappers__recherche-textes-loi",
+      "mcp__Pappers__sommaire-texte-loi"
     ]
   }
 }
