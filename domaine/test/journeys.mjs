@@ -36,6 +36,8 @@ ok("a created deal survives a reload", (await a.locator(".dealhead h2").innerTex
 const bob = await person("bob@test.local"); await bob.goto(`${BASE}/#affaire-${id}`); await bob.waitForSelector(".dealhead");
 await a.click('[data-comp="Notes"]'); await a.fill("#note", "Note écrite par Alice"); await a.click('[data-a="note"]'); await settle(a); await settle(bob);
 ok("another person sees the note without reloading", (await bob.locator(".feed").innerText()).includes("Note écrite par Alice"));
+ok("a note is a sticky note placed above the documents", (await a.locator(".stickies .sticky").first().innerText()).includes("Note écrite par Alice")
+  && (await a.evaluate(() => { const note = document.querySelector(".stickies"), docs = [...document.querySelectorAll(".feed .blk h3")].find((h) => h.textContent.startsWith("Documents")); return Boolean(note && docs && (note.compareDocumentPosition(docs) & Node.DOCUMENT_POSITION_FOLLOWING)); })));
 // Signing the deal creates the schedule; the other page follows
 await a.click('[data-stage="4"]'); await settle(a); await settle(bob);
 ok("stage and schedule reach the other page", (await bob.locator(".step.cur").innerText()).includes("Signé") && (await S(bob, "S.deals[0].payments.length")) === 3);
@@ -216,7 +218,7 @@ await a.goto(`${BASE}/#reservations`); await a.waitForSelector(".cmonth"); await
 await a.locator('[data-go="affaire-t27-ok"]').first().click(); await a.waitForSelector(".drawer.peek .dealhead");
 ok("a stay clicked in the calendar opens in a panel over it", (await a.evaluate(() => location.hash)) === "#reservations" && (await a.locator(".cmonth").count()) >= 1 && (await a.locator(".drawer.peek h2").first().innerText()).includes("Alba"));
 await a.click('.drawer.peek [data-comp="Notes"]'); await a.fill(".drawer.peek #note", "Note prise depuis le calendrier"); await a.click('.drawer.peek [data-a="note"]'); await settle(a);
-ok("what is done in the panel lands on that deal", (await S(a, "S.deals.find(d => d.id === 't27-ok').history.some(h => h.body === 'Note prise depuis le calendrier')")) === true);
+ok("what is done in the panel lands on that deal", (await S(a, "S.deals.find(d => d.id === 't27-ok').pinned.some(h => h.body === 'Note prise depuis le calendrier')")) === true);
 await a.click('.drawer.peek [data-a="peek-close"]'); await a.waitForSelector(".drawer.peek", { state: "detached" });
 ok("closing the panel leaves the calendar as it was", (await a.evaluate(() => location.hash)) === "#reservations" && (await S(a, "S.month")) === "2027-08");
 await a.evaluate(() => { window.__app.S.deals = []; return window.__app.persist(); }); await settle(a); await a.reload(); await a.waitForSelector(".topbar h1");
