@@ -71,3 +71,16 @@ of both to another machine, which is what protects against losing the server its
 ## On the server
 
 See `docker-compose.yml`.
+
+## Season import and audit
+
+Settings, "Importer un planning" also accepts a season file (`"format": "domaine-import-1"`): one entry per
+stay with its payments (each one carrying the bank label it was matched to), its documents as Google Drive
+links, the information sheet, the Gmail conversations and the remarks made while reading the sources. The
+file holds client data: it is prepared outside this repository and never committed. Importing the same file
+again updates the stays by `id` and keeps what was done by hand since (notes, tasks, remarks dealt with).
+
+The Audit page confronts every stay of a season with what each source says: dates (sheet, calendar,
+contract), contract signed or not, deposit and balance against the bank statement, security deposit,
+insurance, information sheet, e-mails. A remark is blocking, to check, or plain information; a remark
+marked as dealt with no longer counts. Credits of the statement that no stay claims are listed below.

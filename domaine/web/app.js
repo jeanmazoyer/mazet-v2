@@ -48,7 +48,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const eur = (n) => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(n).replace(/\u202f/g, "\u00a0") + "\u00a0€";
 const MONTHS_SHORT = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 // Every single day is written in words ("30 sept. 2025"), like the stays, never as digits.
-const fr = (iso) => { const [y, m, d] = iso.split("-").map(Number); return `${d} ${MONTHS_SHORT[m - 1]} ${y}`; };
+const fr = (iso) => { if (!iso) return "date inconnue"; const [y, m, d] = iso.split("-").map(Number); return `${d} ${MONTHS_SHORT[m - 1]} ${y}`; };
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const longDay = (iso) => { const [y, m, d] = iso.split("-").map(Number); return `${d} ${MONTHS[m - 1]} ${y}`; };
 // A stay written the way it is said aloud: "14 au 17 mai 2026", the month and year given once.
@@ -104,6 +104,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "",
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -198,7 +199,7 @@ function rail(active) {
   return `<nav class="rail" aria-label="Navigation principale">
     <a class="brand" href="#affaires" title="Accueil" aria-label="Accueil : affaires"><span class="logo">J</span><span class="lb">Les jardins de Campagne</span></a><hr>
     <button class="tile" data-a="search" title="Rechercher (Ctrl K)" aria-label="Rechercher partout">${ico("search", "m")}<span class="lb">Rechercher</span><kbd class="lb">Ctrl K</kbd></button>
-    ${item("affaires", "grid", "Affaires")}${item("reservations", "cal", "Réservations")}${item("contacts", "users", "Contacts")}${item("documents", "doc", "Documents")}${item("messages", "mail", "Messages", unread)}${item("taches", "tasks", "Tâches", due)}${item("openspace", "spark", "Open Space", S.props.length)}${item("statistiques", "chart", "Statistiques")}${item("reglages", "gear", "Réglages")}
+    ${item("affaires", "grid", "Affaires")}${item("reservations", "cal", "Réservations")}${item("contacts", "users", "Contacts")}${item("documents", "doc", "Documents")}${item("audit", "shield", "Audit", auditCount())}${item("messages", "mail", "Messages", unread)}${item("taches", "tasks", "Tâches", due)}${item("openspace", "spark", "Open Space", S.props.length)}${item("statistiques", "chart", "Statistiques")}${item("reglages", "gear", "Réglages")}
     <button class="plus" data-a="new" title="Nouvelle affaire" aria-label="Nouvelle affaire">${ico("plus")}<span class="lb">Nouvelle affaire</span></button>
     <div class="spacer"></div>
     <button class="bell ${S.menu === "notif" ? "on" : ""}" data-menu="notif" title="À traiter" aria-label="À traiter${n ? `, ${n} éléments` : ""}" aria-haspopup="dialog" aria-expanded="${S.menu === "notif"}">${ico("bell")}<span class="lb">À traiter</span>${n ? `<i class="badge num">${n}</i>` : ""}</button>
@@ -322,16 +323,16 @@ function finance(d) {
   const exp = income(d).reduce((s, p) => s + p.amount, 0), rec = received(d), pct = exp ? Math.round(rec / exp * 100) : 0;
   const ST = { paid: ["check", "var(--green)", "#fff"], late: ["alert", "var(--red-tint)", "var(--red)"], due: ["clock", "var(--tray)", "var(--ink-3)"], held: ["shield", "var(--tray)", "var(--ink-3)"], released: ["shield", "var(--green-tint)", "var(--green)"] };
   const line = (p) => { const st = late(p) ? "late" : p.status; const [ic, bg, fg] = ST[st];
-    const when = { paid: `Reçu le ${fr(p.paidOn ?? p.due)}`, late: `En retard depuis le ${fr(p.due)}`, due: `À recevoir le ${fr(p.due)}`, held: `Retenue, prévue le ${fr(p.due)}`, released: `Restituée le ${fr(p.paidOn ?? p.due)}` }[st];
+    const when = { paid: p.paidOn ? `Reçu le ${fr(p.paidOn)}` : "Reçu, date non retrouvée", late: `En retard depuis le ${fr(p.due)}`, due: `À recevoir le ${fr(p.due)}`, held: `Retenue, prévue le ${fr(p.due)}`, released: `Restituée le ${fr(p.paidOn ?? p.due)}` }[st];
     const settled = p.status === "paid" || p.status === "released", mode = S.payEdit?.id === p.id ? S.payEdit.mode : "", at = `data-id="${p.id}"`;
     let acts = `<button class="link" data-pay="${settled ? "undo" : "settle"}" ${at}>${settled ? (p.hold ? "Remettre en retenue" : "Marquer comme non reçu") : (p.hold ? "Marquer comme restituée" : "Marquer comme reçu")}</button>${settled ? "" : `<button class="link" data-pay="edit" ${at}>Modifier</button>`}${p.id === "dep" || p.id === "bal" ? `<button class="link" data-a="invoice" data-slot="${p.id === "dep" ? "acompte" : "solde"}">Facture</button>` : ""}`;
     if (mode === "settle") acts = `<input id="pay-day" class="inp sm" type="date" value="${TODAY}" aria-label="Date"><button class="btn green sm" data-pay="confirm-settle" ${at}>Enregistrer</button><button class="btn alt sm" data-pay="cancel">Annuler</button>`;
     if (mode === "undo") acts = `<button class="btn red sm" data-pay="confirm-undo" ${at}>Confirmer</button><button class="btn alt sm" data-pay="cancel">Annuler</button>`;
-    if (mode === "edit") acts = `<div class="payform"><input id="pay-amt" class="inp sm" type="number" min="0" step="50" value="${p.amount}" aria-label="Montant en euros"><input id="pay-due" class="inp sm" type="date" value="${p.due}" aria-label="Échéance"></div><button class="btn green sm" data-pay="confirm-edit" ${at}>Enregistrer</button><button class="btn alt sm" data-pay="cancel">Annuler</button><button class="link danger" data-pay="del" ${at}>Supprimer la ligne</button>`;
+    if (mode === "edit") acts = `<div class="payform"><input id="pay-amt" class="inp sm" type="number" min="0" step="50" value="${p.amount}" aria-label="Montant en euros"><input id="pay-due" class="inp sm" type="date" value="${p.due ?? ""}" aria-label="Échéance"></div><button class="btn green sm" data-pay="confirm-edit" ${at}>Enregistrer</button><button class="btn alt sm" data-pay="cancel">Annuler</button><button class="link danger" data-pay="del" ${at}>Supprimer la ligne</button>`;
     if (mode === "del") acts = `<span class="muted">Supprimer cette ligne ?</span><button class="btn red sm" data-pay="confirm-del" ${at}>Supprimer</button><button class="btn alt sm" data-pay="cancel">Annuler</button>`;
     return `<div class="pay"><span class="st" style="background:${bg};color:${fg}">${ico(ic, "xs")}</span><div class="body">
-      <div class="top"><span>${esc(p.kind)}</span><span class="num">${eur(p.amount)}</span></div>
-      <div class="when ${st === "late" ? "late" : ""}">${when}</div>
+      <div class="top"><span>${esc(p.kind)}${p.how ? ` · ${esc(p.how)}` : ""}</span><span class="num">${eur2(p.amount)}</span></div>
+      <div class="when ${st === "late" ? "late" : ""}">${when}${p.got != null && p.got !== p.amount ? ` · ${eur2(p.got)} reçus` : ""}</div>${p.note ? `<div class="when">${esc(p.note)}</div>` : ""}
       ${!p.hold && p.status === "paid" ? `<div class="bank ${p.bank ? "yes" : "no"}">${ico("bank", "xs")}<span>${p.bank ? "Banque : " + esc(p.bank) : "Pas encore rapproché du relevé bancaire"}</span></div>` : ""}
       <div class="acts">${acts}</div></div></div>`; };
   if (d.payments.length === 0) return `<span class="muted">L'échéancier (acompte de ${TERMS.deposit} %, solde, caution) est créé à la signature.</span>`;
@@ -350,7 +351,8 @@ const quoteOf = (d) => d.quote ?? [{ l: `Location du domaine, ${nights(d.start, 
 const quoteTotal = (q) => q.reduce((s, r) => s + (Number(r.q) || 0) * (Number(r.p) || 0), 0);
 function eventTab(d) {
   const beds = d.rooms.reduce((s, r) => s + (Number(r.beds) || 0), 0), v = (k) => esc(S.draft[k] ?? "");
-  return `<div class="evt"><h4>Prestataires <span class="count num">${d.providers.length}</span></h4>
+  const info = (d.sheet ?? []).length || d.eventDay ? `<h4>Fiche d'information</h4>${d.eventDay ? `<div class="er"><span class="grow"><b>Jour de l'événement</b><small>${longDay(d.eventDay)}</small></span></div>` : ""}${(d.sheet ?? []).map((x) => `<div class="er"><span class="grow"><b>${esc(x.k)}</b><small>${esc(x.v)}</small></span></div>`).join("")}` : "";
+  return `<div class="evt">${info}<h4>Prestataires <span class="count num">${d.providers.length}</span></h4>
     ${d.providers.map((p, i) => `<div class="er"><span class="grow"><b>${esc(p.name)}</b><small>${esc(p.role)}${p.phone ? " · " + esc(p.phone) : ""}</small></span><span class="mini num">${p.at ? "Arrivée " + esc(p.at) : "Heure à préciser"}</span><button class="iconbtn" data-pvdel="${i}" aria-label="Retirer ${esc(p.name)}">${ico("close", "s")}</button></div>`).join("") || `<span class="hint">Aucun prestataire pour l'instant.</span>`}
     <div class="eform"><input id="pv-name" class="inp" placeholder="Nom" value="${v("pv-name")}" aria-label="Nom du prestataire"><input id="pv-role" class="inp" placeholder="Rôle (traiteur, musique)" value="${v("pv-role")}" aria-label="Rôle du prestataire"><input id="pv-phone" class="inp" placeholder="Téléphone" value="${v("pv-phone")}" aria-label="Téléphone du prestataire"><input id="pv-at" class="inp" type="time" value="${v("pv-at")}" aria-label="Heure d'arrivée du prestataire"><button class="btn alt sm" data-a="pv-add">Ajouter</button></div>
     <h4>Hébergements <span class="mini num ${beds > d.sleeping ? "t-red" : beds === d.sleeping ? "t-green" : ""}">${beds} couchages attribués sur ${d.sleeping}</span></h4>
@@ -364,6 +366,7 @@ function sheetBody(d) {
   return `<h1>${esc(d.title)}</h1><p class="c">Fiche événement</p>
     <table><tr><td>Séjour</td><td>${range(d.start, d.end)}, ${nights(d.start, d.end)} nuits</td></tr><tr><td>Arrivée</td><td>${d.arrival}</td></tr><tr><td>Départ</td><td>${d.departure}</td></tr>
     <tr><td>Invités</td><td>${d.guests}, dont ${d.sleeping} hébergés sur place</td></tr><tr><td>Contact</td><td>${esc(d.contact.name)} · ${esc(d.contact.phone)}</td></tr></table>
+    ${(d.sheet ?? []).length ? `<h2>Fiche d'information</h2><table>${d.eventDay ? `<tr><td>Jour de l'événement</td><td>${longDay(d.eventDay)}</td></tr>` : ""}${d.sheet.map((x) => `<tr><td>${esc(x.k)}</td><td>${esc(x.v)}</td></tr>`).join("")}</table>` : ""}
     <h2>Prestataires</h2>${d.providers.length ? `<table><tr><th>Nom</th><th>Rôle</th><th>Téléphone</th><th class="r">Arrivée</th></tr>${d.providers.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.role)}</td><td>${esc(p.phone)}</td><td class="r">${esc(p.at || "à préciser")}</td></tr>`).join("")}</table>` : `<p>Aucun prestataire renseigné.</p>`}
     <h2>Hébergements</h2>${d.rooms.length ? `<table><tr><th>Lieu</th><th>Remarque</th><th class="r">Couchages</th></tr>${d.rooms.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.note)}</td><td class="r">${r.beds}</td></tr>`).join("")}<tr><td><b>Total</b></td><td></td><td class="r"><b>${beds} sur ${d.sleeping}</b></td></tr></table>` : `<p>Aucun hébergement attribué.</p>`}
     <h2>Règlement du lieu</h2><ul><li>Musique en extérieur jusqu'à 23 h, puis à l'intérieur.</li><li>Piscine sous la surveillance des adultes.</li><li>22 personnes hébergées au maximum.</li><li>Départ au plus tard à ${d.departure}, le ménage commence ensuite.</li></ul>`;
@@ -418,6 +421,7 @@ function viewAffaire(id) {
       <div class="feed">
         ${composer}
         <section class="blk"><h3 class="h flex">Documents <span class="count num">${slotsFor(d).length - missingDocs(d)} sur ${slotsFor(d).length}</span><button class="link" data-a="doc">+ Ajouter</button></h3><div class="docs">${dealDocs(d)}</div>${stageDocNote(d) ? `<p class="docnote">${stageDocNote(d)}</p>` : ""}</section>
+        ${auditBlock(d)}${mailsBlock(d)}
         ${d.pinned.length ? `<section class="blk"><h3 class="h">Épinglées</h3><div class="list">${d.pinned.map((p, i) => `<article class="ev"><span class="mk">${ico("pin", "s")}</span><div class="tx"><div class="tt">${esc(p.t)}</div><div class="meta">${esc(p.at)} · Par ${esc(p.by)}</div><div class="note">${esc(p.body)}</div><div class="pinacts"><button class="link" data-unpin="${i}">Désépingler</button><button class="link danger" data-a="pin-del" data-i="${i}">Supprimer</button></div></div></article>`).join("")}</div></section>` : ""}
         <section class="blk"><h3 class="h">À faire</h3>
         <div class="list">${d.todos.length ? d.todos.map((t) => { const lt = t.due && t.due < TODAY; return `<article class="ev"><button class="mk todo" data-done="${t.id}" aria-label="Marquer comme fait : ${esc(t.t)}"></button><div class="tx"><div class="tt">${esc(t.t)}</div><div class="meta">${esc(t.type ?? "Rappel")}${t.due ? ` · <span class="${lt ? "latetx" : ""}">${lt ? "en retard depuis le" : "pour le"} ${fr(t.due)}</span>` : ""} · Par ${esc(t.by)}</div></div>${t.cta ? `<button class="btn out" data-a="remind">${esc(t.cta)}</button>` : ""}</article>`; }).join("") : `<span class="muted">Rien ne demande votre attention.</span>`}</div></section>
@@ -596,7 +600,7 @@ function viewSettings() {
       + `<label class="fld"><span>Importer un relevé</span><input id="bank-file" class="inp filein" type="file" accept=".csv,text/csv"></label>`)}
     ${card("Sauvegarde", "Une copie de toutes les données est faite chaque jour sur le serveur, et les 30 dernières sont gardées. Téléchargez-en une de temps en temps pour la ranger ailleurs.", srow("Dernière copie automatique", S.admin && S.admin.lastBackup ? `le ${fr(S.admin.lastBackup)}` : "pas encore faite", `<a class="btn alt sm" href="/api/backup" download>${ico("down", "s")}Télécharger</a>`))}
     ${card("Modèles de documents", "Le bouton « Créer » d'un document manquant part de ces modèles.", SLOTS.map((s) => srow(s.label, KLBL[s.k], sim("Ouvrir le modèle", `Dans l'application : le modèle « ${s.label} » s'ouvre dans Google Docs.`))).join(""))}
-    ${card("Importer un planning", "Un fichier JSON, une ligne par séjour : titre, type, dates, invités. Chaque ligne devient une affaire.", `<label class="fld"><span>Fichier</span><input id="imp-file" class="inp filein" type="file" accept=".json,application/json"></label>`)}
+    ${card("Importer un planning", "Un fichier JSON : une ligne par séjour, ou une saison complète (paiements, documents, e-mails) préparée pour l'audit. Réimporter le même fichier met les séjours à jour.", `<label class="fld"><span>Fichier</span><input id="imp-file" class="inp filein" type="file" accept=".json,application/json"></label>`)}
     ${card("Utilisateurs", "L'équipe ne voit ni les documents confidentiels ni les réglages.", S.users.map((u, i) => srow(esc(u.name) + (i === 0 ? " (vous)" : ""), esc(u.email) + (u.pending ? " · invitation envoyée" : ""), i === 0 ? `<span class="mini t-blue">Admin</span>`
       : `<select class="inp auto" data-urole="${i}" aria-label="Rôle de ${esc(u.name)}">${["Équipe", "Admin"].map((o) => `<option ${u.role === o ? "selected" : ""}>${o}</option>`).join("")}</select><button class="iconbtn" data-udel="${i}" aria-label="Retirer ${esc(u.name)}">${ico("trash", "s")}</button>`)).join("") + `<button class="btn alt sm" data-a="user-new">Inviter un utilisateur</button>`)}
     ${card("Pennylane", "Devis et factures sont préparés ici et enregistrés dans Pennylane. À la finalisation ils sont numérotés et deviennent des PDF qui ne se modifient plus.", srow("Compte", "Le Domaine", `<span class="mini t-green">Connecté</span>`)
@@ -674,6 +678,7 @@ const SLOT_HINT = { devis: "Brouillon, lignes modifiables", contrat: "Depuis le 
 const fileBody = (x) => (x.k === "pdf" ? `<iframe class="fileview" src="/api/files/${x.fileId}" title="${esc(x.t)}"></iframe>` : x.k === "img" ? `<img class="fileimg" src="/api/files/${x.fileId}" alt="${esc(x.t)}">`
   : `<h1>${esc(x.t)}</h1><p class="c">Fichier importé</p><p>Ce type de fichier ne s'affiche pas ici : ouvrez-le avec le bouton en bas du panneau.</p>`);
 function docBody(d, x) {
+  if (x.url) return `<h1>${esc(x.t)}</h1><p class="c">Rangé dans Google Drive</p><p>Ce document n'est pas copié ici : il s'ouvre dans Google Drive avec le bouton en bas du panneau.</p>`;
   if (x.fileId) return fileBody(x);
   if (x.body) return x.body;
   if (!d) return `<h1>${esc(x.t)}</h1><p class="c">Document non classé</p><p>Ce document n'est rattaché à aucune affaire. Ouvrez une affaire puis utilisez « Récupérer » sur le document manquant pour le classer.</p>`;
@@ -1004,7 +1009,8 @@ function mailTab(d) {
 
 /* ---------- Documents: what a deal needs at its stage, Pennylane, signature ---------- */
 // A request only needs a quote. The contract joins at the option, the rest at the signature.
-const slotsFor = (d) => SLOTS.filter((s) => d.stage >= s.from || d.docs.some((x) => x.slot === s.key));
+// A stay imported already signed never had its quote filed here: it is not asked for afterwards.
+const slotsFor = (d) => SLOTS.filter((s) => (d.stage >= s.from && !(s.key === "devis" && d.src && d.stage >= 4)) || d.docs.some((x) => x.slot === s.key));
 const stageDocNote = (d) => (d.stage < 2 ? "À cette étape, seul le devis est attendu. Le contrat s'ajoute à l'option ; les factures, la caution et l'assurance à la signature."
   : d.stage < 4 ? "Devis et contrat à ce stade. Les factures, la caution et l'assurance s'ajoutent à la signature." : "");
 const newSlotDoc = (sl) => ({ t: sl.label, k: sl.k, d: TODAY, st: "Brouillon", slot: sl.key, ...(sl.k === "pl" ? { pl: { num: null, final: false } } : {}) });
@@ -1012,7 +1018,7 @@ const plNum = (kind) => `${kind}-2026-${String(++S.plSeq[kind]).padStart(3, "0")
 const SIGNABLE = new Set(["contrat", "devis", "caution"]);
 const isSigned = (x) => (x.sig ? x.sig.state === "signed" : x.st === "Signé");
 // The state that decides what the panel lets you do with a document.
-const docMode = (x) => (isSigned(x) ? "signed" : x.sig ? "signing" : x.fileId ? "file" : x.pl ? (x.pl.final ? "final" : "pldraft") : x.k === "gdoc" ? "edit" : "file");
+const docMode = (x) => (x.url ? "file" : isSigned(x) ? "signed" : x.sig ? "signing" : x.fileId ? "file" : x.pl ? (x.pl.final ? "final" : "pldraft") : x.k === "gdoc" ? "edit" : "file");
 const quoteLines = (d) => { const q = quoteOf(d);
   return `<div class="qt"><div class="qh"><span>Prestation</span><span>Qté</span><span>Prix unitaire</span><span>Total</span><span></span></div>
     ${q.map((r, i) => `<div class="qr"><input id="ql-${i}-l" class="inp" value="${esc(r.l)}" placeholder="Prestation" aria-label="Prestation ${i + 1}"><input id="ql-${i}-q" class="inp" type="number" min="0" value="${r.q}" aria-label="Quantité, ligne ${i + 1}"><input id="ql-${i}-p" class="inp" type="number" min="0" step="10" value="${r.p}" aria-label="Prix unitaire, ligne ${i + 1}"><b class="num" id="qt-${i}">${eur(r.q * r.p)}</b><button class="iconbtn" data-qdel="${i}" aria-label="Retirer la ligne ${i + 1}" ${q.length > 1 ? "" : "disabled"}>${ico("close", "s")}</button></div>`).join("")}
@@ -1038,7 +1044,7 @@ function previewPanel() {
     final: `<div class="dstate"><span class="mini t-teal">Facturation</span><span><b>${esc(x.pl?.num ?? "")}</b> · finalisé, PDF non modifiable${paid ? " · " : ""}</span>${paid ? `<span class="mini t-green">Payée</span>` : ""}<span class="sp"></span>${x.slot === "devis" ? `<button class="link" data-a="quote-new">Nouvelle version</button>` : ""}<button class="link" ${say("Dans l'application : le document s'ouvre dans Pennylane.")}>Ouvrir dans Pennylane</button></div>`,
     signing: `<div class="dstate"><ol class="sigsteps"><li class="done">Figé en PDF</li><li class="done">Envoyé le ${esc(x.sig?.sentAt ?? "")}</li><li class="${x.sig?.opened ? "done" : ""}">${x.sig?.opened ? "Ouvert par le client" : "Pas encore ouvert"}</li><li>Signé</li></ol><span class="sp"></span><button class="link" data-a="sig-remind">Relancer</button><button class="link danger" data-a="sig-cancel">Retirer la demande</button></div>`,
     signed: `<div class="dstate"><span class="mini t-green">Signé</span><span>${x.sig ? `Signé électroniquement par ${esc(x.sig.by)} le ${esc(x.sig.at)}.` : "Document signé."} PDF verrouillé : il ne se modifie plus.</span></div>`,
-    file: `<div class="dstate"><span class="mini">${BADGE[x.k]}</span><span>${x.k === "xls" ? "Tableur généré depuis l'affaire" : "Fichier importé"}, non modifiable ici.</span></div>` }[mode];
+    file: `<div class="dstate"><span class="mini">${BADGE[x.k]}</span><span>${x.url ? "Fichier rangé dans Google Drive" : x.k === "xls" ? "Tableur généré depuis l'affaire" : "Fichier importé"}, non modifiable ici.</span></div>` }[mode];
   const stampBox = mode === "signed" && x.sig ? `<div class="sigstamp">Signé électroniquement par ${esc(x.sig.by)} le ${esc(x.sig.at)}. Contresigné par le bailleur. Chaque signature est horodatée et jointe au PDF.</div>` : "";
   const body = locked ? `<div class="lockmsg">${ico("lock")}<b>Document réservé aux administrateurs</b><span>Il contient des numéros de pièce d'identité. Demandez à un administrateur de vous le transmettre.</span></div>`
     : `${x.admin ? `<div class="admnote">Document réservé aux administrateurs : il contient des numéros de pièce d'identité.</div>` : ""}<div class="paper ${x.k}" ${mode === "edit" ? `id="doc-edit" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Contenu du document"` : ""}>${sheet ? sheetBody(d) : docBody(d, x)}${stampBox}</div>`;
@@ -1051,7 +1057,7 @@ function previewPanel() {
     final: del + pdf + (x.slot === "devis" && sign ? mail("alt") + sign : mail("")),
     signing: pdf + `<button class="btn" data-a="sig-view">Simuler la signature du client</button>`,
     signed: del + pdf + mail("alt") + `<button class="btn" data-a="doc-open">Ouvrir dans Drive</button>`,
-    file: del + (x.fileId ? `<a class="btn" href="/api/files/${x.fileId}" target="_blank" rel="noopener">Ouvrir le fichier</a>` : pdf) }[mode];
+    file: del + (x.url ? `<a class="btn" href="${esc(x.url)}" target="_blank" rel="noopener">Ouvrir dans Google Drive</a>` : x.fileId ? `<a class="btn" href="/api/files/${x.fileId}" target="_blank" rel="noopener">Ouvrir le fichier</a>` : pdf) }[mode];
   const pill = mode === "pldraft" || mode === "final" || fixed;
   return `<div class="scrim" data-a="close-preview"></div>
     <aside class="drawer" role="dialog" aria-modal="true" aria-label="Aperçu du document">
@@ -1221,7 +1227,7 @@ function viewSeason() {
 }
 
 /* ---------- Router and events ---------- */
-const PAGES = ["connexion", "openspace", "affaires", "reservations", "contacts", "documents", "messages", "taches", "statistiques", "reglages"];
+const PAGES = ["connexion", "openspace", "affaires", "reservations", "contacts", "documents", "audit", "messages", "taches", "statistiques", "reglages"];
 function route() {
   const h = (location.hash || "#affaires").slice(1);
   if (h.startsWith("affaire-")) return { name: "affaire", id: h.slice(8) };
@@ -1229,7 +1235,7 @@ function route() {
   if (h.startsWith("connexion")) return { name: "connexion" };
   return { name: PAGES.includes(h) ? h : "affaires" };
 }
-const VIEWS = { affaire: (r) => viewAffaire(r.id), contact: (r) => viewContact(r.id), affaires: viewAffaires, reservations: viewReservations, contacts: viewContacts, documents: viewDocuments, messages: viewMessages, taches: viewTasks, statistiques: viewStats, reglages: viewSettings, openspace: viewOpenSpace };
+const VIEWS = { affaire: (r) => viewAffaire(r.id), contact: (r) => viewContact(r.id), affaires: viewAffaires, reservations: viewReservations, contacts: viewContacts, documents: viewDocuments, messages: viewMessages, taches: viewTasks, statistiques: viewStats, reglages: viewSettings, openspace: viewOpenSpace, audit: viewAudit };
 // The whole page is redrawn after each action. What is being typed lives in S (S.q, S.draft), so
 // a redraw never loses it, and the caret goes back where it was.
 let shownModal = null;
@@ -1271,7 +1277,7 @@ function syncBank(d) {
   const say = (n, verb) => (n === 1 ? `1 paiement ${verb} par le relevé.` : `${n} paiements ${verb}s par le relevé.`);
   S.sync = matched || confirmed ? [matched ? say(matched, "retrouvé") : "", confirmed ? say(confirmed, "confirmé") : ""].join(" ").trim() : "Rien de nouveau sur le relevé.";
 }
-const SEL = ["go", "tab", "view", "edit", "a", "toggle", "pay", "hist", "comp", "done", "stage", "month", "doc", "jump", "pick", "folder", "dview", "day", "pm", "menu", "sort", "newday", "ext", "mtab", "ttab", "qdel", "pvdel", "rmdel", "unpin", "udel", "src", "agent", "agent-open", "agent-run", "prop-ok", "prop-no", "tool", "kind", "calview", "real", "seemonth", "year"].map((k) => `[data-${k}]`).join(",");
+const SEL = ["go", "tab", "view", "edit", "a", "toggle", "pay", "hist", "comp", "done", "stage", "month", "doc", "jump", "pick", "folder", "dview", "day", "pm", "menu", "sort", "newday", "ext", "mtab", "ttab", "qdel", "pvdel", "rmdel", "unpin", "udel", "src", "agent", "agent-open", "agent-run", "prop-ok", "prop-no", "tool", "kind", "calview", "real", "seemonth", "year", "ayear", "atab", "aopen", "aok", "bskip"].map((k) => `[data-${k}]`).join(",");
 // Ask before anything that removes something. The action itself runs only on "confirm-yes".
 function ask(title, body, more, cta, run) { S.modal = "confirm"; S.confirm = { title, body, more, cta, run }; }
 function openLost() { S.modal = "lost"; S.modalErr = ""; S.draft = { "ls-reason": LOST[0] }; }
@@ -1475,6 +1481,9 @@ document.addEventListener("click", (e) => {
 
   if (ds.tab) S.tab = ds.tab; if (ds.view) S.view = ds.view; if (ds.hist) S.histTab = ds.hist; if (ds.comp) S.composer = ds.comp;
   if (ds.toggle) S.closed[ds.toggle] = !S.closed[ds.toggle];
+  if (ds.ayear) S.auditYear = ds.ayear; if (ds.atab) S.auditTab = ds.atab; if (ds.aopen) S.auditOpen[ds.aopen] = !S.auditOpen[ds.aopen];
+  if (ds.aok) { const d = deal(ds.aok); if (d) { d.auditOk = d.auditOk ?? []; const at = d.auditOk.indexOf(ds.t); if (at >= 0) d.auditOk.splice(at, 1); else d.auditOk.push(ds.t); } }
+  if (ds.bskip && isAdmin()) { const t = S.bankStatement.find((x) => `${x.on}|${x.label}|${x.amount}` === ds.bskip && !x.skip); if (t) t.skip = true; }
   if (ds.month) { const [y, m] = S.month.split("-").map(Number); const n = new Date(Date.UTC(y, m - 1 + Number(ds.month), 1)); S.month = n.toISOString().slice(0, 7); }
 
   /* Deal: fields, dates, stage, status */
@@ -1627,6 +1636,156 @@ window.addEventListener("hashchange", () => { S.menu = null; render(); window.sc
 /* ---------- Server: load, save what changed, follow what others change ---------- */
 // Features drawn by the pages but not plugged in yet: their entry points are taken out of the
 // page before it is shown, so nothing on screen pretends to work.
+/* ---------- Audit: is every stay of a season complete and consistent? ---------- */
+// Amounts with their cents when they have some (an Airbnb share, a bank fee), whole euros otherwise.
+const eur2 = (n) => (Number.isInteger(n) ? eur(n) : new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n).replace(/ /g, " ") + " €");
+const AUDIT_CELLS = [["dates", "Dates"], ["contrat", "Contrat"], ["acompte", "Acompte"], ["solde", "Solde"], ["caution", "Caution"], ["assurance", "Assurance"], ["fiche", "Fiche"], ["mails", "E-mails"]];
+const LVL = { bad: 3, warn: 2, info: 1, ok: 0 }, LVL_LABEL = { bad: "Bloquant", warn: "À vérifier", info: "OK", ok: "OK" }, LVL_TONE = { bad: "t-red", warn: "t-orange", info: "t-green", ok: "t-green" };
+const gotOf = (p) => p.got ?? p.amount;
+// The first day the imported bank statement covers: what was paid earlier cannot be checked against it.
+// An export covers whole years, and only its credits are kept here: the year of the oldest one stands for its start.
+const stmtStart = () => (S.bankStatement.length ? S.bankStatement.reduce((m, t) => (t.on < m ? t.on : m), "9999").slice(0, 4) + "-01-01" : "");
+const bankKeys = () => { const k = new Set(); S.deals.forEach((d) => d.payments.forEach((p) => { if (p.bank && p.paidOn && !p.hold) k.add(p.paidOn + "|" + p.bank); if (p.inBank) k.add(p.inOn + "|" + p.inBank); })); return k; };
+const looseLines = (yr) => { const k = bankKeys(); return S.bankStatement.filter((t) => !t.used && !t.skip && !k.has(t.on + "|" + t.label) && (yr === "all" || t.on.startsWith(yr))); };
+// What the page checks for one stay. Each remark names the column it belongs to; the worst remark colours the column.
+function auditDeal(d) {
+  const out = [], add = (c, lvl, t) => out.push({ c, lvl, t }), src = d.src ?? {}, past = d.end < TODAY, start = stmtStart();
+  const family = d.kind === "Famille", lost = d.status === "Perdu", firm = d.stage >= 4 && !lost;
+  const same = (s) => s && s.start && (s.start !== d.start || s.end !== d.end);
+  if (same(src.contract)) add("dates", "bad", `Dates du contrat (${range(src.contract.start, src.contract.end)}) différentes de celles du séjour (${range(d.start, d.end)}).`);
+  if (same(src.fiche)) add("dates", "warn", `Dates de la fiche (${range(src.fiche.start, src.fiche.end)}) différentes de celles du séjour (${range(d.start, d.end)}).`);
+  if (same(src.cal)) add("dates", "warn", `Dates du calendrier (${range(src.cal.start, src.cal.end)}) différentes de celles du séjour (${range(d.start, d.end)}).`);
+  if (!lost) S.deals.filter((o) => o !== d && o.status !== "Perdu" && o.stage >= 2 && d.stage >= 2 && o.start < d.end && d.start < o.end).forEach((o) => add("dates", "bad", `Chevauchement avec « ${o.title} » (${range(o.start, o.end)}).`));
+  const g = [["contrat", src.contract?.guests], ["fiche", src.fiche?.guests], ["calendrier", src.cal?.guests]].filter((x) => x[1]);
+  // Once a stay is over, what can no longer be acted on is kept as a plain remark.
+  if (!lost && new Set(g.map((x) => x[1])).size > 1) add("fiche", !past && src.contract?.guests && Math.max(...g.map((x) => x[1])) > src.contract.guests * 1.2 ? "warn" : "info", "Nombre d'invités différent selon la source : " + g.map((x) => `${x[0]} ${x[1]}`).join(", ") + ".");
+  if (!family && d.stage >= 2) {
+    if (!d.contact.email) add("mails", "warn", "Adresse e-mail du contact manquante.");
+    if (!d.mails || !d.mails.threads) add("mails", "info", "Aucune conversation Gmail rattachée.");
+    const has = (k) => d.docs.find((x) => x.slot === k), contract = has("contrat");
+    if (d.stage >= 4 || lost) {
+      if (!contract) add("contrat", d.signed ? "warn" : "bad", d.signed ? `Contrat signé le ${fr(d.signed)}, mais absent du dossier.` : "Aucun contrat dans le dossier.");
+      else if (contract.st !== "Signé") add("contrat", "warn", "Le contrat du dossier n'est pas la version signée.");
+      else if (!d.signed) add("contrat", "info", "Contrat signé, date de signature non relevée.");
+    }
+    if (firm) {
+      const inc = income(d), exp = inc.reduce((s, p) => s + p.amount, 0), paid = inc.filter((p) => p.status === "paid"), rec = paid.reduce((s, p) => s + gotOf(p), 0);
+      if (!d.amount) add("solde", "bad", `Montant total inconnu${rec ? ` (${eur2(rec)} déjà encaissés)` : ""}.`);
+      else if (inc.length && Math.abs(exp - d.amount) > 0.005) add("solde", "warn", `L'échéancier (${eur2(exp)}) ne correspond pas au montant du contrat (${eur2(d.amount)}).`);
+      if (!inc.length && d.amount) add("solde", "bad", "Aucune ligne d'encaissement.");
+      inc.forEach((p) => { const c = p.id.startsWith("dep") ? "acompte" : "solde", note = p.note ? " " + p.note : "";
+        if (p.status === "due") { if (p.due < TODAY) add(c, "bad", `${p.kind} non reçu : ${eur2(p.amount)}, échéance du ${fr(p.due)}.${note}`); return; }
+        if (p.status !== "paid") return;
+        if (Math.abs(gotOf(p) - p.amount) > 0.005) add(c, "warn", `${p.kind} : ${eur2(gotOf(p))} reçus pour ${eur2(p.amount)} prévus (écart de ${eur2(Math.abs(p.amount - gotOf(p)))}).${note}`);
+        else if (p.note) add(c, "info", `${p.kind} : ${p.note}`);
+        if (!p.bank) { const before = !start || !p.due || p.due < start, bill = p.proof === "facture" ? ", facture trouvée" : "";
+          add(c, !start || before ? "info" : "warn", !start ? `${p.kind} (${eur2(p.amount)}) noté reçu, sans rapprochement bancaire : importez le relevé.`
+            : before ? `${p.kind} (${eur2(p.amount)}) ${p.due ? `reçu avant le début du relevé (${fr(start)})` : "noté reçu, date inconnue et absent du relevé"}${bill} : non vérifiable ici.` : `${p.kind} (${eur2(p.amount)}) noté reçu mais introuvable sur le relevé${bill}.`); }
+        else if (p.due && p.paidOn && dayDiff(p.due, p.paidOn) > 3) { const n = dayDiff(p.due, p.paidOn); add(c, "info", `${p.kind} payé le ${fr(p.paidOn)}, ${n} jours après l'échéance du ${fr(p.due)}.`); } });
+      const bills = [["acompte", "dep", "d'acompte"], ["solde", "bal", "de solde"]].filter(([slot, id]) => inc.some((p) => p.id.startsWith(id)) && !has(slot));
+      if (bills.length) add(bills[0][0], "warn", `Facture ${bills.map((x) => x[2]).join(" et facture ")} absente${bills.length > 1 ? "s" : ""} du dossier.`);
+      const h = d.payments.find((p) => p.hold);
+      if (!h) add("caution", past ? "info" : "warn", "Aucune caution prévue.");
+      else { if (h.note) add("caution", "info", "Caution : " + h.note);
+        if (h.got != null && h.got < h.amount) add("caution", "bad", `Caution : ${eur2(h.got)} obtenus${h.how ? " (" + h.how + ")" : ""} pour ${eur2(h.amount)} prévus au contrat.`);
+        if (!has("caution") && !h.inOn && !h.how) add("caution", past ? "info" : "warn", `Caution de ${eur2(h.amount)} : aucune trace, ni document ni virement.`);
+        if (h.inOn && !h.back && past && dayDiff(d.end, TODAY) > 14) add("caution", "bad", `Caution de ${eur2(h.got ?? h.amount)} reçue par virement le ${fr(h.inOn)} et pas encore rendue.`);
+        if (h.back) add("caution", h.back.amount === (h.got ?? h.amount) ? "info" : "warn", `Caution reçue par virement${h.inOn ? " le " + fr(h.inOn) : ""}, ${eur2(h.back.amount)} rendus le ${fr(h.back.on)} (${dayDiff(d.end, h.back.on)} jours après le départ).`); }
+      if (!has("assurance")) add("assurance", past ? "info" : "warn", "Attestation d'assurance absente du dossier.");
+      if (!(d.sheet ?? []).length && !d.providers.length) add("fiche", past ? "info" : "warn", "Pas de fiche d'information (lieux, prestataires, besoins).");
+    }
+  }
+  (d.refunds ?? []).forEach((r) => add("solde", "info", `Remboursement de ${eur2(r.amount)} le ${fr(r.on)}.`));
+  (d.findings ?? []).forEach((f) => add(f.c ?? "note", LVL[f.lvl] !== undefined ? f.lvl : "info", f.t));
+  const seen = new Set(d.auditOk ?? []); out.forEach((i) => { i.ok = seen.has(i.t); });
+  const open = out.filter((i) => !i.ok), worst = open.reduce((m, i) => (LVL[i.lvl] > LVL[m] ? i.lvl : m), "ok");
+  const cells = Object.fromEntries(AUDIT_CELLS.map(([k]) => [k, open.filter((i) => i.c === k).reduce((m, i) => (LVL[i.lvl] > LVL[m] ? i.lvl : m), "ok")]));
+  if (family || d.stage < 2) AUDIT_CELLS.forEach(([k]) => { if (k !== "dates") cells[k] = "na"; });
+  else if (!firm) ["acompte", "solde", "caution", "assurance", "fiche"].forEach((k) => { if (cells[k] === "ok") cells[k] = "na"; });
+  return { items: out.sort((a, b) => LVL[b.lvl] - LVL[a.lvl]), worst, cells, bad: open.filter((i) => i.lvl === "bad").length, warn: open.filter((i) => i.lvl === "warn").length };
+}
+const auditYears = () => [...new Set(S.deals.map((d) => d.start.slice(0, 4)))].sort();
+const auditSet = (yr) => S.deals.filter((d) => yr === "all" || d.start.startsWith(yr)).sort((a, b) => (a.start < b.start ? -1 : 1));
+// The number shown in the menu: stays of the current season with something blocking.
+const auditCount = () => auditSet(S.auditYear).filter((d) => auditDeal(d).worst === "bad").length;
+function auditItems(d, a) {
+  return `<ul class="aitems">${a.items.map((i) => `<li class="${i.lvl} ${i.ok ? "seen" : ""}"><i class="adot"></i><span>${esc(i.t)}</span>${i.lvl === "info" ? "" : `<button class="link" data-aok="${d.id}" data-t="${esc(i.t)}">${i.ok ? "Rouvrir" : "Marquer comme traité"}</button>`}</li>`).join("") || `<li class="ok"><i class="adot"></i><span>Rien à signaler.</span></li>`}</ul>`;
+}
+function viewAudit() {
+  const years = auditYears(); if (S.auditYear !== "all" && !years.includes(S.auditYear) && years.length) S.auditYear = years.includes(TODAY.slice(0, 4)) ? TODAY.slice(0, 4) : years[years.length - 1];
+  const yr = S.auditYear, all = auditSet(yr).map((d) => ({ d, a: auditDeal(d) })), kept = all.filter((x) => x.d.status !== "Perdu"), gone = all.filter((x) => x.d.status === "Perdu");
+  const firm = kept.filter((x) => x.d.stage >= 4 && x.d.kind !== "Famille"), n = (lvl) => all.filter((x) => (lvl === "ok" ? LVL[x.a.worst] < 2 : x.a.worst === lvl)).length;
+  const total = firm.reduce((s, x) => s + x.d.amount, 0), rec = firm.reduce((s, x) => s + income(x.d).filter((p) => p.status === "paid").reduce((t, p) => t + gotOf(p), 0), 0);
+  const owed = firm.reduce((s, x) => s + income(x.d).filter((p) => p.status === "due").reduce((t, p) => t + p.amount, 0), 0), loose = looseLines(yr);
+  const tab = S.auditTab, shown = all.filter((x) => tab === "all" || (tab === "ok" ? LVL[x.a.worst] < 2 : x.a.worst === tab));
+  const kpi = (l, v, sub, tone = "") => `<div class="card kpi"><span class="l">${l}</span><span class="v num ${tone}">${v}</span><span class="ks">${sub}</span></div>`;
+  const row = ({ d, a }) => { const openRow = Boolean(S.auditOpen[d.id]), lost = d.status === "Perdu";
+    return `<div class="arow ${openRow ? "open" : ""}"><button class="ahead" data-aopen="${d.id}" aria-expanded="${openRow}">
+        <span class="cell"><small class="num">${range(d.start, d.end)}${lost ? " · annulé" : ""}</small><b>${esc(d.title)}</b></span>
+        <span class="mini st ${LVL_TONE[a.worst]}">${LVL_LABEL[a.worst]}</span>
+        <span class="acells">${AUDIT_CELLS.map(([k, l]) => `<i class="ac ${a.cells[k]}" title="${l}">${l}</i>`).join("")}</span>
+        <span class="cell r"><small>${a.bad ? `${a.bad} bloquant${a.bad > 1 ? "s" : ""}` : ""}${a.bad && a.warn ? " · " : ""}${a.warn ? `${a.warn} à vérifier` : ""}${!a.bad && !a.warn ? "rien à traiter" : ""}</small><b class="num">${d.amount ? eur2(d.amount) : d.stage >= 4 && d.kind !== "Famille" ? "montant ?" : ""}</b></span>${ico(openRow ? "chev" : "right", "s")}</button>
+      ${openRow ? `<div class="abody">${auditItems(d, a)}<div class="afoot"><span class="hint">${d.mails?.threads ? `${d.mails.threads} conversation${d.mails.threads > 1 ? "s" : ""} Gmail, dernier échange le ${fr(d.mails.last)} · ` : ""}${d.docs.length} document${d.docs.length > 1 ? "s" : ""}</span><button class="btn alt sm" data-go="affaire-${d.id}">Ouvrir l'affaire</button></div></div>` : ""}</div>`; };
+  const seg = `<div class="seg">${[...years, "all"].map((y) => `<button class="${yr === y ? "on" : ""}" data-ayear="${y}">${y === "all" ? "Tout" : y}</button>`).join("")}</div>`;
+  const tabs = [["all", "Tous", all.length], ["bad", "Bloquants", n("bad")], ["warn", "À vérifier", n("warn")], ["ok", "OK", n("ok")]];
+  return topbar("Audit", seg, "", "Chaque séjour confronté à la fiche, au calendrier, aux contrats, aux e-mails et au relevé bancaire.") + `<div class="content audit">
+    ${S.bankStatement.length || !isAdmin() ? "" : `<div class="finwarn">${ico("alert", "s")}<span>Aucun relevé bancaire importé : les encaissements ne peuvent pas être vérifiés.</span><button class="link" data-go="reglages">Importer le relevé</button></div>`}
+    <div class="kpis">${kpi("Séjours", all.length, `${firm.length} confirmés${gone.length ? ` · ${gone.length} annulé${gone.length > 1 ? "s" : ""}` : ""}`)}${kpi("Points bloquants", all.reduce((s, x) => s + x.a.bad, 0), `sur ${n("bad")} séjour${n("bad") > 1 ? "s" : ""}`, all.some((x) => x.a.bad) ? "red" : "green")}
+      ${kpi("À vérifier", all.reduce((s, x) => s + x.a.warn, 0), `${n("ok")} séjour${n("ok") > 1 ? "s" : ""} sans remarque à traiter`)}${kpi("Encaissé", eur(rec), `sur ${eur(total)} de contrats${owed ? ` · ${eur(owed)} attendus` : ""}`)}
+      ${!isAdmin() ? "" : kpi("Hors affaire", loose.length, loose.length ? `${eur(loose.reduce((s, t) => s + t.amount, 0))} reçus sans séjour rattaché` : "tous les encaissements sont rattachés", loose.length ? "orange" : "green")}</div>
+    <div class="tabs">${tabs.map(([k, l, c]) => `<button class="${tab === k ? "on" : ""}" data-atab="${k}">${l} <span class="count num">${c}</span></button>`).join("")}</div>
+    <div class="alist">${shown.map(row).join("") || `<span class="muted">Aucun séjour dans cette catégorie.</span>`}</div>
+    ${!isAdmin() ? "" : `<section class="blk"><h3 class="h flex">Encaissements sans séjour rattaché <span class="count num">${loose.length}</span></h3>
+      <p class="docnote">Lignes créditées sur le relevé ${yr === "all" ? "" : "de " + yr + " "}qu'aucune affaire ne réclame : acompte d'une saison suivante à saisir, remboursement d'un fournisseur, ou séjour oublié. Écartez celles qui ne concernent pas un séjour.</p>
+      <div class="list">${loose.map((t) => `<div class="er"><span class="grow"><b>${esc(t.label)}</b><small class="num">${fr(t.on)}</small></span><span class="mini num">${eur2(t.amount)}</span>${isAdmin() ? `<button class="link" data-bskip="${esc(t.on + "|" + t.label + "|" + t.amount)}">Écarter</button>` : ""}</div>`).join("") || `<span class="muted">${S.bankStatement.length ? "Rien à rattacher." : "Importez d'abord le relevé bancaire."}</span>`}</div></section>`}</div>`;
+}
+// The same remarks, on the deal page.
+function auditBlock(d) {
+  const a = auditDeal(d); if (!a.items.length) return "";
+  return `<section class="blk"><h3 class="h flex">Audit <span class="mini st ${LVL_TONE[a.worst]}">${LVL_LABEL[a.worst]}</span><button class="link" data-go="audit">Voir tout l'audit</button></h3>${auditItems(d, a)}</section>`;
+}
+const gmailUrl = (id) => `https://mail.google.com/mail/${S.mailbox ? "?authuser=" + encodeURIComponent(S.mailbox) : ""}#all/${encodeURIComponent(id)}`;
+function mailsBlock(d) {
+  const m = d.mails; if (!m || !m.threads) return "";
+  return `<section class="blk"><h3 class="h flex">Conversations Gmail <span class="count num">${m.threads}</span></h3>
+    <p class="docnote">${m.messages} messages (${m.received} reçus, ${m.sent} envoyés), du ${fr(m.first)} au ${fr(m.last)}. Chaque ligne ouvre la conversation dans Gmail.</p>
+    <div class="docs">${(m.list ?? []).map((t) => `<a class="drow" href="${gmailUrl(t.id)}" target="_blank" rel="noopener"><span class="kb gdoc">${ico("mail", "xs")}</span><span class="grow"><b>${esc(t.subject || "(sans objet)")}</b><small class="num">${t.n} message${t.n > 1 ? "s" : ""} · ${t.first === t.last ? fr(t.last) : `${fr(t.first)} au ${fr(t.last)}`}</small></span>${ico("right", "s")}</a>`).join("")}</div></section>`;
+}
+// A season file prepared outside the app: every field is checked again here, nothing is trusted as it comes.
+function importSeason(file) {
+  const str = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : ""), num = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0), isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v), day = (v) => (isDay(v) ? v : null);
+  const time = (v, dflt) => (typeof v === "string" && /^\d{2}:\d{2}$/.test(v) ? v : dflt), web = (v) => (typeof v === "string" && /^https:\/\/(drive|docs)\.google\.com\//.test(v) ? v.slice(0, 300) : ""), list = (v) => (Array.isArray(v) ? v : []);
+  let added = 0, updated = 0, skipped = 0;
+  if (/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(file.mailbox ?? "")) S.mailbox = file.mailbox;
+  list(file.deals).forEach((r) => {
+    if (!r || !/^[a-z0-9-]{3,40}$/.test(r.id ?? "") || !str(r.title, 80) || !isDay(r.start) || !isDay(r.end) || r.end < r.start) { skipped++; return; }
+    const c = r.contact ?? {}, guests = Math.round(num(r.guests)), stage = Number.isInteger(r.stage) ? Math.max(0, Math.min(5, r.stage)) : 4;
+    const d = mk(r.id, str(r.title, 80), KIND[r.kind] !== undefined ? r.kind : "Séjour", stage, num(r.amount), r.start, r.end, guests, Math.min(22, Math.round(num(r.sleeping)) || Math.min(22, guests)), SOURCES.includes(r.source) ? r.source : "Non renseignée",
+      { name: str(c.name, 80) || str(r.title, 80), email: str(c.email, 120), phone: str(c.phone, 40), address: str(c.address, 160) }, { signed: day(r.signed) ?? r.start, payments: [] });
+    d.signed = day(r.signed); d.arrival = time(r.arrival, "16:00"); d.departure = time(r.departure, "18:00"); d.status = ["En cours", "Gagné", "Perdu"].includes(r.status) ? r.status : d.status; d.lostReason = str(r.lostReason, 80);
+    d.tenants = list(r.tenants).map((t) => str(t, 80)).filter(Boolean).slice(0, 4); if (!d.tenants.length) d.tenants = [d.contact.name]; if (d.tenants.length < 2) d.tenants.push("");
+    d.payments = list(r.payments).filter((p) => p && /^[a-z0-9]{2,8}$/.test(p.id ?? "") && ["paid", "due", "held", "released"].includes(p.status)).slice(0, 12).map((p) => ({ id: p.id, kind: str(p.kind, 40) || "Paiement", amount: num(p.amount), due: day(p.due) ?? (p.status === "paid" ? null : r.start), status: p.status, paidOn: day(p.paidOn), bank: str(p.bank, 200) || null,
+      ...(p.hold === true ? { hold: true } : {}), ...(typeof p.got === "number" ? { got: num(p.got) } : {}), ...(str(p.note, 300) ? { note: str(p.note, 300) } : {}), ...(str(p.proof, 20) ? { proof: str(p.proof, 20) } : {}), ...(str(p.how, 20) ? { how: str(p.how, 20) } : {}),
+      ...(isDay(p.inOn) ? { inOn: p.inOn, inBank: str(p.inBank, 200) } : {}), ...(p.back && isDay(p.back.on) ? { back: { on: p.back.on, amount: num(p.back.amount), label: str(p.back.label, 200) } } : {}) }));
+    d.docs = list(r.docs).filter((x) => x && str(x.t, 120) && web(x.url)).slice(0, 30).map((x) => ({ t: str(x.t, 120), k: BADGE[x.k] ? x.k : "file", d: day(x.d) ?? TODAY, st: DOC_ST[x.st] !== undefined ? x.st : "Reçu", url: web(x.url), ...(SLOTS.some((s) => s.key === x.slot) ? { slot: x.slot } : {}) }));
+    d.providers = list(r.providers).slice(0, 20).map((p) => ({ name: str(p?.name, 80), role: str(p?.role, 40), phone: str(p?.phone, 40), at: time(p?.at, "") })).filter((p) => p.name);
+    d.sheet = list(r.sheet).slice(0, 40).map((x) => ({ k: str(x?.k, 60), v: str(x?.v, 600) })).filter((x) => x.k && x.v);
+    if (isDay(r.eventDay)) d.eventDay = r.eventDay;
+    const m = r.mails; if (m && Number.isInteger(m.threads) && isDay(m.first) && isDay(m.last)) d.mails = { threads: m.threads, messages: Math.round(num(m.messages)), received: Math.round(num(m.received)), sent: Math.round(num(m.sent)), first: m.first, last: m.last,
+      list: list(m.list).filter((t) => t && /^[0-9a-f]{10,20}$/.test(t.id ?? "") && isDay(t.first) && isDay(t.last)).slice(0, 12).map((t) => ({ id: t.id, first: t.first, last: t.last, n: Math.round(num(t.n)), subject: str(t.subject, 120) })) };
+    const side = (s) => (s && typeof s === "object" ? { ...(isDay(s.start) && isDay(s.end) ? { start: s.start, end: s.end } : {}), ...(Number.isFinite(s.guests) ? { guests: s.guests } : {}), ...(Number.isFinite(s.amount) ? { amount: s.amount } : {}), ...(str(s.state, 20) ? { state: str(s.state, 20) } : {}) } : null);
+    d.src = Object.fromEntries(["fiche", "cal", "contract"].map((k) => [k, side(r.src?.[k])]).filter((x) => x[1]));
+    d.findings = list(r.findings).slice(0, 20).map((f) => ({ lvl: LVL[f?.lvl] !== undefined ? f.lvl : "info", t: str(f?.t, 400) })).filter((f) => f.t);
+    d.refunds = list(r.refunds).filter((x) => x && isDay(x.on)).slice(0, 6).map((x) => ({ on: x.on, amount: num(x.amount), label: str(x.label, 200) }));
+    d.history = [{ type: "Modification", t: `Affaire importée de la saison ${str(String(file.season ?? ""), 4)}`, at: stamp(), by: me().name }];
+    const at = S.deals.findIndex((o) => o.id === d.id);
+    // A second import refreshes what came from the file and keeps what was done by hand since.
+    if (at >= 0) { const old = S.deals[at]; d._v = old._v; d.auditOk = old.auditOk ?? []; d.todos = old.todos; d.pinned = old.pinned; d.history = old.history; d.rooms = old.rooms; d.docs = d.docs.concat(old.docs.filter((x) => !x.url)); S.deals[at] = d; updated++; }
+    else { d.auditOk = []; S.deals.push(d); added++; }
+  });
+  S.auditYear = String(file.season ?? S.auditYear);
+  S.flash = { text: `${added} séjour${added > 1 ? "s" : ""} importé${added > 1 ? "s" : ""}, ${updated} mis à jour${skipped ? `, ${skipped} ignoré${skipped > 1 ? "s" : ""}` : ""}. L'audit est prêt.` }; location.hash = "audit"; render();
+}
 const OFF = ['a[href="#messages"]', 'a[href="#openspace"]', '[data-comp="E-mail"]', '[data-comp="WhatsApp"]', '[data-a="doc-mail"]', '[data-a="sig-new"]', '[data-a="sim"]', '[data-msg*="Dans l\'application"]', '.mepop .eyebrow', '.mepop .seg', '[data-a="doc-open"]', '[data-a="remind"]', '[data-a="quote-new"] + [data-a="doc-toast"]'].join(",");
 const OFF_CARDS = ["Pennylane", "Signature électronique", "Messagerie"];
 function paint(html) {
@@ -1653,14 +1812,14 @@ async function uploadFile(file, dealId) {
 const saved = new Map(), savedSettings = {};
 const plain = (d) => { const { _v, _hidden, ...rest } = d; return JSON.stringify(rest); };
 const SETTINGS = {
-  prefs: () => ({ buffer: S.buffer, deposit: TERMS.deposit, hold: TERMS.hold, plSeq: S.plSeq, sources: S.sources }),
+  prefs: () => ({ buffer: S.buffer, deposit: TERMS.deposit, hold: TERMS.hold, plSeq: S.plSeq, sources: S.sources, mailbox: S.mailbox }),
   library: () => S.library,
   bank: () => ({ lines: S.bankStatement, last: S.lastBank }),
 };
 const usersOut = () => S.users.map((u) => ({ email: u.email, name: u.name, role: u.role === "Équipe" ? "team" : "admin" }));
 function applySettings(st) {
   const p = st.settings.prefs ?? {}, bank = st.settings.bank ?? {};
-  S.buffer = p.buffer ?? 0; TERMS.deposit = p.deposit ?? 30; TERMS.hold = p.hold ?? 2500; S.plSeq = p.plSeq ?? { D: 0, F: 0 }; S.sources = p.sources ?? [];
+  S.buffer = p.buffer ?? 0; TERMS.deposit = p.deposit ?? 30; TERMS.hold = p.hold ?? 2500; S.plSeq = p.plSeq ?? { D: 0, F: 0 }; S.sources = p.sources ?? []; S.mailbox = p.mailbox ?? "";
   S.library = st.settings.library ?? []; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null;
   const mine = st.user.email;
   S.users = [...st.users].sort((a, b) => Number(b.email === mine) - Number(a.email === mine)).map((u) => ({ email: u.email, name: u.name || u.email.split("@")[0], role: u.role === "admin" ? "Admin" : "Équipe", pending: u.pending }));
@@ -1767,6 +1926,7 @@ function importStatement(text) {
 // A planning file: one line per stay becomes a deal. Lines without a title or valid dates are skipped.
 function importPlanning(text) {
   let rows; try { rows = JSON.parse(text); } catch (_) { S.notice = "Ce fichier n'est pas un JSON lisible."; render(); return; }
+  if (rows && rows.format === "domaine-import-1") { if (!isAdmin()) { S.notice = "L'import d'une saison est réservé aux administrateurs."; render(); return; } importSeason(rows); return; }
   const isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v); let n = 0, skipped = 0;
   (Array.isArray(rows) ? rows : []).forEach((r, i) => {
     if (!r || typeof r.title !== "string" || r.title.trim().length < 1 || !isDay(r.start) || !isDay(r.end) || r.end < r.start) { skipped++; return; }
@@ -1794,5 +1954,5 @@ async function boot() {
   render(); follow();
 }
 // For the journey checks only: lets a test read the state it is looking at.
-window.__app = { S, TERMS, bookings, clean, persist, mk, SEL, parseStatement };
+window.__app = { S, TERMS, bookings, clean, persist, mk, SEL, parseStatement, auditDeal, importSeason };
 boot();

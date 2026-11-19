@@ -75,6 +75,26 @@ await a.setInputFiles("#imp-file", "/tmp/domaine-plan.json"); await settle(a);
 ok("a planning file becomes deals, bad lines are skipped", (await S(a, "S.deals.some(d => d.title === 'Séjour importé' && d.stage === 4)")) && (await a.locator(".flash").innerText()).includes("1 ligne ignorée"), await a.locator(".flash").innerText().catch(() => ""));
 await a.goto(`${BASE}/#reservations`); await a.waitForSelector(".cmonth"); await a.click('[data-calview="season"]'); await a.click('[data-year="1"]');
 ok("the season line shows the imported stay", (await a.locator(".sbar").count()) >= 1);
+// A season file (fictional people): stays with payments, documents and remarks, then the audit page
+const season = { format: "domaine-import-1", season: 2027, mailbox: "accueil@test.local", deals: [
+  { id: "t27-ok", title: "Mariage Alba & Noé", kind: "Mariage", stage: 4, status: "Gagné", amount: 8000, start: "2027-08-06", end: "2027-08-09", guests: 60, sleeping: 20, signed: "2027-01-10", contact: { name: "Alba Test", email: "alba@test.local" },
+    payments: [{ id: "dep", kind: "Acompte", amount: 2400, due: "2027-01-10", status: "paid", paidOn: "2027-01-12", bank: "VIR ALBA TEST ACOMPTE" }, { id: "bal", kind: "Solde", amount: 5600, due: "2027-06-06", status: "due" }, { id: "hold", kind: "Caution", amount: 2500, due: "2027-08-06", status: "held", hold: true, how: "Chèque" }],
+    docs: [{ t: "Contrat signé.pdf", k: "pdf", d: "2027-01-10", st: "Signé", slot: "contrat", url: "https://drive.google.com/file/d/abc/view" }, { t: "Piège", k: "pdf", d: "2027-01-10", url: "javascript:alert(1)" }],
+    sheet: [{ k: "Lieu du repas", v: "Terrasse <b>ouest</b>" }], providers: [{ name: "Traiteur Test", role: "Traiteur" }], src: { contract: { start: "2027-08-07", end: "2027-08-09", guests: 60 } },
+    findings: [{ lvl: "warn", t: "Remarque de test à traiter." }], mails: { threads: 1, messages: 3, received: 2, sent: 1, first: "2026-12-01", last: "2027-01-10", list: [{ id: "19abcdef0123", first: "2026-12-01", last: "2027-01-10", n: 3, subject: "Mariage août 2027" }] } },
+  { id: "bad id!", title: "Refusé", start: "2027-09-01", end: "2027-09-03" }, { id: "t27-nodate", title: "Sans dates" }] };
+writeFileSync("/tmp/domaine-season.json", JSON.stringify(season));
+await a.goto(`${BASE}/#reglages`); await a.waitForSelector("#imp-file"); await a.setInputFiles("#imp-file", "/tmp/domaine-season.json"); await a.waitForSelector(".audit"); await settle(a);
+ok("a season file: valid stays in, invalid ones skipped, the audit opens", (await S(a, "S.deals.filter(d => d.id.startsWith('t27-')).length")) === 1 && (await a.locator(".flash").innerText()).includes("2 ignorés"), await a.locator(".flash").innerText().catch(() => ""));
+ok("only Google Drive links are kept on documents", (await S(a, "S.deals.find(d => d.id === 't27-ok').docs.length")) === 1);
+ok("the audit lists the stay and flags the contract dates", (await a.locator('[data-aopen="t27-ok"] .ac.bad').count()) === 1 && (await a.locator('[data-aopen="t27-ok"] .st').innerText()) === "Bloquant");
+await a.click('[data-aopen="t27-ok"]'); const treat = a.locator('.aitems li.warn [data-aok]').first(), before = await a.locator(".aitems li.seen").count(); await treat.click(); await settle(a);
+ok("a remark marked as dealt with is struck out", (await a.locator(".aitems li.seen").count()) === before + 1);
+await a.goto(`${BASE}/#reglages`); await a.waitForSelector("#imp-file"); await a.setInputFiles("#imp-file", "/tmp/domaine-season.json"); await a.waitForSelector(".audit"); await settle(a); await a.reload(); await a.waitForSelector(".audit");
+ok("importing the same season again updates, never duplicates, and keeps what was dealt with", (await S(a, "S.deals.filter(d => d.id === 't27-ok').length")) === 1 && (await S(a, "S.deals.find(d => d.id === 't27-ok').auditOk.length")) === 1, await a.locator(".flash").innerText().catch(() => ""));
+await a.goto(`${BASE}/#affaire-t27-ok`); await a.waitForSelector(".dealhead");
+ok("the deal page shows the remarks, the conversations and the Drive document", (await a.locator(".aitems li").count()) >= 2 && (await a.locator('a.drow[href^="https://mail.google.com/"]').count()) === 1 && (await a.locator(".docs .drow").first().innerText()).includes("Contrat signé"));
+await a.click('[data-comp="Événement"]'); ok("the information sheet is shown as text, never as markup", (await a.locator(".evt").innerText()).includes("Terrasse <b>ouest</b>"));
 await a.evaluate(() => { window.__app.S.deals = []; return window.__app.persist(); }); await settle(a); await a.reload(); await a.waitForSelector(".topbar h1");
 ok("deleting is saved too", (await S(a, "S.deals.length")) === 0);
 await a.evaluate(() => fetch("/auth/logout", { method: "POST" })); await a.reload(); await a.waitForSelector(".logincard");
