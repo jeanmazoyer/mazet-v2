@@ -51,6 +51,16 @@ export function moveQuery(parents: string[], want: string): string {
   return q.toString().replace(/%2C/g, ",");
 }
 
+/**
+ * Whether a document was changed in Google Docs after the app last wrote it. `stamp` is the
+ * modification time read once that write had settled; two seconds of slack cover what is left of
+ * Google's own conversion. With no usable stamp the answer is yes: nothing is overwritten on a doubt.
+ */
+export function editedSince(stamp: string, modified: string): boolean {
+  const a = Date.parse(stamp), b = Date.parse(modified);
+  return !Number.isFinite(a) || !Number.isFinite(b) || b - a > 2000;
+}
+
 /** How a new document is described to Drive: a Google Docs file, in one folder the app created. */
 export function docMeta(name: string, folder: string): { name: string; mimeType: string; parents: string[] } {
   return { name, mimeType: "application/vnd.google-apps.document", parents: [folder] };
@@ -83,10 +93,27 @@ export async function accessToken(refresh: string, clientId: string, secret: str
 }
 export const forgetToken = () => { cached = null; };
 
-async function driveJson(token: string, url: string, init: RequestInit): Promise<{ id: string; name?: string; parents?: string[]; trashed?: boolean }> {
+type DriveFile = { id: string; name?: string; parents?: string[]; trashed?: boolean; modifiedTime?: string };
+async function driveJson(token: string, url: string, init: RequestInit): Promise<DriveFile> {
   const res = await fetch(url, { ...init, signal: wait(), headers: { authorization: `Bearer ${token}`, ...(init.headers as Record<string, string>) } });
   if (!res.ok) throw new DriveError(res.status === 401 || res.status === 403 ? 401 : res.status === 404 ? 404 : 502, `Google Drive a refusé (${res.status})`);
-  return (await res.json()) as { id: string; name?: string; parents?: string[]; trashed?: boolean };
+  return (await res.json()) as DriveFile;
+}
+/** When a document last changed. Null when it is gone or in the bin. */
+export async function readStamp(token: string, id: string): Promise<string | null> {
+  try {
+    const f = await driveJson(token, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,modifiedTime,trashed`, { method: "GET" });
+    return f.trashed ? null : f.modifiedTime ?? "";
+  } catch (e) { if (e instanceof DriveError && e.status === 404) return null; throw e; }
+}
+/**
+ * Replaces a document's content with a page, which Google converts. Returns its modification time
+ * once that has settled (Google keeps converting for a moment after it answers).
+ */
+export async function writeDoc(token: string, id: string, html: string): Promise<string> {
+  const f = await driveJson(token, `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(id)}?uploadType=media&fields=id,modifiedTime`, { method: "PATCH", headers: { "content-type": "text/html; charset=UTF-8" }, body: html });
+  await new Promise((r) => setTimeout(r, 1200));
+  return (await readStamp(token, id)) ?? f.modifiedTime ?? "";
 }
 /** Where a folder is and what it is called. Null when it is gone or in the bin. */
 export async function readFolder(token: string, id: string): Promise<{ name: string; parents: string[] } | null> {
@@ -109,15 +136,14 @@ export async function createFolder(token: string, name: string, parent = ""): Pr
  * nothing wider. Two plain calls, both checked against the real API: the empty document first, then its
  * content, which Google converts from HTML. A document left empty by a failed second call is removed.
  */
-export async function createDoc(token: string, name: string, html: string, folder: string): Promise<string> {
+export async function createDoc(token: string, name: string, html: string, folder: string): Promise<{ id: string; stamp: string }> {
   const { id } = await driveJson(token, "https://www.googleapis.com/drive/v3/files?fields=id", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(docMeta(name, folder)) });
   try {
-    await driveJson(token, `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(id)}?uploadType=media&fields=id`, { method: "PATCH", headers: { "content-type": "text/html; charset=UTF-8" }, body: html });
+    return { id, stamp: await writeDoc(token, id, html) };
   } catch (e) {
     await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}`, { method: "DELETE", signal: wait(), headers: { authorization: `Bearer ${token}` } }).catch(() => null);
     throw e;
   }
-  return id;
 }
 /** Hands the grant back to Google. A failure here is not an obstacle: the stored token is dropped anyway. */
 export async function revoke(refresh: string): Promise<void> {

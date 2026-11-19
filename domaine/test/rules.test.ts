@@ -96,3 +96,14 @@ test("a folder name is plain text of a reasonable length", () => {
   assert.equal(folderName("x".repeat(300)).length, 120);
   assert.equal(folderName(" \n "), "Séjour");
 });
+
+const { editedSince } = await import("../server/drive.ts");
+test("a document counts as edited by hand only when it changed after the app's own write settled", () => {
+  assert.equal(editedSince("2026-11-19T10:42:55.997Z", "2026-11-19T10:42:55.997Z"), false);
+  // Google finishes converting a moment after it answers: that is still the app's own write.
+  assert.equal(editedSince("2026-11-19T10:42:55.501Z", "2026-11-19T10:42:55.997Z"), false);
+  assert.equal(editedSince("2026-11-19T10:42:55.997Z", "2026-11-19T10:43:30.000Z"), true);
+  // Without a record of the last write, nothing is ever overwritten.
+  assert.equal(editedSince("", "2026-11-19T10:43:30.000Z"), true);
+  assert.equal(editedSince("not a date", "2026-11-19T10:43:30.000Z"), true);
+});

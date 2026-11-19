@@ -99,3 +99,12 @@ sent to a page and is left out of the backups.
 Needs, in the Google Cloud project of the sign-in client: the Google Drive API enabled, and the consent
 screen published (in "Testing" mode Google ends the grant after seven days). The redirect address is the
 sign-in one, `/auth/callback`.
+
+## The rental agreement
+
+`web/contract.js` holds the estate's agreement in French and in English. A deal carries the language of
+its documents; the lessor's details come from the settings (card "Bailleur"), never from the code. A draft
+is filled from the deal every time it is shown. A draft created in Google Drive is written again when the
+deal changes, unless someone has typed in it in Google Docs since: the server compares the document's
+modification time with the one recorded after its own last write, and leaves an edited document alone
+until the person asks, from the panel, to overwrite it.

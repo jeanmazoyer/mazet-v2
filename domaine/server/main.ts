@@ -14,7 +14,7 @@ import { cookie, decideAccess, mayBootstrap, readCookie, readIdToken, signIn, si
 import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
-import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, folderName, forgetToken, moveQuery, readFolder, revoke, updateFolder, type DriveSetting } from "./drive.ts";
+import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
 import { fetchIcal, type Source, type Stay } from "./ical.ts";
 
 const app = new Hono<{ Variables: { user: User } }>();
@@ -315,8 +315,22 @@ app.post("/api/drive/docs", async (c) => {
   try {
     const token = await accessToken(drive.refresh, config.googleId, config.googleSecret);
     const folder = await dealFolder(token, drive, ask.given, ask.name, ask.client);
-    const id = await createDoc(token, title, docHtml(title, html), folder);
-    return c.json({ id, url: `https://docs.google.com/document/d/${id}/edit`, folder });
+    const made = await createDoc(token, title, docHtml(title, html), folder);
+    return c.json({ id: made.id, stamp: made.stamp, url: `https://docs.google.com/document/d/${made.id}/edit`, folder });
+  } catch (e) { return driveFailure(c as never, e); }
+});
+// A draft follows its deal: when the deal changes, the page is written again, unless someone has
+// typed in the document since. `force` is the person saying "overwrite my edits".
+app.post("/api/drive/docs/refresh", async (c) => {
+  const body = await readJson(c), id = String(body?.id ?? ""), title = String(body?.title ?? "").trim().slice(0, 120), html = String(body?.html ?? ""), stamp = String(body?.stamp ?? "");
+  if (!DRIVE_ID.test(id) || !title || !html || html.length > 300_000) return c.json({ error: "document invalide" }, 400);
+  const drive = await driveSetting();
+  if (!drive) return c.json({ error: "Google Drive n'est pas connecté" }, 409);
+  try {
+    const token = await accessToken(drive.refresh, config.googleId, config.googleSecret), now = await readStamp(token, id);
+    if (now === null) return c.json({ gone: true });
+    if (body?.force !== true && editedSince(stamp, now)) return c.json({ edited: true });
+    return c.json({ stamp: await writeDoc(token, id, docHtml(title, html)) });
   } catch (e) { return driveFailure(c as never, e); }
 });
 app.delete("/api/drive", async (c) => {

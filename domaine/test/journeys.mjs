@@ -97,6 +97,18 @@ await a.goto(`${BASE}/#reservations`); for (const v of ["year", "season"]) { awa
 ok("every page shows a deal without dates", errors.length === errsBefore && !(await a.locator("#app").innerText()).match(/undefined|NaN|Invalid/), errors.slice(errsBefore).join(" | ").slice(0, 300));
 await a.evaluate(() => { const S = window.__app.S; S.deals = S.deals.filter((d) => d.title !== "Appel de Mme Test"); return window.__app.persist(); }); await settle(a);
 
+// The rental agreement: the estate's own text, in the deal's language, the lessor coming from the settings
+await a.goto(`${BASE}/#reglages`); await a.waitForSelector("#ls-name"); await a.fill("#ls-name", "SARL Essai"); await a.fill("#ls-city", "Nîmes"); await a.click('[data-a="lessor-save"]'); await settle(a);
+await a.goto(`${BASE}/#affaires`); await a.click('.topbar [data-a="new"]'); await a.fill("#n-title", "Contrat bilingue"); await a.fill("#n-start", "2028-06-09"); await a.fill("#n-end", "2028-06-12"); await a.fill("#n-amount", "10000"); await a.click('[data-a="create"]'); await a.waitForSelector(".dealhead");
+await a.click('.blk [data-a="doc"]'); await a.waitForSelector("#dn-slot"); await a.selectOption("#dn-slot", "contrat"); await a.click('[data-a="doc-add"]'); await a.waitForSelector("#doc-edit");
+const frText = await a.locator("#doc-edit").innerText(), depText = new Intl.NumberFormat("fr-FR").format(100 * (await S(a, "TERMS.deposit"))).replace(/[\u00a0\u202f]/g, " ");
+ok("the agreement is the estate's, filled from the deal and the settings", ["Dispositions particulières", "SARL Essai", "vendredi 09/06/2028", "3 nuits", "10 000", depText, "9 avril 2028", "14. Litiges"].every((t) => frText.replace(/[\u00a0\u202f]/g, " ").includes(t)), ["Dispositions particulières", "SARL Essai", "vendredi 09/06/2028", "3 nuits", "10 000", depText, "9 avril 2028", "14. Litiges"].filter((t) => !frText.replace(/[\u00a0\u202f]/g, " ").includes(t)).join(" | "));
+await a.click("#close-preview"); await a.waitForSelector(".drawer", { state: "detached" }); await a.click('[data-edit="lang"]'); await a.selectOption("#e-lang", "en"); await a.click('[data-a="save"]'); await a.click('.docs .drow >> nth=0'); await a.waitForSelector("#doc-edit");
+const enText = await a.locator("#doc-edit").innerText();
+ok("switching the deal to English switches the agreement", ["Rental Agreement", "Special Provisions", "Friday 09/06/2028", "3 nights", "€10,000", "9 April 2028", "14. Disputes"].every((t) => enText.includes(t)), enText.slice(0, 400));
+await a.click("#close-preview"); await a.waitForSelector(".drawer", { state: "detached" });
+await a.evaluate(() => { const S = window.__app.S; S.deals = S.deals.filter((d) => d.title !== "Contrat bilingue"); S.lessor = {}; return window.__app.persist(); }); await settle(a);
+
 // A season file (fictional people): stays with payments, documents and remarks, then the audit page
 const season = { format: "domaine-import-1", season: 2027, mailbox: "accueil@test.local", deals: [
   { id: "t27-ok", title: "Mariage Alba & Noé", kind: "Mariage", stage: 4, status: "Gagné", amount: 8000, start: "2027-08-06", end: "2027-08-09", guests: 60, sleeping: 20, signed: "2027-01-10", contact: { name: "Alba Test", email: "alba@test.local" },
@@ -136,6 +148,13 @@ ok("« Créer » makes the deposit form in Drive, in the stay's folder, and open
   && asked.some((q) => q.title === "Caution - Mariage Alba & Noé" && q.client === true && q.html.includes("Alba")) && (await S(a, "S.deals.find(d => d.id === 't27-ok').driveFolder")) === "1FolderOfTheDeal01", JSON.stringify(asked).slice(0, 300));
 await a.click("#close-preview"); asked = []; await a.click('.blk [data-a="doc"]'); await a.waitForSelector("#dn-slot"); await a.selectOption("#dn-slot", ""); await a.fill("#dn-name", "Avenant piscine"); await a.click('[data-a="doc-add"]'); await a.waitForSelector(".drawer iframe.fileview");
 ok("« Ajouter un document » from a model makes a Google Docs file too", asked.some((q) => q.title === "Avenant piscine" && q.folder === "1FolderOfTheDeal01") && (await S(a, "S.deals.find(d => d.id === 't27-ok').docs.filter(x => x.url && x.url.includes('1DocFromDrive0001')).length")) === 2, JSON.stringify(asked).slice(0, 300));
+await a.click("#close-preview"); await a.waitForSelector(".drawer", { state: "detached" }); asked = [];
+await a.evaluate(() => { const d = window.__app.S.deals.find((o) => o.id === "t27-ok"); d.tenants = ["Alba Nouvelle", "Noé Test"]; return window.__app.persist(); }); await settle(a);
+ok("changing the deal rewrites its Drive draft", asked.some((q) => q.id === "1DocFromDrive0001" && q.html.includes("Alba Nouvelle") && q.force === false), JSON.stringify(asked).slice(0, 300));
+await a.context().unroute("**/api/drive/**"); await a.context().route("**/api/drive/**", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ edited: true }) }));
+await a.evaluate(() => { const d = window.__app.S.deals.find((o) => o.id === "t27-ok"); d.tenants = ["Alba Encore", "Noé Test"]; return window.__app.persist(); }); await settle(a);
+await a.click('.docs .drow:has-text("Caution")'); await a.waitForSelector(".drawer iframe.fileview");
+ok("a draft typed in by hand in Google Docs is left alone, and says so", (await a.locator(".drawer footer").innerText()).includes("ne suit plus la fiche") && (await a.locator('[data-a="doc-resync"]').count()) === 1);
 await a.click("#close-preview"); await a.evaluate(() => { window.__app.S.drive = { on: false }; }); await a.context().unroute("**/api/drive/**");
 await a.click('[data-comp="Événement"]'); ok("the information sheet is shown as text, never as markup", (await a.locator(".evt").innerText()).includes("Terrasse <b>ouest</b>"));
 await a.evaluate(() => { window.__app.S.deals = []; return window.__app.persist(); }); await settle(a); await a.reload(); await a.waitForSelector(".topbar h1");
