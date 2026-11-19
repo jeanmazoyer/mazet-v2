@@ -32,7 +32,7 @@ app.use("*", async (c, next) => {
   c.header("Referrer-Policy", "same-origin");
   // Scripts only from this site and no inline script: text that slipped through unescaped
   // somewhere in a page still cannot run.
-  if (!c.res.headers.has("Content-Security-Policy")) c.header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; frame-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  if (!c.res.headers.has("Content-Security-Policy")) c.header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; frame-src 'self' https://drive.google.com https://docs.google.com; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
 });
 
 // Pages and data travel compressed; a live stream and files already compressed do not.

@@ -888,6 +888,7 @@ a.btn { text-decoration: none; }
 .inp.filein { height: auto; padding: var(--s2) var(--s3); }
 .paper:has(.fileview), .paper:has(.fileimg) { padding: 0; max-width: none; min-height: 0; }
 .fileview { display: block; width: 100%; height: 72vh; border: 0; }
+.dstate span { min-width: 0; }
 .fileimg { display: block; max-width: 100%; margin: 0 auto; }
 @media print {
   .rail, .railtoggle, .main, .scrim, .savestate, .drawer > header, .drawer > footer, .dmeta, .dstate, .dlines, .admnote { display: none !important; }

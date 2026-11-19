@@ -677,8 +677,14 @@ const SLOT_HINT = { devis: "Brouillon, lignes modifiables", contrat: "Depuis le 
 // What the document says, written from the deal's own data so the preview follows every edit.
 const fileBody = (x) => (x.k === "pdf" ? `<iframe class="fileview" src="/api/files/${x.fileId}" title="${esc(x.t)}"></iframe>` : x.k === "img" ? `<img class="fileimg" src="/api/files/${x.fileId}" alt="${esc(x.t)}">`
   : `<h1>${esc(x.t)}</h1><p class="c">Fichier importé</p><p>Ce type de fichier ne s'affiche pas ici : ouvrez-le avec le bouton en bas du panneau.</p>`);
+// A file kept in Google Drive is shown by Drive itself, inside the panel: its viewer for a PDF or an
+// image, the Google Docs editor for a document that is neither signed nor finalised.
+const driveId = (u) => (/\/d\/([\w-]{10,})/.exec(u ?? "") ?? [])[1] ?? "";
+const driveLive = (x) => x.k === "gdoc" && x.st !== "Signé" && x.st !== "Finalisé";
 function docBody(d, x) {
-  if (x.url) return `<h1>${esc(x.t)}</h1><p class="c">Rangé dans Google Drive</p><p>Ce document n'est pas copié ici : il s'ouvre dans Google Drive avec le bouton en bas du panneau.</p>`;
+  if (x.url) { const id = driveId(x.url);
+    return id ? `<iframe class="fileview" src="https://${x.k === "gdoc" ? "docs.google.com/document" : "drive.google.com/file"}/d/${id}/${driveLive(x) ? "edit" : "preview"}" title="${esc(x.t)}" referrerpolicy="no-referrer" allow="clipboard-read; clipboard-write"></iframe>`
+      : `<h1>${esc(x.t)}</h1><p class="c">Rangé dans Google Drive</p><p>Ce document s'ouvre dans Google Drive avec le bouton en bas du panneau.</p>`; }
   if (x.fileId) return fileBody(x);
   if (x.body) return x.body;
   if (!d) return `<h1>${esc(x.t)}</h1><p class="c">Document non classé</p><p>Ce document n'est rattaché à aucune affaire. Ouvrez une affaire puis utilisez « Récupérer » sur le document manquant pour le classer.</p>`;
@@ -1044,7 +1050,8 @@ function previewPanel() {
     final: `<div class="dstate"><span class="mini t-teal">Facturation</span><span><b>${esc(x.pl?.num ?? "")}</b> · finalisé, PDF non modifiable${paid ? " · " : ""}</span>${paid ? `<span class="mini t-green">Payée</span>` : ""}<span class="sp"></span>${x.slot === "devis" ? `<button class="link" data-a="quote-new">Nouvelle version</button>` : ""}<button class="link" ${say("Dans l'application : le document s'ouvre dans Pennylane.")}>Ouvrir dans Pennylane</button></div>`,
     signing: `<div class="dstate"><ol class="sigsteps"><li class="done">Figé en PDF</li><li class="done">Envoyé le ${esc(x.sig?.sentAt ?? "")}</li><li class="${x.sig?.opened ? "done" : ""}">${x.sig?.opened ? "Ouvert par le client" : "Pas encore ouvert"}</li><li>Signé</li></ol><span class="sp"></span><button class="link" data-a="sig-remind">Relancer</button><button class="link danger" data-a="sig-cancel">Retirer la demande</button></div>`,
     signed: `<div class="dstate"><span class="mini t-green">Signé</span><span>${x.sig ? `Signé électroniquement par ${esc(x.sig.by)} le ${esc(x.sig.at)}.` : "Document signé."} PDF verrouillé : il ne se modifie plus.</span></div>`,
-    file: `<div class="dstate"><span class="mini">${BADGE[x.k]}</span><span>${x.url ? "Fichier rangé dans Google Drive" : x.k === "xls" ? "Tableur généré depuis l'affaire" : "Fichier importé"}, non modifiable ici.</span></div>` }[mode];
+    file: `<div class="dstate"><span class="mini">${BADGE[x.k]}</span><span>${x.url ? (driveLive(x) ? "Document Google Docs, modifiable ici : il s'enregistre dans Drive." : x.k === "gdoc" ? "Document Google Docs finalisé, en lecture seule." : "Aperçu Google Drive. Un PDF ne se modifie pas : repartez du document d'origine.") + " Page vide ? Connectez-vous à Google dans ce navigateur avec un compte qui a accès au dossier."
+      : (x.k === "xls" ? "Tableur généré depuis l'affaire" : "Fichier importé") + ", non modifiable ici."}</span></div>` }[mode];
   const stampBox = mode === "signed" && x.sig ? `<div class="sigstamp">Signé électroniquement par ${esc(x.sig.by)} le ${esc(x.sig.at)}. Contresigné par le bailleur. Chaque signature est horodatée et jointe au PDF.</div>` : "";
   const body = locked ? `<div class="lockmsg">${ico("lock")}<b>Document réservé aux administrateurs</b><span>Il contient des numéros de pièce d'identité. Demandez à un administrateur de vous le transmettre.</span></div>`
     : `${x.admin ? `<div class="admnote">Document réservé aux administrateurs : il contient des numéros de pièce d'identité.</div>` : ""}<div class="paper ${x.k}" ${mode === "edit" ? `id="doc-edit" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Contenu du document"` : ""}>${sheet ? sheetBody(d) : docBody(d, x)}${stampBox}</div>`;
