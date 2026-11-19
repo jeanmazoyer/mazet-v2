@@ -148,7 +148,7 @@ project.
   a link cannot be bent to redirect elsewhere. The CNIL treats this as a tracker (recommendation
   n° 2026-042 of 12 March 2026): it is the estate's call, and the page says so before turning it on.
 - **Drafting with Claude** (`POST /api/mail/draft`), off until `ANTHROPIC_API_KEY` is set in the box's
-  `.env`. `AI_MODEL` (default `claude-opus-5-5`) and `AI_DAILY_MAX` (default 30 drafts a day) are
+  `.env`. `AI_MODEL` (default `claude-opus-5-5`) and `AI_DAILY_MAX` (default 8 drafts a day, which keeps a month of the default model under about ten euros) are
   optional. What is sent to the model: the deal's main facts, the open conversation, the person's hint.
   The client's messages are passed as content inside a marked block, never as instructions.
 
