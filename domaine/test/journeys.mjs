@@ -122,6 +122,15 @@ ok("a signed PDF kept in Drive is shown in the panel by the Drive viewer", (awai
 await a.click("#close-preview"); await a.click('.docs .drow >> nth=1'); await a.waitForSelector(".drawer iframe.fileview");
 ok("a Google Docs draft opens in the panel in edit mode", (await a.locator(".drawer iframe.fileview").getAttribute("src")) === "https://docs.google.com/document/d/1ZyXwVuTsRqPoNmLk/edit");
 await a.click("#close-preview");
+// With Drive connected (its answers are played by the test), both ways of creating from a model make a Google Docs file
+let asked = []; await a.context().route("**/api/drive/**", (r) => { asked.push(JSON.parse(r.request().postData() ?? "{}")); return r.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "1DocFromDrive0001", url: "https://docs.google.com/document/d/1DocFromDrive0001/edit", folder: "1FolderOfTheDeal01" }) }); });
+await a.evaluate(() => { window.__app.S.drive = { on: true }; }); await a.click('[data-a="rail"]'); await a.click('[data-a="rail"]');
+await a.click('[data-slot="caution"][data-a="slot-create"]'); await a.waitForSelector(".drawer iframe.fileview");
+ok("« Créer » makes the deposit form in Drive, in the stay's folder, and opens it for editing", (await a.locator(".drawer iframe.fileview").getAttribute("src")) === "https://docs.google.com/document/d/1DocFromDrive0001/edit"
+  && asked.some((q) => q.title === "Caution - Mariage Alba & Noé" && q.client === true && q.html.includes("Alba")) && (await S(a, "S.deals.find(d => d.id === 't27-ok').driveFolder")) === "1FolderOfTheDeal01", JSON.stringify(asked).slice(0, 300));
+await a.click("#close-preview"); asked = []; await a.click('.blk [data-a="doc"]'); await a.waitForSelector("#dn-slot"); await a.selectOption("#dn-slot", ""); await a.fill("#dn-name", "Avenant piscine"); await a.click('[data-a="doc-add"]'); await a.waitForSelector(".drawer iframe.fileview");
+ok("« Ajouter un document » from a model makes a Google Docs file too", asked.some((q) => q.title === "Avenant piscine" && q.folder === "1FolderOfTheDeal01") && (await S(a, "S.deals.find(d => d.id === 't27-ok').docs.filter(x => x.url && x.url.includes('1DocFromDrive0001')).length")) === 2, JSON.stringify(asked).slice(0, 300));
+await a.click("#close-preview"); await a.evaluate(() => { window.__app.S.drive = { on: false }; }); await a.context().unroute("**/api/drive/**");
 await a.click('[data-comp="Événement"]'); ok("the information sheet is shown as text, never as markup", (await a.locator(".evt").innerText()).includes("Terrasse <b>ouest</b>"));
 await a.evaluate(() => { window.__app.S.deals = []; return window.__app.persist(); }); await settle(a); await a.reload(); await a.waitForSelector(".topbar h1");
 ok("deleting is saved too", (await S(a, "S.deals.length")) === 0);

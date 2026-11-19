@@ -760,8 +760,8 @@ function docNewModal() {
     <label class="fld"><span>Type de document</span><select id="dn-slot" class="inp"><option value="">Autre document</option>${SLOTS.map((s) => `<option value="${s.key}" ${dval("dn-slot") === s.key ? "selected" : ""} ${taken(s.key) ? "disabled" : ""}>${s.label}${taken(s.key) ? " (déjà présent)" : ""}</option>`).join("")}</select></label>
     <div class="fld full"><span>Origine</span><div class="seg full" role="group" aria-label="Origine du document"><button class="${src === "model" ? "on" : ""}" data-src="model">Créer depuis un modèle</button><button class="${src === "file" ? "on" : ""}" data-src="file">Importer un fichier</button></div></div>
     <label class="fld full"><span>Nom (facultatif)</span><input id="dn-name" class="inp" value="${esc(dval("dn-name"))}" placeholder="${sl ? sl.label : "Document libre"}"></label>
-    <p class="hint full">${src === "model" ? "Le document est créé en brouillon, rempli avec les informations de l'affaire. Il se modifie ensuite ici." : "PDF, image, Word, Excel ou texte, 25 Mo au maximum."}</p>${src === "file" ? `<label class="fld full"><span>Fichier</span><input id="dn-file" class="inp filein" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.xlsx,.txt,.csv"></label>` : ""}`,
-    `<button class="btn" data-a="doc-add" ${S.uploading ? "disabled" : ""}>${S.uploading ? "Envoi en cours" : "Ajouter le document"}</button>`);
+    <p class="hint full">${src === "model" ? (S.drive.on && to && (!sl || sl.k === "gdoc") ? "Le document est créé dans Google Drive, dans le dossier de l'affaire, rempli avec ses informations. Il se modifie ensuite ici." : "Le document est créé en brouillon, rempli avec les informations de l'affaire. Il se modifie ensuite ici.") : "PDF, image, Word, Excel ou texte, 25 Mo au maximum."}</p>${src === "file" ? `<label class="fld full"><span>Fichier</span><input id="dn-file" class="inp filein" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.xlsx,.txt,.csv"></label>` : ""}`,
+    `<button class="btn" data-a="doc-add" ${S.uploading || S.creating ? "disabled" : ""}>${S.uploading ? "Envoi en cours" : S.creating ? "Création dans Drive" : "Ajouter le document"}</button>`);
 }
 const LOST = ["Dates indisponibles", "Budget", "A choisi un autre lieu", "Sans réponse", "Projet annulé", "Autre"];
 function lostModal() {
@@ -1348,10 +1348,7 @@ document.addEventListener("click", (e) => {
   if (ds.doc) { const [id, i] = ds.doc.split(":"); S.preview = id === "lib" ? { lib: Number(i) } : { deal: id, i: Number(i) }; S.toast = ""; S.docEdit = false; if (S.modal === "search") S.modal = null; }
   if (ds.a === "slot-create" && d) { const sl = SLOTS.find((x) => x.key === ds.slot);
     // With Drive connected, a contract or a deposit form becomes a real Google Docs file, filled from the deal.
-    if (sl && sl.k === "gdoc" && S.drive.on) { if (!S.creating) { const x = newSlotDoc(sl), title = `${sl.label} - ${d.title}`.slice(0, 120); S.creating = sl.key;
-        const fail = (why) => { S.creating = ""; S.notice = `Document non créé : ${why}.`; render(); };
-        api("POST", "/api/drive/docs", { dealId: d.id, title, html: docBody(d, x), folder: d.driveFolder ?? "", ...driveWant(d) }).then((r) => { if (r.status !== 200) { fail(r.data.error || "refus du serveur"); return; }
-          S.creating = ""; d.driveFolder = r.data.folder; d.drivePlace = driveWant(d).client ? "clients" : "prospects"; d.driveName = driveWant(d).name; d.docs.push({ ...x, t: title, url: r.data.url }); log(d, "Document", `${sl.label} créé dans Google Drive`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = ""; render(); }, () => fail("serveur injoignable")); } }
+    if (sl && sl.k === "gdoc" && S.drive.on) driveCreate(d, newSlotDoc(sl), `${sl.label} - ${d.title}`.slice(0, 120));
     else if (sl) { const local = () => { d.docs.push(newSlotDoc(sl)); log(d, "Document", `${sl.label} créé ${sl.k === "pl" ? "en brouillon" : "depuis un modèle"}`); S.preview = { deal: d.id, i: d.docs.length - 1 }; S.toast = sl.k === "pl" ? "Brouillon créé." : "Créé en brouillon à partir du modèle : modifiez-le directement ici."; };
       // An administrator who has not connected Drive is told so: the real Google Docs file is one click away.
       if (sl.k === "gdoc" && isAdmin()) ask("Google Drive n'est pas connecté", "Pour que « Créer » fabrique un vrai document Google Docs, privé et modifiable dans le panneau, connectez d'abord Google Drive (une seule fois).", "Sans connexion, le document reste un brouillon interne à l'application.", "Créer dans l'application", () => { local(); render(); }, { href: "/auth/drive", label: "Connecter Google Drive" });
@@ -1371,6 +1368,7 @@ document.addEventListener("click", (e) => {
     if (sl && to && to.docs.some((x) => x.slot === sl.key)) S.modalErr = `Cette affaire a déjà un document « ${sl.label} ». Supprimez-le d'abord, ou choisissez « Autre document ».`;
     else { const x = { t: (S.draft["dn-name"] ?? "").trim() || (sl ? sl.label : "Document libre"), k: file ? "pdf" : sl ? sl.k : "gdoc", d: TODAY, st: file ? "Envoyé" : "Brouillon", slot: sl ? sl.key : undefined };
       if (x.k === "pl") x.pl = { num: null, final: false };
+      if (to && x.k === "gdoc" && S.drive.on) { S.modalErr = ""; driveCreate(to, x, ((S.draft["dn-name"] ?? "").trim() || `${x.t} - ${to.title}`).slice(0, 120)); render(); return; }
       if (to) { to.docs.push(x); log(to, "Document", `${x.t} ${file ? "importé" : "créé depuis un modèle"}`); S.preview = { deal: to.id, i: to.docs.length - 1 }; } else { S.library.push(x); S.preview = { lib: S.library.length - 1 }; }
       S.modal = null; S.draft = {}; S.toast = file ? "Fichier importé (simulé dans ce prototype)." : "Créé en brouillon à partir du modèle."; } }
   if (ds.a === "slot-pick" && d) { S.modal = "pick"; S.pickSlot = ds.slot; S.draft = {}; }
@@ -1896,6 +1894,16 @@ async function persist() {
 // that is over gets no folder of its own accord.
 const driveBusy = new Set();
 const driveWant = (d) => ({ client: d.stage >= 4 && d.status !== "Perdu", name: d.start && d.end ? `${d.title} ${range(d.start, d.end)}` : d.title });
+// A real Google Docs file for a deal, filled from it, filed in its Drive folder and opened in the panel.
+// Used by every way of creating a document from a model once Drive is connected.
+function driveCreate(d, x, title) {
+  if (S.creating) return; S.creating = x.slot ?? "libre";
+  const fail = (why) => { S.creating = ""; if (S.modal === "doc-new") S.modalErr = `Document non créé : ${why}.`; else S.notice = `Document non créé : ${why}.`; render(); };
+  api("POST", "/api/drive/docs", { dealId: d.id, title, html: docBody(d, { ...x, t: title }), folder: d.driveFolder ?? "", ...driveWant(d) }).then((r) => { if (r.status !== 200) { fail(r.data.error || "refus du serveur"); return; }
+    const cur = deal(d.id) ?? d, w = driveWant(cur); S.creating = ""; cur.driveFolder = r.data.folder; cur.drivePlace = w.client ? "clients" : "prospects"; cur.driveName = w.name;
+    cur.docs.push({ ...x, t: title, url: r.data.url }); log(cur, "Document", `${title} créé dans Google Drive`);
+    if (S.modal === "doc-new") { S.modal = null; S.draft = {}; } S.preview = { deal: cur.id, i: cur.docs.length - 1 }; S.toast = ""; render(); }, () => fail("serveur injoignable"));
+}
 function driveSync(d) {
   if (!S.drive.on || driveBusy.has(d.id) || !(d.driveFolder || !d.end || d.end >= TODAY)) return;
   const w = driveWant(d), place = w.client ? "clients" : "prospects";
