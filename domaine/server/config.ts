@@ -18,6 +18,9 @@ export const config = {
   googleSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? "",
   // Administrators, by Google address. Anyone else has to be invited from the settings page.
   allowed: (process.env.ALLOWED_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean),
+  // SHA-256 of a one-time code that lets the very first administrator in when ALLOWED_EMAILS
+  // cannot be set on the box. Only the hash is ever written down; see mayBootstrap.
+  setupHash: (process.env.SETUP_CODE_SHA256 ?? "").trim().toLowerCase(),
   dataDir: process.env.DATA_DIR ?? "./data",
   // Sign-in without Google, for a laptop only: both the flag and a localhost address are needed.
   devLogin: process.env.DEV_LOGIN === "true" && new URL(baseUrl).hostname === "localhost",

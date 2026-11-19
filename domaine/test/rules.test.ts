@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 process.env.BASE_URL ??= "http://localhost:3000";
 process.env.DATABASE_URL ??= "postgres://unused";
-const { decideAccess, readIdToken, hashToken } = await import("../server/auth.ts");
+const { decideAccess, readIdToken, hashToken, mayBootstrap } = await import("../server/auth.ts");
 const { forRole, mergeForSave, stored } = await import("../server/deals.ts");
 const { parseIcal } = await import("../server/ical.ts");
 
@@ -22,6 +22,14 @@ test("a Google token for another app, expired, or from elsewhere is not an ident
   assert.equal(readIdToken(token({ ...good, exp: 1 }), "client", 5_000), null);
   assert.equal(readIdToken(token({ ...good, iss: "https://evil.example" }), "client", 1_000), null);
   assert.equal(readIdToken("garbage", "client", 1_000), null);
+});
+test("the setup code opens the door once: only while no administrator exists, and only the right code", () => {
+  const hash = hashToken("the-right-setup-code-0123456789");
+  assert.equal(mayBootstrap("the-right-setup-code-0123456789", hash, 0), true);
+  assert.equal(mayBootstrap("the-right-setup-code-0123456789", hash, 1), false);
+  assert.equal(mayBootstrap("a-wrong-code-0123456789abcdef", hash, 0), false);
+  assert.equal(mayBootstrap("", hash, 0), false);
+  assert.equal(mayBootstrap("the-right-setup-code-0123456789", "", 0), false);
 });
 test("a session token is never stored as such", () => { assert.notEqual(hashToken("abc"), "abc"); assert.equal(hashToken("abc").length, 64); });
 test("the team neither reads nor loses the documents reserved to administrators", () => {

@@ -21,6 +21,10 @@ services:
       DB_SCHEMA: domaine
       # Sign-in without Google exists for a laptop only and must stay off on a public site.
       DEV_LOGIN: "false"
+      # Fingerprint of the one-time code that lets the first administrator in (see
+      # server/auth.ts, mayBootstrap). The code itself is written nowhere, and it is worth
+      # nothing once an administrator exists. ALLOWED_EMAILS in .env works as well.
+      SETUP_CODE_SHA256: "de61e0e2bd2fd965f8e8a5224ec91a8884cb5a423adccb4a2d1f6ab3c96b2ad7"
     volumes:
       - ./:/app
       - domainemodules:/app/node_modules

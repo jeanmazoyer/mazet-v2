@@ -10,7 +10,7 @@ import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { etag } from "hono/etag";
 import { streamSSE } from "hono/streaming";
-import { cookie, decideAccess, readCookie, readIdToken, signIn, signOut, userFromCookie, type Role, type User } from "./auth.ts";
+import { cookie, decideAccess, mayBootstrap, readCookie, readIdToken, signIn, signOut, userFromCookie, type Access, type Role, type User } from "./auth.ts";
 import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
@@ -70,6 +70,9 @@ app.get("/auth/google", (c) => {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.search = new URLSearchParams({ client_id: config.googleId, redirect_uri: `${config.baseUrl}/auth/callback`, response_type: "code", scope: "openid email profile", state, prompt: "select_account" }).toString();
   c.header("Set-Cookie", cookie("oauth_state", state, 600));
+  // A setup code given in the link rides along in a short-lived cookie until Google answers.
+  const setup = c.req.query("setup") ?? "";
+  if (/^[A-Za-z0-9_-]{20,100}$/.test(setup)) c.header("Set-Cookie", cookie("setup", setup, 600), { append: true });
   return c.redirect(url.toString());
 });
 app.get("/auth/callback", async (c) => {
@@ -80,9 +83,13 @@ app.get("/auth/callback", async (c) => {
   const who = res.ok ? readIdToken(((await res.json()) as { id_token?: string }).id_token ?? "", config.googleId, Date.now()) : null;
   if (!who) return deny("Google n'a pas confirmé votre identité");
   const [invited] = await sql`select role from users where email = ${who.email}`;
-  const access = decideAccess(who.email, who.verified, config.allowed, invited ? (invited.role as Role) : null);
+  let access: Access = decideAccess(who.email, who.verified, config.allowed, invited ? (invited.role as Role) : null);
+  if (!access.ok && who.verified) {
+    const [{ n }] = await sql`select count(*)::int as n from users where role = 'admin'`;
+    if (mayBootstrap(readCookie(c.req.header("cookie"), "setup"), config.setupHash, n)) { access = { ok: true, role: "admin" }; console.warn("first administrator created with the setup code"); }
+  }
   if (!access.ok) { console.warn(`sign-in refused: ${access.reason}`); return deny(access.reason); }
-  return new Response(null, { status: 302, headers: [["location", "/"], ["set-cookie", await signIn(who.email, who.name, access.role)], ["set-cookie", cookie("oauth_state", "", 0)]] });
+  return new Response(null, { status: 302, headers: [["location", "/"], ["set-cookie", await signIn(who.email, who.name, access.role)], ["set-cookie", cookie("oauth_state", "", 0)], ["set-cookie", cookie("setup", "", 0)]] });
 });
 if (config.devLogin) app.get("/auth/dev", async (c) => {
   const email = (c.req.query("email") ?? "dev@localhost").toLowerCase(), role = c.req.query("role") === "team" ? "team" : "admin";

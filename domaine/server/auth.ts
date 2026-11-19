@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
 
@@ -15,6 +15,15 @@ export function decideAccess(email: string, verified: boolean, admins: string[],
   if (admins.includes(email.toLowerCase())) return { ok: true, role: "admin" };
   if (invited) return { ok: true, role: invited };
   return { ok: false, reason: "adresse non invitée" };
+}
+
+/**
+ * First start only: the holder of the setup code becomes the first administrator. The code is
+ * worth nothing once an administrator exists, so it cannot be replayed later by someone else.
+ */
+export function mayBootstrap(code: string, setupHash: string, admins: number): boolean {
+  if (!code || setupHash.length !== 64 || admins > 0) return false;
+  return timingSafeEqual(Buffer.from(hashToken(code)), Buffer.from(setupHash));
 }
 
 /** What Google says about the person, read from the ID token its token endpoint returned. */
