@@ -61,6 +61,11 @@ export function editedSince(stamp: string, modified: string): boolean {
   return !Number.isFinite(a) || !Number.isFinite(b) || b - a > 2000;
 }
 
+/** What tells Drive to refuse (or accept again) any change to a file's content, in Google Docs included. */
+export function lockBody(locked: boolean, reason: string): { contentRestrictions: Array<{ readOnly: boolean; reason?: string }> } {
+  return { contentRestrictions: [locked ? { readOnly: true, reason: reason.slice(0, 120) } : { readOnly: false }] };
+}
+
 /** How a new document is described to Drive: a Google Docs file, in one folder the app created. */
 export function docMeta(name: string, folder: string): { name: string; mimeType: string; parents: string[] } {
   return { name, mimeType: "application/vnd.google-apps.document", parents: [folder] };
@@ -96,7 +101,7 @@ export const forgetToken = () => { cached = null; };
 type DriveFile = { id: string; name?: string; parents?: string[]; trashed?: boolean; modifiedTime?: string };
 async function driveJson(token: string, url: string, init: RequestInit): Promise<DriveFile> {
   const res = await fetch(url, { ...init, signal: wait(), headers: { authorization: `Bearer ${token}`, ...(init.headers as Record<string, string>) } });
-  if (!res.ok) throw new DriveError(res.status === 401 || res.status === 403 ? 401 : res.status === 404 ? 404 : 502, `Google Drive a refusé (${res.status})`);
+  if (!res.ok) throw new DriveError([401, 403, 404].includes(res.status) ? res.status : 502, `Google Drive a refusé (${res.status})`);
   return (await res.json()) as DriveFile;
 }
 /** When a document last changed. Null when it is gone or in the bin. */
@@ -144,6 +149,10 @@ export async function createDoc(token: string, name: string, html: string, folde
     await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}`, { method: "DELETE", signal: wait(), headers: { authorization: `Bearer ${token}` } }).catch(() => null);
     throw e;
   }
+}
+/** Locks a document against any change, or lifts the lock. */
+export async function lockDoc(token: string, id: string, locked: boolean, reason: string): Promise<void> {
+  await driveJson(token, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(lockBody(locked, reason)) });
 }
 /** Hands the grant back to Google. A failure here is not an obstacle: the stored token is dropped anyway. */
 export async function revoke(refresh: string): Promise<void> {

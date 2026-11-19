@@ -108,6 +108,12 @@ await a.goto(`${BASE}/#affaires`); await a.click('.topbar [data-a="new"]'); awai
 await a.click('.blk [data-a="doc"]'); await a.waitForSelector("#dn-slot"); await a.selectOption("#dn-slot", "contrat"); await a.click('[data-a="doc-add"]'); await a.waitForSelector("#doc-edit");
 const frText = await a.locator("#doc-edit").innerText(), depText = new Intl.NumberFormat("fr-FR").format(100 * (await S(a, "TERMS.deposit"))).replace(/[\u00a0\u202f]/g, " ");
 ok("the agreement is the estate's, filled from the deal and the settings", ["Dispositions particulières", "SARL Essai", "vendredi 09/06/2028", "3 nuits", "10 000", depText, "9 avril 2028", "14. Litiges"].every((t) => frText.replace(/[\u00a0\u202f]/g, " ").includes(t)), ["Dispositions particulières", "SARL Essai", "vendredi 09/06/2028", "3 nuits", "10 000", depText, "9 avril 2028", "14. Litiges"].filter((t) => !frText.replace(/[\u00a0\u202f]/g, " ").includes(t)).join(" | "));
+await a.selectOption("[data-docstatus]", "À signer"); await settle(a);
+ok("out of the draft state the agreement can no longer be typed in", (await a.locator("#doc-edit").count()) === 0 && (await a.locator(".drawer .dstate").innerText()).includes("ne se modifie plus") && (await a.locator('[data-a="doc-newver"]').count()) === 1);
+await a.selectOption("[data-docstatus]", "Signé"); await settle(a);
+ok("once signed its status is final", (await a.locator("[data-docstatus]").count()) === 0 && (await a.locator(".drawer header .tag").innerText()) === "Signé");
+await a.click('[data-a="doc-newver"]'); await a.waitForSelector("#doc-edit");
+ok("a new version starts from a draft and keeps the signed one", (await S(a, "S.deals.find(d => d.title === 'Contrat bilingue').docs.map(x => [x.slot ?? '', x.st ?? 'Brouillon'].join(':')).join(',')")) === ":Signé,contrat:Brouillon", await S(a, "JSON.stringify(S.deals.find(d => d.title === 'Contrat bilingue').docs.map(x => [x.t, x.slot, x.st]))"));
 await a.click("#close-preview"); await a.waitForSelector(".drawer", { state: "detached" }); await a.click('[data-edit="lang"]'); await a.selectOption("#e-lang", "en"); await a.click('[data-a="save"]'); await a.click('.docs .drow >> nth=0'); await a.waitForSelector("#doc-edit");
 const enText = await a.locator("#doc-edit").innerText();
 ok("switching the deal to English switches the agreement", ["Rental Agreement", "Special Provisions", "Friday 09/06/2028", "3 nights", "€10,000", "9 April 2028", "14. Disputes"].every((t) => enText.includes(t)), enText.slice(0, 400));

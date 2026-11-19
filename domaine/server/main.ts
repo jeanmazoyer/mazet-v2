@@ -14,7 +14,7 @@ import { cookie, decideAccess, mayBootstrap, readCookie, readIdToken, signIn, si
 import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
-import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
+import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, lockDoc, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
 import { fetchIcal, type Source, type Stay } from "./ical.ts";
 
 const app = new Hono<{ Variables: { user: User } }>();
@@ -331,6 +331,18 @@ app.post("/api/drive/docs/refresh", async (c) => {
     if (now === null) return c.json({ gone: true });
     if (body?.force !== true && editedSince(stamp, now)) return c.json({ edited: true });
     return c.json({ stamp: await writeDoc(token, id, docHtml(title, html)) });
+  } catch (e) { return driveFailure(c as never, e); }
+});
+// Out of the draft state (sent for signature, signed), a document must not change any more: Drive
+// itself then refuses edits, whoever opens it. Back to draft lifts the lock.
+app.post("/api/drive/docs/lock", async (c) => {
+  const body = await readJson(c), id = String(body?.id ?? "");
+  if (!DRIVE_ID.test(id) || typeof body?.locked !== "boolean") return c.json({ error: "document invalide" }, 400);
+  const drive = await driveSetting();
+  if (!drive) return c.json({ error: "Google Drive n'est pas connecté" }, 409);
+  try {
+    await lockDoc(await accessToken(drive.refresh, config.googleId, config.googleSecret), id, body.locked, String(body?.reason ?? ""));
+    return c.json({ ok: true });
   } catch (e) { return driveFailure(c as never, e); }
 });
 app.delete("/api/drive", async (c) => {

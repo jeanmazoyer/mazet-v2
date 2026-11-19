@@ -425,7 +425,7 @@ function viewAffaire(id) {
       </aside>
       <div class="feed">
         ${composer}
-        <section class="blk"><h3 class="h flex">Documents <span class="count num">${slotsFor(d).length - missingDocs(d)} sur ${slotsFor(d).length}</span>${d.driveFolder ? `<a class="link drivelink" href="https://drive.google.com/drive/folders/${encodeURIComponent(d.driveFolder)}" target="_blank" rel="noopener">Dossier Drive · ${d.drivePlace === "clients" ? "Clients" : "Prospects"}</a>` : ""}<button class="link" data-a="doc">+ Ajouter</button></h3><div class="docs">${dealDocs(d)}</div>${stageDocNote(d) ? `<p class="docnote">${stageDocNote(d)}</p>` : ""}</section>
+        <section class="blk"><h3 class="h flex">Documents <span class="count num">${slotsFor(d).length - missingDocs(d)} sur ${slotsFor(d).length}</span>${d.driveFolder ? `<a class="link drivelink" href="https://drive.google.com/drive/folders/${encodeURIComponent(d.driveFolder)}" target="_blank" rel="noopener">Dossier Drive · ${d.drivePlace === "clients" ? "Clients" : "Prospects"}</a>` : d.folderUrl ? `<a class="link drivelink" href="${esc(d.folderUrl)}" target="_blank" rel="noopener">Dossier Drive</a>` : ""}<button class="link" data-a="doc">+ Ajouter</button></h3><div class="docs">${dealDocs(d)}</div>${stageDocNote(d) ? `<p class="docnote">${stageDocNote(d)}</p>` : ""}</section>
         ${auditBlock(d)}${mailsBlock(d)}
         ${d.pinned.length ? `<section class="blk"><h3 class="h">Épinglées</h3><div class="list">${d.pinned.map((p, i) => `<article class="ev"><span class="mk">${ico("pin", "s")}</span><div class="tx"><div class="tt">${esc(p.t)}</div><div class="meta">${esc(p.at)} · Par ${esc(p.by)}</div><div class="note">${esc(p.body)}</div><div class="pinacts"><button class="link" data-unpin="${i}">Désépingler</button><button class="link danger" data-a="pin-del" data-i="${i}">Supprimer</button></div></div></article>`).join("")}</div></section>` : ""}
         <section class="blk"><h3 class="h">À faire</h3>
@@ -605,7 +605,7 @@ function viewSettings() {
       + `<label class="fld"><span>Importer un relevé</span><input id="bank-file" class="inp filein" type="file" accept=".csv,text/csv"></label>`)}
     ${card("Bailleur", "Ces informations sont reprises dans les contrats, en français comme en anglais. Elles restent dans l'application : elles ne sont écrites nulle part dans son code.",
       [["ls-name", "name", "Société"], ["ls-address", "address", "Adresse du bailleur"], ["ls-phone", "phone", "Téléphone"], ["ls-email", "email", "E-mail"], ["ls-place", "place", "Adresse du bien loué"], ["ls-reception", "reception", "Téléphone de l'accueil"], ["ls-signer", "signer", "Signataire pour le propriétaire"], ["ls-city", "city", "Ville de signature"]]
-        .map(([id, k, label]) => `<label class="fld"><span>${label}</span><input id="${id}" class="inp" value="${esc(S.lessor[k] ?? "")}"></label>`).join("") + `<div class="srow"><span class="grow"></span><button class="btn sm" data-a="lessor-save">Enregistrer</button></div>`)}
+        .map(([id, k, label]) => `<label class="fld"><span>${label}</span><input id="${id}" class="inp" value="${esc(S.draft[id] ?? S.lessor[k] ?? "")}"></label>`).join("") + `<div class="srow"><span class="grow"></span><button class="btn sm" data-a="lessor-save">Enregistrer</button></div>`)}
     ${card("Google Drive", "Une fois connecté, « Créer » sur un contrat ou une caution fabrique un vrai document Google Docs, rempli depuis l'affaire et modifiable dans le panneau. L'application ne voit que les documents qu'elle crée. Ils sont privés : partagez le dossier avec les personnes qui doivent y accéder.",
       S.drive.on ? srow(`Connecté${S.drive.email ? " : " + esc(S.drive.email) : ""}`, "Un dossier par affaire dans « Les jardins de Campagne » : dans « Prospects » dès sa création, déplacé dans « Clients » à la signature.", `${S.drive.folder ? `<a class="btn alt sm" href="https://drive.google.com/drive/folders/${encodeURIComponent(S.drive.folder)}" target="_blank" rel="noopener">Ouvrir le dossier</a>` : ""}<button class="btn alt sm" data-a="drive-off">Déconnecter</button>`)
         : srow("Non connecté", "Les documents créés restent pour l'instant dans l'application.", `<a class="btn sm" href="/auth/drive">Connecter Google Drive</a>`))}
@@ -711,7 +711,8 @@ function contractValues(d) {
 // A file kept in Google Drive is shown by Drive itself, inside the panel: its viewer for a PDF or an
 // image, the Google Docs editor for a document that is neither signed nor finalised.
 const driveId = (u) => (/\/d\/([\w-]{10,})/.exec(u ?? "") ?? [])[1] ?? "";
-const driveLive = (x) => x.k === "gdoc" && x.st !== "Signé" && x.st !== "Finalisé";
+const inDraft = (x) => (x.st ?? "Brouillon") === "Brouillon";
+const driveLive = (x) => x.k === "gdoc" && inDraft(x);
 function docBody(d, x) {
   if (x.url) { const id = driveId(x.url);
     return id ? `<iframe class="fileview" src="https://${x.k === "gdoc" ? "docs.google.com/document" : "drive.google.com/file"}/d/${id}/${driveLive(x) ? "edit" + ((q) => (q ? "?" + q : ""))([S.docBare ? "rm=minimal" : "", x.stamp ? "ts=" + hash(x.stamp) : ""].filter(Boolean).join("&")) : "preview"}" title="${esc(x.t)}" referrerpolicy="no-referrer" allow="clipboard-read; clipboard-write"></iframe>`
@@ -1053,7 +1054,7 @@ const plNum = (kind) => `${kind}-2026-${String(++S.plSeq[kind]).padStart(3, "0")
 const SIGNABLE = new Set(["contrat", "devis", "caution"]);
 const isSigned = (x) => (x.sig ? x.sig.state === "signed" : x.st === "Signé");
 // The state that decides what the panel lets you do with a document.
-const docMode = (x) => (x.url ? "file" : isSigned(x) ? "signed" : x.sig ? "signing" : x.fileId ? "file" : x.pl ? (x.pl.final ? "final" : "pldraft") : x.k === "gdoc" ? "edit" : "file");
+const docMode = (x) => (x.url ? "file" : isSigned(x) ? "signed" : x.sig ? "signing" : x.fileId ? "file" : x.pl ? (x.pl.final ? "final" : "pldraft") : x.k === "gdoc" ? (inDraft(x) ? "edit" : "locked") : "file");
 const quoteLines = (d) => { const q = quoteOf(d);
   return `<div class="qt"><div class="qh"><span>Prestation</span><span>Qté</span><span>Prix unitaire</span><span>Total</span><span></span></div>
     ${q.map((r, i) => `<div class="qr"><input id="ql-${i}-l" class="inp" value="${esc(r.l)}" placeholder="Prestation" aria-label="Prestation ${i + 1}"><input id="ql-${i}-q" class="inp" type="number" min="0" value="${r.q}" aria-label="Quantité, ligne ${i + 1}"><input id="ql-${i}-p" class="inp" type="number" min="0" step="10" value="${r.p}" aria-label="Prix unitaire, ligne ${i + 1}"><b class="num" id="qt-${i}">${eur(r.q * r.p)}</b><button class="iconbtn" data-qdel="${i}" aria-label="Retirer la ligne ${i + 1}" ${q.length > 1 ? "" : "disabled"}>${ico("close", "s")}</button></div>`).join("")}
@@ -1082,11 +1083,13 @@ function previewPanel() {
       <label><span>Affaire</span><select class="inp" data-docdeal aria-label="Affaire du document" ${fixed ? "disabled" : ""}><option value="">Non classé</option>${S.deals.map((o) => `<option value="${o.id}" ${d === o ? "selected" : ""}>${esc(o.title)}</option>`).join("")}</select></label></div>` : "";
   const paid = d && x.pl && (x.slot === "acompte" || x.slot === "solde") && d.payments.find((p) => p.id === (x.slot === "acompte" ? "dep" : "bal"))?.status === "paid";
   const say = (msg) => `data-a="doc-toast" data-msg="${esc(msg)}"`;
+  const newer = d && plain && !inDraft(x) && SLOTS.some((sl) => sl.key === x.slot && sl.k === "gdoc") ? `<button class="btn alt" data-a="doc-newver" title="Garde ce document tel quel et repart d'un brouillon">Nouvelle version</button>` : "";
   const state = { "": "",
     edit: `<div class="dstate"><div class="rte" role="toolbar" aria-label="Mise en forme du document">${rteBar()}</div><span class="sp"></span><span>${x.body ? "Modifié à la main" : "Rempli depuis l'affaire"}, enregistré automatiquement</span>${x.body ? `<button class="link" data-a="doc-reset-body">Rétablir le modèle</button>` : ""}</div>`,
     pldraft: `<div class="dstate"><span class="mini t-teal">Facturation</span><span>Brouillon, pas encore numéroté. ${x.slot === "devis" ? "Modifiez les lignes ci-dessous." : "Le montant vient de l'échéancier, dans Finance."}</span></div>${x.slot === "devis" && d ? `<div class="dlines">${quoteLines(d)}<label class="hint"><input id="q-sync" type="checkbox" checked> À la finalisation, mettre aussi le montant de l'affaire à ce total</label></div>` : ""}`,
     final: `<div class="dstate"><span class="mini t-teal">Facturation</span><span><b>${esc(x.pl?.num ?? "")}</b> · finalisé, PDF non modifiable${paid ? " · " : ""}</span>${paid ? `<span class="mini t-green">Payée</span>` : ""}<span class="sp"></span>${x.slot === "devis" ? `<button class="link" data-a="quote-new">Nouvelle version</button>` : ""}<button class="link" ${say("Dans l'application : le document s'ouvre dans Pennylane.")}>Ouvrir dans Pennylane</button></div>`,
     signing: `<div class="dstate"><ol class="sigsteps"><li class="done">Figé en PDF</li><li class="done">Envoyé le ${esc(x.sig?.sentAt ?? "")}</li><li class="${x.sig?.opened ? "done" : ""}">${x.sig?.opened ? "Ouvert par le client" : "Pas encore ouvert"}</li><li>Signé</li></ol><span class="sp"></span><button class="link" data-a="sig-remind">Relancer</button><button class="link danger" data-a="sig-cancel">Retirer la demande</button></div>`,
+    locked: `<div class="dstate"><span class="mini ${DOC_ST[x.st] ?? ""}">${esc(x.st)}</span><span>Ce document n'est plus un brouillon : il ne se modifie plus. ${x.st === "Signé" ? "Pour le changer, créez une nouvelle version." : "Repassez-le en brouillon pour le modifier, ou créez une nouvelle version."}</span></div>`,
     signed: `<div class="dstate"><span class="mini t-green">Signé</span><span>${x.sig ? `Signé électroniquement par ${esc(x.sig.by)} le ${esc(x.sig.at)}.` : "Document signé."} PDF verrouillé : il ne se modifie plus.</span></div>`,
     // A Drive file speaks for itself in its own viewer: no line above it.
     file: x.url ? "" : `<div class="dstate"><span class="mini">${BADGE[x.k]}</span><span>${x.k === "xls" ? "Tableur généré depuis l'affaire" : "Fichier importé"}, non modifiable ici.</span></div>` }[mode];
@@ -1098,12 +1101,14 @@ function previewPanel() {
   const sign = d && (SIGNABLE.has(x.slot) || !x.slot) ? `<button class="btn" data-a="sig-new">${ico("pen", "s")}Envoyer pour signature</button>` : "";
   const acts = sheet ? `<button class="btn" data-a="doc-print">Imprimer la fiche</button>` : locked ? "" : {
     edit: del + pdf + (sign ? mail("alt") + sign : mail("")),
+    locked: del + newer + pdf + mail(""),
     pldraft: del + `<button class="btn" data-a="pl-final">Finaliser : numéroter et figer en PDF</button>`,
     final: del + pdf + (x.slot === "devis" && sign ? mail("alt") + sign : mail("")),
     signing: pdf + `<button class="btn" data-a="sig-view">Simuler la signature du client</button>`,
-    signed: del + pdf + mail("alt") + `<button class="btn" data-a="doc-open">Ouvrir dans Drive</button>`,
-    file: del + (x.url ? `${driveLive(x) ? `<button class="btn alt" data-a="doc-bare" title="${S.docBare ? "Revenir à l'éditeur Google Docs complet" : "N'afficher que la page, sans barre d'outils ni onglets"}">${S.docBare ? "Éditeur complet" : "Page seule"}</button>` : ""}<a class="btn" href="${esc(x.url)}" target="_blank" rel="noopener">Ouvrir dans Google Drive</a>` : x.fileId ? `<a class="btn" href="/api/files/${x.fileId}" target="_blank" rel="noopener">Ouvrir le fichier</a>` : pdf) }[mode];
-  const pill = mode === "pldraft" || mode === "final" || fixed;
+    signed: del + newer + pdf + mail("alt") + `<button class="btn" data-a="doc-open">Ouvrir dans Drive</button>`,
+    file: del + (x.url ? `${newer}${driveLive(x) ? `<button class="btn alt" data-a="doc-bare" title="${S.docBare ? "Revenir à l'éditeur Google Docs complet" : "N'afficher que la page, sans barre d'outils ni onglets"}">${S.docBare ? "Éditeur complet" : "Page seule"}</button>` : ""}<a class="btn" href="${esc(x.url)}" target="_blank" rel="noopener">Ouvrir dans Google Drive</a>` : x.fileId ? `<a class="btn" href="/api/files/${x.fileId}" target="_blank" rel="noopener">Ouvrir le fichier</a>` : pdf) }[mode];
+  // A signed document keeps its status for good: the way on is a new version.
+  const pill = mode === "pldraft" || mode === "final" || fixed || x.st === "Signé";
   return `<div class="scrim fade ${S.previewOut ? "out" : ""}" data-a="close-preview"></div>
     <aside class="drawer ${x.url && !sheet ? "wide" : ""} ${S.previewOut ? "out" : ""}" role="dialog" aria-modal="true" aria-label="Aperçu du document">
       <header><span class="kb ${x.k}">${BADGE[x.k]}</span><div class="grow">${S.docEdit && plain && !fixed && mode !== "final" ? `<div class="rename"><input id="doc-name" class="inp" value="${esc(x.t)}" aria-label="Nom du document"><button class="btn green sm" data-a="doc-rename-ok">Enregistrer</button></div>` : `<b>${esc(x.t)}${plain && !fixed && mode !== "final" ? `<button class="iconbtn inline" data-a="doc-rename" title="Renommer" aria-label="Renommer le document">${ico("pen", "s")}</button>` : ""}</b>`}<small>${KLBL[x.k]} · ${fr(x.d)} · ${d ? esc(d.title) : "Non classé"}</small></div>${plain ? (pill ? `<span class="tag ${DOC_ST[x.st ?? "Brouillon"]}">${x.st ?? "Brouillon"}</span>` : `<span class="status"><select data-docstatus aria-label="Statut du document">${Object.keys(DOC_ST).map((o) => `<option ${(x.st ?? "Brouillon") === o ? "selected" : ""}>${o}</option>`).join("")}</select></span>`) : ""}<button class="iconbtn" id="close-preview" data-a="close-preview" aria-label="Fermer l'aperçu">${ico("close", "m")}</button></header>
@@ -1502,9 +1507,13 @@ document.addEventListener("click", (e) => {
     if (name.length < 2) S.modalErr = "Donnez un nom au logement."; else if (!/^https:\/\/\S+\.\S+/.test(url)) S.modalErr = "Collez le lien iCal complet : il commence par https://";
     else { S.sources.push({ id: "s" + Date.now(), kind: S.draft["ic-kind"] ?? "Airbnb", name, url, last: "" }); S.modal = null; S.draft = {}; S.flash = { text: "Calendrier ajouté : lecture en cours." }; render(); persist().then(syncFeeds); return; } }
   if (ds.a === "src-sync") { syncFeeds(); return; }
+  if (ds.a === "doc-newver") { const cur = previewed(), sl = cur && SLOTS.find((o) => o.key === cur.x.slot);
+    if (cur && cur.d && sl) { const d0 = cur.d, old = cur.x; old.slot = undefined; old.t = `${old.t} (version du ${fr(old.d)})`.slice(0, 120); log(d0, "Document", `${sl.label} : nouvelle version, l'ancienne est conservée`);
+      if (S.drive.on) { S.preview = null; driveCreate(d0, newSlotDoc(sl), `${sl.label} - ${d0.title}`.slice(0, 120)); }
+      else { d0.docs.push(newSlotDoc(sl)); S.preview = { deal: d0.id, i: d0.docs.length - 1 }; S.toast = "Nouvelle version créée en brouillon."; } } }
   if (ds.a === "doc-resync") { const cur = previewed(); if (cur && cur.d) ask("Remettre ce document à jour ?", "Son contenu sera remplacé par le modèle, rempli avec la fiche de l'affaire.", "Ce qui a été tapé à la main dans Google Docs sera perdu.", "Remplacer le contenu", () => driveDocsSync(cur.d, cur.x)); }
   if (ds.a === "doc-bare") { S.docBare = !S.docBare; try { localStorage.setItem("docBare", S.docBare ? "1" : "0"); } catch (_) { /* private window: the choice lasts for this visit only */ } }
-  if (ds.a === "lessor-save" && isAdmin()) { S.lessor = Object.fromEntries(["name", "address", "phone", "email", "place", "reception", "signer", "city"].map((k) => [k, val("ls-" + k).trim().slice(0, 160)])); S.flash = { text: "Bailleur enregistré : les contrats en cours le reprennent." }; S.deals.forEach((o) => driveDocsSync(o)); }
+  if (ds.a === "lessor-save" && isAdmin()) { S.lessor = Object.fromEntries(["name", "address", "phone", "email", "place", "reception", "signer", "city"].map((k) => { const v = val("ls-" + k).trim().slice(0, 160); delete S.draft["ls-" + k]; return [k, v]; })); S.flash = { text: "Bailleur enregistré : les contrats en cours le reprennent." }; S.deals.forEach((o) => driveDocsSync(o)); }
   if (ds.a === "drive-off") ask("Déconnecter Google Drive ?", "Les documents déjà créés restent dans Drive et dans les affaires.", "« Créer » refera des documents internes à l'application.", "Déconnecter", () => { api("DELETE", "/api/drive").then((r) => { if (r.status === 200) S.drive = { on: false }; else S.notice = "Déconnexion refusée."; render(); }); });
   if (ds.a === "src-del") { const s = S.sources.find((x) => x.id === ds.id);
     if (s) ask("Retirer ce calendrier ?", `Les réservations importées de « ${esc(s.kind)}, ${esc(s.name)} » disparaîtront du calendrier, et leurs dates redeviendront libres ici.`, "Rien n'est modifié sur la plateforme d'origine.", "Retirer le calendrier", () => {
@@ -1637,7 +1646,10 @@ document.addEventListener("change", (e) => { const r = route(), id = e.target.id
   if (id === "mail-var") { const md = deal(r.id); if (md && MAIL_VARS[v]) insertInMail(MAIL_VARS[v](md)); e.target.value = ""; return; }
   if (id && id.startsWith("ag-")) { const a = selAgent(); if (a && id === "ag-trigger") a.trigger = v; return; }
   if (e.target.matches("[data-docstatus]") && S.preview) { const cur = previewed();
-    if (cur) { if (cur.d) log(cur.d, "Document", `${cur.x.t} : ${cur.x.st ?? "Brouillon"} → ${v}`); cur.x.st = v; render(); } return; }
+    if (cur && cur.x.st !== "Signé") { const x = cur.x, was = inDraft(x); if (cur.d) log(cur.d, "Document", `${x.t} : ${x.st ?? "Brouillon"} → ${v}`); x.st = v;
+      // In Drive too: out of the draft state the file itself refuses edits, back to draft it accepts them again.
+      if (x.did && S.drive.on && was !== inDraft(x)) api("POST", "/api/drive/docs/lock", { id: x.did, locked: !inDraft(x), reason: `${v} (Les jardins de Campagne)` }).then((r) => { if (r.status !== 200) { S.notice = `Le verrou du document dans Google Drive n'a pas pu être ${inDraft(x) ? "levé" : "posé"} : ${r.data.error || "refus"}.`; render(); } }, () => {});
+      render(); } return; }
   if (e.target.matches("[data-doctype]") && S.preview) { const cur = previewed(), sl = SLOTS.find((s) => s.key === v);
     if (cur) { cur.x.slot = sl ? sl.key : undefined; if (cur.d) log(cur.d, "Document", `${cur.x.t} classé comme ${sl ? sl.label.toLowerCase() : "autre document"}`); S.toast = `Classé comme ${sl ? sl.label.toLowerCase() : "autre document"}.`; render(); } return; }
   // Moving a document to another deal, or back to the unfiled ones. It keeps its kind unless
@@ -1831,6 +1843,7 @@ function importSeason(file) {
       list: list(m.list).filter((t) => t && /^[0-9a-f]{10,20}$/.test(t.id ?? "") && isDay(t.first) && isDay(t.last)).slice(0, 12).map((t) => ({ id: t.id, first: t.first, last: t.last, n: Math.round(num(t.n)), subject: str(t.subject, 120) })) };
     const side = (s) => (s && typeof s === "object" ? { ...(isDay(s.start) && isDay(s.end) ? { start: s.start, end: s.end } : {}), ...(Number.isFinite(s.guests) ? { guests: s.guests } : {}), ...(Number.isFinite(s.amount) ? { amount: s.amount } : {}), ...(str(s.state, 20) ? { state: str(s.state, 20) } : {}) } : null);
     d.src = Object.fromEntries(["fiche", "cal", "contract"].map((k) => [k, side(r.src?.[k])]).filter((x) => x[1]));
+    if (web(r.folderUrl)) d.folderUrl = web(r.folderUrl);
     d.findings = list(r.findings).slice(0, 20).map((f) => ({ lvl: LVL[f?.lvl] !== undefined ? f.lvl : "info", t: str(f?.t, 400) })).filter((f) => f.t);
     d.refunds = list(r.refunds).filter((x) => x && isDay(x.on)).slice(0, 6).map((x) => ({ on: x.on, amount: num(x.amount), label: str(x.label, 200) }));
     d.history = [{ type: "Modification", t: `Affaire importée de la saison ${str(String(file.season ?? ""), 4)}`, at: stamp(), by: me().name }];

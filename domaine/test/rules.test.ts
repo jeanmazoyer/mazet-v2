@@ -107,3 +107,10 @@ test("a document counts as edited by hand only when it changed after the app's o
   assert.equal(editedSince("", "2026-11-19T10:43:30.000Z"), true);
   assert.equal(editedSince("not a date", "2026-11-19T10:43:30.000Z"), true);
 });
+
+const { lockBody } = await import("../server/drive.ts");
+test("a document leaving the draft state is locked in Drive, with the reason shown to whoever opens it", () => {
+  assert.deepEqual(lockBody(true, "À signer"), { contentRestrictions: [{ readOnly: true, reason: "À signer" }] });
+  assert.deepEqual(lockBody(false, "whatever"), { contentRestrictions: [{ readOnly: false }] });
+  assert.equal(lockBody(true, "x".repeat(500)).contentRestrictions[0].reason?.length, 120);
+});
