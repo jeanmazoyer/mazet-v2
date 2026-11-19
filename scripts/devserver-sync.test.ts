@@ -104,12 +104,20 @@ describe("devserver-sync.sh", () => {
     ["the lockfile", "domaine/package-lock.json"],
     ["the dependencies", "domaine/package.json"],
     ["the compose file", "domaine/docker-compose.yml"],
+    ["the server's code", "domaine/server/main.ts"],
+    ["a database migration", "domaine/server/migrations/002_more.sql"],
   ])("restarts the container when %s changes", (_label, file) => {
     publish(file, "changed");
     sync();
     expect(dockerCalls()).toEqual([
       "compose -p mazet-dev -f domaine/docker-compose.yml up -d --force-recreate",
     ]);
+  });
+
+  test("pulls a change of the pages without restarting the container", () => {
+    publish("domaine/web/app.js", "two");
+    sync();
+    expect(dockerCalls()).toEqual([]);
   });
 
   test("leaves the checkout alone when it cannot fast-forward", () => {

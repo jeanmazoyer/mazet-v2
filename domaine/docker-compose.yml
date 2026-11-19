@@ -2,9 +2,9 @@
 # development checkout, in place of the previous development container:
 #   docker compose -p mazet-dev -f domaine/docker-compose.yml up -d --remove-orphans
 # The service keeps the name `devapp` because that is where Caddy already sends DEV_DOMAIN.
-# Pages are served straight from the checkout and the server restarts itself when its own files
-# change (node --watch), so a `git pull` is a deploy. Only a change of dependencies needs the
-# container recreated: scripts/devserver-sync.sh does it.
+# Pages are served straight from the checkout, so for them a `git pull` is a deploy. A change of
+# the server's code, of its dependencies or of this file needs the container recreated:
+# scripts/devserver-sync.sh does it.
 services:
   devapp:
     image: node:24-alpine
