@@ -118,6 +118,9 @@ ok("the settings offer to connect Google Drive, and show at a glance that nothin
 ok("the team cannot start a synchronisation", (await team.evaluate(() => fetch("/api/sync", { method: "POST" }).then((r) => r.status))) === 403);
 await a.click('.setnav a[href="#reglages-sync"]'); await a.waitForSelector('[data-a="sync-now"]'); await a.click('[data-a="sync-now"]'); await a.waitForFunction(() => window.__app.S.syncReport && !window.__app.S.syncBusy, null, { timeout: 15000 });
 ok("a synchronisation asked for runs and reports each connection, here all three not connected", (await S(a, "['drive','gmail','agenda'].every(k => S.syncReport[k].state === 'off')")) && (await a.locator(".setmain .setrow").count()) === 4 && (await a.locator(".setmain").innerText()).includes("Dernier passage"));
+await a.goto(`${BASE}/#audit`); await a.waitForSelector('.topbar [data-a="sync-now"]');
+ok("the audit can be run again from its own page, and says how fresh its sources are", (await a.locator('.topbar [data-a="sync-now"]').innerText()).includes("Relancer l'audit") && (await a.locator(".topbar").innerText()).includes("relus le"));
+await a.goto(`${BASE}/#reglages-sync`); await a.waitForSelector(".setmain");
 ok("the report of a synchronisation cannot be written by a page", (await a.request.put(`${BASE}/api/settings/sync`, { data: { value: { at: "x" } } })).status() === 400);
 await a.click('.setnav a[href="#reglages-gmail"]'); await a.waitForSelector('a[href="/auth/gmail"]');
 ok("a section of the settings opens from the list on the left, one at a time", (await a.locator(".setmain h2").innerText()) === "Gmail" && (await a.locator('a[href="/auth/drive"]').count()) === 0 && (await a.evaluate(() => location.hash)) === "#reglages-gmail");
