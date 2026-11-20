@@ -1,12 +1,14 @@
-// Google Drive, for the documents the app creates (contract, security deposit). The grant asked for is
-// drive.file: the app reaches the files and folders it created itself, nothing else in the Drive.
-// A document is private to the account that connected, plus whoever that person shares the folder with.
+// Google Drive: the documents the app creates (contract, security deposit), and the folders the estate
+// already keeps for its stays, which the app reads every hour. The grant asked for is the whole Drive of
+// the connected account: reading a folder the app did not create, and adding a file to it, need no less.
+// The code keeps to the folders of the deals: it lists them, adds files to them, and never deletes.
 import type { Role } from "./auth.ts";
 
-export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 export const DRIVE_ID = /^[\w-]{10,80}$/;
 // `folder` is the app's own folder. Inside it, stays not yet signed live in `prospects`, signed ones in `clients`.
-export type DriveSetting = { refresh: string; email: string; folder: string; prospects?: string; clients?: string };
+// `full` marks a grant that covers the whole Drive; an older one only reaches the files the app created.
+export type DriveSetting = { refresh: string; email: string; folder: string; prospects?: string; clients?: string; full?: boolean };
 
 /** Where an administrator is sent to let the app create documents in their Drive. */
 export function driveAuthUrl(clientId: string, baseUrl: string, state: string): string {
@@ -18,10 +20,10 @@ export function driveAuthUrl(clientId: string, baseUrl: string, state: string): 
 }
 
 /** What a page may know about the connection: never the token, and the account only for administrators. */
-export function driveSeen(stored: unknown, role: Role): { on: boolean; email?: string; folder?: string } {
+export function driveSeen(stored: unknown, role: Role): { on: boolean; full?: boolean; email?: string; folder?: string } {
   const s = stored as Partial<DriveSetting> | null;
   if (!s || typeof s.refresh !== "string" || !s.refresh || typeof s.folder !== "string") return { on: false };
-  return role === "admin" ? { on: true, email: s.email ?? "", folder: s.folder } : { on: true };
+  return role === "admin" ? { on: true, full: s.full === true, email: s.email ?? "", folder: s.folder } : { on: true, full: s.full === true };
 }
 
 const TAGS = new Set(["h1", "h2", "h3", "p", "br", "b", "strong", "i", "em", "u", "ul", "ol", "li", "table", "thead", "tbody", "tr", "td", "th", "div", "span", "hr"]);
@@ -183,4 +185,30 @@ export async function pagePdf(token: string, title: string, html: string, folder
   const made = await createDoc(token, title, html, folder);
   try { return await exportPdf(token, made.id); }
   finally { await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(made.id)}`, { method: "DELETE", signal: wait(), headers: { authorization: `Bearer ${token}` } }).catch(() => null); }
+}
+/** Every file under a folder, two levels down, each with the names of the folders it sits in. */
+export async function listTree(token: string, folder: string, depth = 2): Promise<Array<{ id: string; name: string; mime: string; modified: string; path: string[]; link: string; size: number }>> {
+  const out: Array<{ id: string; name: string; mime: string; modified: string; path: string[]; link: string; size: number }> = [];
+  const walk = async (id: string, path: string[], left: number): Promise<void> => {
+    let page = "";
+    do {
+      const q = new URLSearchParams({ q: `'${id}' in parents and trashed = false`, fields: "nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink, size)", pageSize: "200", supportsAllDrives: "true", includeItemsFromAllDrives: "true", ...(page ? { pageToken: page } : {}) });
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files?${q}`, { signal: wait(), headers: { authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new DriveError([401, 403, 404].includes(res.status) ? res.status : 502, `Google Drive a refusé (${res.status})`);
+      const data = (await res.json()) as { nextPageToken?: string; files?: Array<{ id: string; name?: string; mimeType?: string; modifiedTime?: string; webViewLink?: string; size?: string }> };
+      for (const f of data.files ?? []) {
+        if (f.mimeType === "application/vnd.google-apps.folder") { if (left > 0) await walk(f.id, [...path, f.name ?? ""], left - 1); continue; }
+        if (out.length < 400) out.push({ id: f.id, name: f.name ?? "", mime: f.mimeType ?? "", modified: f.modifiedTime ?? "", path, link: f.webViewLink ?? `https://drive.google.com/file/d/${f.id}/view`, size: Number(f.size ?? 0) });
+      }
+      page = data.nextPageToken ?? "";
+    } while (page);
+  };
+  await walk(folder, [], depth);
+  return out;
+}
+/** Adds a file to a folder, as it is. Two plain calls, like createDoc: what the file is, then its bytes. */
+export async function uploadTo(token: string, name: string, mime: string, bytes: Buffer, folder: string): Promise<string> {
+  const { id } = await driveJson(token, "https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, mimeType: mime, parents: [folder] }) });
+  await driveJson(token, `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(id)}?uploadType=media&fields=id&supportsAllDrives=true`, { method: "PATCH", headers: { "content-type": mime }, body: new Uint8Array(bytes) });
+  return id;
 }

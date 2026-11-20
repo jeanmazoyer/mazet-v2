@@ -1109,3 +1109,4 @@ select.tlink, select.tlink:hover { background-image: var(--chev); background-rep
 .deal .line.wrap, .deal .mini { white-space: normal; height: auto; min-height: 20px; line-height: 1.3; padding-block: 2px; }
 /* In a table row only the first column carries the name in strong; the rest stays quiet. */
 .cell b { font-weight: var(--w-medium); } .row > .cell:first-child b { font-weight: var(--w-strong); }
+.vsync.gone { color: var(--orange-ink); } .setfoot .grow { flex: 1; align-self: center; }

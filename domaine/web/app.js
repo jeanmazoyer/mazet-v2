@@ -117,7 +117,7 @@ const S = {
   closed: { contact: true }, month: TODAY.slice(0, 7),
   bankStatement: [],
   feeds: [],
-  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, agenda: { on: false }, visitEdit: null, mailkit: { templates: [], signature: "" }, mailSkip: {}, mailFiles: [], mailSign: true, mailUp: false, tplQ: "", ai: false, aiBusy: false, mailTrack: (() => { try { return localStorage.getItem("mailTrack") === "1"; } catch (_) { return false; } })(), creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
+  auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, agenda: { on: false }, visitEdit: null, mailkit: { templates: [], signature: "" }, mailSkip: {}, mailFiles: [], mailSign: true, mailUp: false, tplQ: "", ai: false, aiBusy: false, syncReport: null, syncBusy: false, mailTrack: (() => { try { return localStorage.getItem("mailTrack") === "1"; } catch (_) { return false; } })(), creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
 };
 const deal = (id) => S.deals.find((d) => d.id === id);
@@ -443,7 +443,7 @@ function viewAffaire(id, peek = false) {
             ? `<article class="sticky editing">${head}<textarea id="note-edit" aria-label="Modifier la note">${esc(S.draft["note-edit"] ?? p.body)}</textarea><footer><span class="acts"><button class="link" data-a="note-cancel">Annuler</button><button class="btn sm" data-a="note-save" data-i="${i}">Enregistrer</button></span></footer></article>`
             : `<article class="sticky">${head}<p>${esc(p.body)}</p><footer><small>${esc(p.at)} · ${esc(p.by)}${p.edited ? ` · modifiée le ${esc(p.edited)}` : ""}</small><span class="acts"><button class="link" data-a="note-edit" data-i="${i}">Modifier</button><button class="link" data-unpin="${i}" title="La note quitte le haut de la fiche et reste dans l'historique">Archiver</button><button class="link danger" data-a="pin-del" data-i="${i}">Supprimer</button></span></footer></article>`; }).join("")}</div></section>` : ""}
         ${visitsBlock(d)}
-        <section class="blk"><h3 class="h flex">Documents <span class="count num">${slotsFor(d).length - missingDocs(d)} sur ${slotsFor(d).length}</span>${d.driveFolder ? `<a class="link drivelink" href="https://drive.google.com/drive/folders/${encodeURIComponent(d.driveFolder)}" target="_blank" rel="noopener">Dossier Drive · ${d.drivePlace === "clients" ? "Clients" : "Prospects"}</a>` : d.folderUrl ? `<a class="link drivelink" href="${esc(d.folderUrl)}" target="_blank" rel="noopener">Dossier Drive</a>` : ""}<button class="link" data-a="doc">+ Ajouter</button></h3><div class="docs">${dealDocs(d)}</div>${stageDocNote(d) ? `<p class="docnote">${stageDocNote(d)}</p>` : ""}</section>
+        <section class="blk"><h3 class="h flex">Documents <span class="count num">${slotsFor(d).length - missingDocs(d)} sur ${slotsFor(d).length}</span>${d.driveFolder ? `<a class="link drivelink" href="https://drive.google.com/drive/folders/${encodeURIComponent(d.driveFolder)}" target="_blank" rel="noopener">Dossier Drive${d.drivePlace === "ext" ? "" : ` · ${d.drivePlace === "clients" ? "Clients" : "Prospects"}`}</a>` : d.folderUrl ? `<a class="link drivelink" href="${esc(d.folderUrl)}" target="_blank" rel="noopener">Dossier Drive</a>` : ""}<button class="link" data-a="doc">+ Ajouter</button></h3><div class="docs">${dealDocs(d)}</div>${stageDocNote(d) ? `<p class="docnote">${stageDocNote(d)}</p>` : ""}</section>
         ${auditBlock(d)}${mailsBlock(d)}
         <section class="blk"><h3 class="h">À faire</h3>
         <div class="list">${d.todos.length ? d.todos.map((t) => { const lt = t.due && t.due < TODAY; return `<article class="ev"><button class="mk todo" data-done="${t.id}" aria-label="Marquer comme fait : ${esc(t.t)}"></button><div class="tx"><div class="tt">${esc(t.t)}</div><div class="meta">${esc(t.type ?? "Rappel")}${t.due ? ` · <span class="${lt ? "latetx" : ""}">${lt ? "en retard depuis le" : "pour le"} ${fr(t.due)}</span>` : ""} · Par ${esc(t.by)}</div></div>${t.cta ? `<button class="btn out" data-a="remind">${esc(t.cta)}</button>` : ""}</article>`; }).join("") : `<span class="muted">Rien ne demande votre attention.</span>`}</div></section>
@@ -474,7 +474,7 @@ function visitsBlock(d) {
   const list = visitsOf(d); if (!list.length) return "";
   return `<section class="blk"><h3 class="h flex">Visites <span class="count num">${list.length}</span></h3><div class="docs">${list.map((v) => { const past = v.date < TODAY;
     if (S.visitEdit && S.visitEdit.deal === d.id && S.visitEdit.id === v.id) return `<div class="vrow editing"><div class="vform">${visitFields("ve", v)}</div><div class="cfoot"><button class="link" data-a="visit-cancel">Annuler</button><button class="btn sm" data-a="visit-save" data-id="${esc(v.id)}">Enregistrer</button></div></div>`;
-    const sync = !S.agenda.on || past ? "" : v.sent === visitSig(d, v) ? `<span class="mini vsync ok">${ico("check", "xs")}Dans Google Agenda</span>` : `<span class="mini vsync">Envoi vers l'agenda…</span>`;
+    const sync = v.gone ? `<span class="mini vsync gone">Retirée de Google Agenda</span><button class="link" data-a="visit-back" data-id="${esc(v.id)}">Remettre</button>` : !S.agenda.on || past ? "" : v.sent === visitSig(d, v) ? `<span class="mini vsync ok">${ico("check", "xs")}Dans Google Agenda</span>` : `<span class="mini vsync">Envoi vers l'agenda…</span>`;
     return `<div class="drow vrow ${past ? "past" : ""}"><span class="kb vis">${ico("cal", "xs")}</span><span class="grow"><b>${visitDay(v.date)} à ${esc(v.time)}</b><small>${durLabel(v.dur)}${v.note ? " · " + esc(v.note) : ""}${past ? " · passée" : ""}</small></span>${sync}<button class="link" data-a="visit-edit" data-id="${esc(v.id)}">Modifier</button><button class="link danger" data-a="visit-del" data-id="${esc(v.id)}">Supprimer</button></div>`; }).join("")}</div></section>`;
 }
 // After a deal is saved: each coming visit whose event is not up to date is written in the agenda.
@@ -482,7 +482,7 @@ const visitBusy = new Set();
 function visitSync(d) {
   if (!S.agenda.on) return;
   for (const v of d.visits ?? []) { const sig = visitSig(d, v), key = d.id + v.id;
-    if (v.sent === sig || visitBusy.has(key) || v.date < TODAY) continue;
+    if (v.sent === sig || v.gone || visitBusy.has(key) || v.date < TODAY) continue;
     visitBusy.add(key);
     api("POST", "/api/calendar/visit", { dealId: d.id, visitId: v.id }).then((r) => { visitBusy.delete(key); const cur = deal(d.id), now = cur ? (cur.visits ?? []).find((x) => x.id === v.id) : null;
       if (r.status !== 200) { if (r.status === 409) { S.notice = `Visite non inscrite dans l'agenda : ${r.data.error}.`; render(); } return; }
@@ -646,7 +646,7 @@ function viewStats() {
 /* ---------- Settings ---------- */
 const stepper = (minus, plus, label, lo, hi) => `<div class="stepper"><button data-a="${minus}" aria-label="Diminuer" ${lo ? "disabled" : ""}>−</button><b class="num">${label}</b><button data-a="${plus}" aria-label="Augmenter" ${hi ? "disabled" : ""}>+</button></div>`;
 // The settings: sections listed on the left, grouped by subject; the chosen one on the right.
-const SET_GROUPS = [["Le domaine", ["bailleur", "utilisateurs"]], ["Réservations", ["pipeline", "echeancier", "menage", "calendriers"]], ["Connexions", ["drive", "gmail", "agenda"]], ["Données", ["banque", "modeles", "emails", "import", "sauvegarde"]]];
+const SET_GROUPS = [["Le domaine", ["bailleur", "utilisateurs"]], ["Réservations", ["pipeline", "echeancier", "menage", "calendriers"]], ["Connexions", ["sync", "drive", "gmail", "agenda"]], ["Données", ["banque", "modeles", "emails", "import", "sauvegarde"]]];
 const SET_KEYS = SET_GROUPS.flatMap(([, keys]) => keys);
 function viewSettings() {
   if (!isAdmin()) return topbar("Réglages", "") + `<div class="content"><div class="card lockcard"><span class="nic">${ico("lock", "s")}</span><div><b>Réglages réservés aux administrateurs</b><p class="muted">Vous utilisez l'application avec le rôle Équipe. Les étapes, l'échéancier, les calendriers, la banque et les utilisateurs se modifient avec un compte administrateur.</p></div><button class="btn alt" data-a="role" data-role="admin">Revenir en administrateur</button></div></div>`;
@@ -670,8 +670,12 @@ function viewSettings() {
       body: () => S.sources.map((x) => row(`${esc(x.kind)}, ${esc(x.name)}`, `${x.last ? "Lu le " + esc(when(x.last)) : "Pas encore lu"} · ${esc(x.url)}`, `<button class="link" data-a="src-sync" data-id="${x.id}">Synchroniser</button><button class="iconbtn" data-a="src-del" data-id="${x.id}" aria-label="Retirer le calendrier ${esc(x.name)}">${ico("trash", "s")}</button>`)).join("")
         + row("Mon calendrier, pour Airbnb ou Booking", "Collez ce lien dans la plateforme. Il ne montre que « Réservé » et les dates.", `<button class="btn alt sm" data-a="ical-copy">${ico("copy", "s")}Copier le lien</button>`)
         + `<div class="setfoot"><button class="btn sm" data-a="ics-new">${ico("plus", "s")}Ajouter un calendrier</button></div>` },
-    drive: { icon: "folder", label: "Google Drive", on: S.drive.on, sub: "Une fois connecté, « Créer » sur un contrat ou une caution fabrique un vrai document Google Docs, rempli depuis l'affaire et modifiable dans le panneau. L'application ne voit que les documents qu'elle crée. Ils sont privés : partagez le dossier avec les personnes qui doivent y accéder.",
-      body: () => link(S.drive, "Connecté", `${S.drive.folder ? `<a class="btn alt sm" href="https://drive.google.com/drive/folders/${encodeURIComponent(S.drive.folder)}" target="_blank" rel="noopener">Ouvrir le dossier</a>` : ""}<button class="btn alt sm" data-a="drive-off">Déconnecter</button>`, "Un dossier par affaire dans « Les jardins de Campagne » : dans « Prospects » dès sa création, déplacé dans « Clients » à la signature.",
+    sync: { icon: "sync", label: "Synchronisation", sub: "Toutes les heures, l'application se met d'accord avec Google. Drive : les fichiers ajoutés dans le dossier d'un séjour apparaissent dans l'affaire, et ceux déposés ici sont copiés dans le dossier. Gmail : chaque affaire retient ses échanges et signale un client sans réponse. Agenda : une visite déplacée ou retirée dans Google l'est aussi ici. Rien n'est jamais supprimé, d'un côté comme de l'autre : ce qui a disparu est signalé.",
+      body: () => { const r = S.syncReport, tone = { ok: "t-green", err: "t-red", off: "" }, word = { ok: "À jour", err: "En erreur", off: "Inactive" }, part = (name, p) => row(name, esc(p ? p.note : "Pas encore synchronisé"), `<span class="mini st ${tone[p ? p.state : "off"]}">${word[p ? p.state : "off"]}</span>`);
+        return part("Google Drive", r && r.drive) + part("Gmail", r && r.gmail) + part("Google Agenda", r && r.agenda) + row("Calendriers importés (Airbnb, Booking)", "Relus toutes les 30 minutes, indépendamment.", `<span class="mini st t-green">Automatique</span>`)
+          + `<div class="setfoot"><span class="hint grow">${r ? `Dernier passage : ${esc(when(r.at))}. Le prochain a lieu dans l'heure.` : "Premier passage dans les minutes qui suivent le démarrage."}</span><button class="btn sm" data-a="sync-now" ${S.syncBusy ? "disabled" : ""}>${ico("sync", "s")}${S.syncBusy ? "Synchronisation…" : "Synchroniser maintenant"}</button></div>`; } },
+    drive: { icon: "folder", label: "Google Drive", on: S.drive.on, sub: "Une fois connecté, « Créer » sur un contrat ou une caution fabrique un vrai document Google Docs, rempli depuis l'affaire et modifiable dans le panneau, et les dossiers des séjours sont relus toutes les heures. L'autorisation porte sur tout le Drive du compte connecté ; l'application ne lit que les dossiers des affaires, y ajoute des fichiers et n'en supprime jamais.",
+      body: () => link(S.drive, "Connecté", `${S.drive.folder ? `<a class="btn alt sm" href="https://drive.google.com/drive/folders/${encodeURIComponent(S.drive.folder)}" target="_blank" rel="noopener">Ouvrir le dossier</a>` : ""}<button class="btn alt sm" data-a="drive-off">Déconnecter</button>`, S.drive.full ? "Un dossier par affaire dans « Les jardins de Campagne » : dans « Prospects » dès sa création, déplacé dans « Clients » à la signature. Les séjours qui avaient déjà leur dossier le gardent." : `Connecté avant la synchronisation : l'application ne peut pas encore lire vos dossiers. <a href="/auth/drive">Reconnecter Google Drive</a> pour l'autoriser.`,
         ["Non connecté", "Les documents créés restent pour l'instant dans l'application.", `<a class="btn sm" href="/auth/drive">Connecter Google Drive</a>`]) },
     gmail: { icon: "mail", label: "Gmail", on: S.mail.on, sub: "Une fois la boîte du domaine connectée, les échanges avec chaque client se lisent dans sa fiche, onglet « E-mail », et on y répond sans quitter l'application. L'application ne cherche que les conversations avec les adresses de l'affaire ouverte, et n'envoie rien sans un clic sur « Envoyer ».",
       body: () => link(S.mail, "Connectée", `<button class="btn alt sm" data-a="mail-off">Déconnecter</button>`, "Les messages partent de cette boîte et se retrouvent dans ses « Messages envoyés ».", ["Non connectée", "L'onglet « E-mail » des affaires reste masqué.", `<a class="btn sm" href="/auth/gmail">Connecter la boîte Gmail</a>`]) },
@@ -754,7 +758,7 @@ const SLOTS = [
 // One line per document, everywhere: a coloured badge for its kind, its name, where it stands.
 function docCard(x, ref, dealTitle, cap) {
   return `<button class="drow" data-doc="${ref}" aria-label="Aperçu : ${esc(x.t)}"><span class="kb ${x.k}" title="${KLBL[x.k]}">${BADGE[x.k]}</span>
-    <span class="grow"><b>${esc(x.t)}</b><small class="num">${cap ? esc(cap) + " · " : ""}${dealTitle ? esc(dealTitle) + " · " : ""}${fr(x.d)}${x.admin ? " · Admin" : ""}</small></span><span class="mini st ${DOC_ST[x.st ?? "Brouillon"]}">${x.st ?? "Brouillon"}</span>${ico("right", "s")}</button>`;
+    <span class="grow"><b>${esc(x.t)}</b><small class="num">${cap ? esc(cap) + " · " : ""}${dealTitle ? esc(dealTitle) + " · " : ""}${fr(x.d)}${x.admin ? " · Admin" : ""}${x.gone ? " · absent du Drive" : ""}</small></span><span class="mini st ${DOC_ST[x.st ?? "Brouillon"]}">${x.st ?? "Brouillon"}</span>${ico("right", "s")}</button>`;
 }
 // The six expected documents first, present or missing, then anything else filed on the deal.
 function dealDocs(d, inFolder = false) {
@@ -1901,6 +1905,8 @@ document.addEventListener("click", (e) => {
   if (ds.a === "visit-del" && d) { const v = (d.visits ?? []).find((x) => x.id === ds.id), id = d.id;
     if (v) ask("Supprimer cette visite ?", `Visite du ${visitDay(v.date)} à ${esc(v.time)}, pour « ${esc(d.title)} ».`, S.agenda.on ? "Elle disparaît du calendrier de l'application et de Google Agenda." : "Elle disparaît du calendrier de l'application.", "Supprimer la visite", () => { const cur = deal(id), at = cur ? (cur.visits ?? []).indexOf(v) : -1;
       if (at >= 0) { cur.visits.splice(at, 1); log(cur, "Modification", `Visite du ${visitDay(v.date)} supprimée`); visitUnplan(cur, v); S.visitEdit = null; S.flash = { text: "Visite supprimée." }; } }); }
+  if (ds.a === "sync-now") { S.syncBusy = true; api("POST", "/api/sync").then((r) => { if (r.status !== 200) { S.syncBusy = false; S.notice = r.data.error ?? "Synchronisation refusée."; render(); } }, () => { S.syncBusy = false; S.notice = "Serveur injoignable."; render(); }); }
+  if (ds.a === "visit-back" && d) { const v = (d.visits ?? []).find((x) => x.id === ds.id); if (v) { v.id = "v" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); delete v.gone; v.sent = ""; S.flash = { text: "La visite est remise dans l'agenda." }; } }
   if (ds.a === "agenda-off") ask("Déconnecter Google Agenda ?", "Les visites déjà inscrites restent dans l'agenda : l'application ne les met simplement plus à jour.", "Les visites restent dans les affaires et dans le calendrier de l'application.", "Déconnecter", () => { api("DELETE", "/api/calendar").then((r) => { if (r.status === 200) S.agenda = { on: false }; else S.notice = "Déconnexion refusée."; render(); }); });
   if (ds.a === "note-edit" && d) { S.noteEdit = { deal: d.id, i: Number(ds.i) }; delete S.draft["note-edit"]; S.focus = "note-edit"; }
   if (ds.a === "note-cancel") { S.noteEdit = null; delete S.draft["note-edit"]; }
@@ -2157,7 +2163,7 @@ function auditBlock(d) {
 const gmailUrl = (id) => `https://mail.google.com/mail/${S.mailbox ? "?authuser=" + encodeURIComponent(S.mailbox) : ""}#all/${encodeURIComponent(id)}`;
 function mailsBlock(d) {
   if (S.mail.on) { const live = loadMails(d), n = live.threads.length;
-    return `<section class="blk"><h3 class="h flex">Conversations <span class="count num">${n}</span><button class="link" data-a="mail-new">Écrire</button></h3>
+    return `<section class="blk"><h3 class="h flex">Conversations <span class="count num">${n}</span>${d.mails && d.mails.waiting ? `<span class="mini st t-orange">Réponse attendue</span>` : ""}<button class="link" data-a="mail-new">Écrire</button></h3>
       ${live.state === "err" ? `<p class="docnote">${esc(live.error)}</p>` : n ? "" : `<p class="docnote">${live.state === "loading" ? "Lecture de la boîte…" : mailKey(d) ? `Aucun échange avec ${esc(d.contact.name)} dans la boîte pour l'instant.` : "Ajoutez l'adresse e-mail du contact pour retrouver ses messages ici."}</p>`}
       <div class="docs">${live.threads.map((t) => `<button class="drow" data-a="mail-thread" data-id="${esc(t.id)}"><span class="kb gdoc">${ico("mail", "xs")}</span><span class="grow"><b>${esc(t.subject || "(sans objet)")}</b><small class="num">${threadLine(t)}</small></span>${ico("right", "s")}</button>`).join("")}</div></section>`; }
   const m = d.mails; if (!m || !m.threads) return "";
@@ -2240,7 +2246,7 @@ const usersOut = () => S.users.map((u) => ({ email: u.email, name: u.name, role:
 function applySettings(st) {
   const p = st.settings.prefs ?? {}, bank = st.settings.bank ?? {};
   S.buffer = p.buffer ?? 0; TERMS.deposit = p.deposit ?? 30; TERMS.hold = p.hold ?? 2500; S.plSeq = p.plSeq ?? { D: 0, F: 0 }; S.sources = p.sources ?? []; S.mailbox = p.mailbox ?? ""; S.lessor = p.lessor ?? {};
-  S.library = st.settings.library ?? []; S.mailkit = { templates: [], signature: "", ...(st.settings.mailkit ?? {}) }; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false }; S.agenda = st.agenda ?? { on: false }; S.ai = st.ai === true;
+  S.library = st.settings.library ?? []; S.mailkit = { templates: [], signature: "", ...(st.settings.mailkit ?? {}) }; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false }; S.agenda = st.agenda ?? { on: false }; S.ai = st.ai === true; S.syncReport = st.settings.sync ?? null; S.syncBusy = false;
   const mine = st.user.email;
   S.users = [...st.users].sort((a, b) => Number(b.email === mine) - Number(a.email === mine)).map((u) => ({ email: u.email, name: u.name || u.email.split("@")[0], role: u.role === "admin" ? "Admin" : "Équipe", pending: u.pending }));
   for (const k of Object.keys(SETTINGS)) savedSettings[k] = JSON.stringify(SETTINGS[k]());
@@ -2321,12 +2327,13 @@ function driveCreate(d, x, title) {
   if (S.creating) return; S.creating = x.slot ?? "libre";
   const fail = (why) => { S.creating = ""; if (S.modal === "doc-new") S.modalErr = `Document non créé : ${why}.`; else S.notice = `Document non créé : ${why}.`; render(); };
   const html = docTemplate(d, { ...x, t: title });
-  api("POST", "/api/drive/docs", { dealId: d.id, title, html, folder: d.driveFolder ?? "", ...driveWant(d) }).then((r) => { if (r.status !== 200) { fail(r.data.error || "refus du serveur"); return; }
-    const cur = deal(d.id) ?? d, w = driveWant(cur); S.creating = ""; cur.driveFolder = r.data.folder; cur.drivePlace = w.client ? "clients" : "prospects"; cur.driveName = w.name;
+  api("POST", "/api/drive/docs", { dealId: d.id, title, html, folder: d.driveFolder ?? "", fixed: d.drivePlace === "ext", ...driveWant(d) }).then((r) => { if (r.status !== 200) { fail(r.data.error || "refus du serveur"); return; }
+    const cur = deal(d.id) ?? d, w = driveWant(cur); S.creating = ""; cur.driveFolder = r.data.folder; if (cur.drivePlace !== "ext") { cur.drivePlace = w.client ? "clients" : "prospects"; cur.driveName = w.name; }
     cur.docs.push({ ...x, t: title, url: r.data.url, did: r.data.id, sum: hash(html), stamp: r.data.stamp ?? "" }); log(cur, "Document", `${title} créé dans Google Drive`);
     if (S.modal === "doc-new") { S.modal = null; S.draft = {}; } S.preview = { deal: cur.id, i: cur.docs.length - 1 }; S.toast = ""; render(); }, () => fail("serveur injoignable"));
 }
 function driveSync(d) {
+  if (d.drivePlace === "ext") return; // the stay's own folder, kept where and as the estate named it
   if (!S.drive.on || driveBusy.has(d.id) || !(d.driveFolder || !d.end || d.end >= TODAY)) return;
   const w = driveWant(d), place = w.client ? "clients" : "prospects";
   if (d.driveFolder && d.drivePlace === place && d.driveName === w.name) return;

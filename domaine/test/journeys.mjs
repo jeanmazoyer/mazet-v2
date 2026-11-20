@@ -90,7 +90,7 @@ ok("a web page is refused as an upload", (await a.evaluate(async () => { const f
 await a.click("#close-preview"); await a.goto(`${BASE}/#reglages-echeancier`); await a.waitForSelector(".setmain"); await a.click('[data-a="dep-plus"]'); await settle(a);
 await a.reload(); await a.waitForSelector(".setmain");
 ok("a setting survives a reload", (await S(a, "TERMS.deposit")) === 35);
-ok("cards of features not plugged in are not shown", !(await a.locator(".setx").innerText()).includes("Pennylane") && (await a.locator(".setnav a").count()) === 14 && (await a.locator(".setmain h2").innerText()) === "Échéancier par défaut");
+ok("cards of features not plugged in are not shown", !(await a.locator(".setx").innerText()).includes("Pennylane") && (await a.locator(".setnav a").count()) === 15 && (await a.locator(".setmain h2").innerText()) === "Échéancier par défaut");
 const team = await person("carol@test.local", "team");
 ok("the team does not receive the bank statement or the calendar secret", await team.evaluate(() => fetch("/api/state").then((r) => r.json()).then((s) => !("bank" in s.settings) && !("ical_token" in s.settings) && s.admin === null)));
 ok("the team cannot download a backup", (await team.evaluate(() => fetch("/api/backup").then((r) => r.status))) === 403); await team.goto(`${BASE}/#reglages`); await team.waitForSelector(".lockcard");
@@ -114,6 +114,11 @@ const sendTry = async (to) => (await a.request.post(`${BASE}/api/mail/send`, { d
 ok("the server sends nothing to an address that is not the deal's, nor without a mailbox", (await sendTry("boss@corp.com")) === 400 && [400, 409].includes(await sendTry("")));
 await a.goto(`${BASE}/#reglages-drive`); await a.waitForSelector(".setmain");
 ok("the settings offer to connect Google Drive, and show at a glance that nothing is connected", (await a.locator('a[href="/auth/drive"]').count()) === 1 && (await a.locator(".setnav .cdot").count()) === 3 && (await a.locator(".setnav .cdot.on").count()) === 0);
+// Synchronisation: asked for by an administrator only, and it says where each connection stands
+ok("the team cannot start a synchronisation", (await team.evaluate(() => fetch("/api/sync", { method: "POST" }).then((r) => r.status))) === 403);
+await a.click('.setnav a[href="#reglages-sync"]'); await a.waitForSelector('[data-a="sync-now"]'); await a.click('[data-a="sync-now"]'); await a.waitForFunction(() => window.__app.S.syncReport && !window.__app.S.syncBusy, null, { timeout: 15000 });
+ok("a synchronisation asked for runs and reports each connection, here all three not connected", (await S(a, "['drive','gmail','agenda'].every(k => S.syncReport[k].state === 'off')")) && (await a.locator(".setmain .setrow").count()) === 4 && (await a.locator(".setmain").innerText()).includes("Dernier passage"));
+ok("the report of a synchronisation cannot be written by a page", (await a.request.put(`${BASE}/api/settings/sync`, { data: { value: { at: "x" } } })).status() === 400);
 await a.click('.setnav a[href="#reglages-gmail"]'); await a.waitForSelector('a[href="/auth/gmail"]');
 ok("a section of the settings opens from the list on the left, one at a time", (await a.locator(".setmain h2").innerText()) === "Gmail" && (await a.locator('a[href="/auth/drive"]').count()) === 0 && (await a.evaluate(() => location.hash)) === "#reglages-gmail");
 

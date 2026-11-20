@@ -169,6 +169,18 @@ export async function threadsFor(token: string, addresses: string[], mailbox: st
   return full.map((t) => { const messages = (t.messages ?? []).filter((m) => !(m.labelIds ?? []).includes("DRAFT")).map((m) => readMessage(m, mailbox)).sort((a, b) => (a.at < b.at ? -1 : 1));
     return { id: t.id, subject: messages[0]?.subject ?? "", messages }; }).filter((t) => t.messages.length && concerns(t.messages, addresses));
 }
+/** The deal's threads without their text: who wrote and when. Enough to sum a mailbox up, at a fraction of the reading. */
+export async function threadsMeta(token: string, addresses: string[], mailbox: string): Promise<Array<{ id: string; subject: string; messages: Array<{ at: string; mine: boolean; from: string; to: string }> }>> {
+  if (!addresses.length) return [];
+  const list = await gmail<{ threads?: Array<{ id: string }> }>(token, `/threads?maxResults=20&q=${encodeURIComponent(mailQuery(addresses))}`);
+  const out = [];
+  for (const t of list.threads ?? []) {
+    const full = await gmail<{ id: string; messages?: Array<{ id: string; internalDate?: string; payload?: Part; labelIds?: string[] }> }>(token, `/threads/${encodeURIComponent(t.id)}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
+    const messages = (full.messages ?? []).filter((m) => !(m.labelIds ?? []).includes("DRAFT")).map((m) => readMessage(m, mailbox)).sort((a, b) => (a.at < b.at ? -1 : 1));
+    if (messages.length && concerns(messages, addresses)) out.push({ id: full.id, subject: messages[0].subject, messages: messages.map((m) => ({ at: m.at, mine: m.mine, from: m.from, to: m.to })) });
+  }
+  return out;
+}
 /** What a reply needs from its thread. Null when the thread is not one of the deal's. */
 export async function threadHead(token: string, threadId: string, addresses: string[], mailbox: string): Promise<{ messageId: string; subject: string } | null> {
   const t = await gmail<{ messages?: Array<{ id: string; internalDate?: string; payload?: Part }> }>(token, `/threads/${encodeURIComponent(threadId)}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Message-ID`);

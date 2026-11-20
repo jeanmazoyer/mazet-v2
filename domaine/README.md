@@ -152,6 +152,32 @@ project.
   optional. What is sent to the model: the deal's main facts, the open conversation, the person's hint.
   The client's messages are passed as content inside a marked block, never as instructions.
 
+## Synchronisation (every hour, and on request)
+
+`syncAll` in `server/main.ts` runs 90 seconds after start, then every hour, and when an administrator
+presses "Synchroniser maintenant" (`POST /api/sync`). Its report is kept in the settings under `sync`
+(read by administrators, never written by a page) and shown in Réglages, section "Synchronisation".
+The three subjects run one after the other and independently: a connection that fails is reported and
+does not stop the others. The rules live in `server/sync.ts` and are tested alone.
+
+- **Drive, both ways.** The grant now covers the whole Drive of the connected account (`drive`): reading
+  a folder the app did not create, and adding a file to it, need no less. A grant given before this
+  (`drive.file`) keeps working for documents the app creates, and the page asks to reconnect for the rest.
+  For each deal that has a folder (its own, or the one the estate already kept, linked by `folderUrl`),
+  the folder is listed two levels down. A file not known yet becomes a document of the deal, classed by
+  its name and its sub-folder; one renamed in Drive takes its new name; one the synchronisation had added
+  and that is gone is marked `gone`. In the other direction, a file dropped in the app is copied to the
+  folder once (`gid` remembers the copy), except those reserved to administrators.
+  A folder the estate already had is adopted as it is (`drivePlace: "ext"`): never renamed, never moved.
+- **Gmail.** For each deal still alive (not lost, stay not ended more than four months ago), the threads
+  with its addresses are listed without their text and summed up in `mails` (counts, first and last day,
+  whether the client spoke last). Reading a conversation stays live, from Gmail, when a deal is opened.
+- **Agenda.** For each visit to come that the app wrote in the agenda, the event is read back: moved
+  there, the visit takes the new day, hour and length; removed there, the visit is marked `gone` and the
+  page offers to put it back (under a new identifier, since Google never reuses one).
+- **Nothing is deleted on either side**, and a deal saved by someone at the same moment wins: the write
+  is retried on what they saved.
+
 ## Visits and Google Agenda
 
 A visit is planned from a deal (composer tab "Visite"): day, hour, length, a few words. It is kept in

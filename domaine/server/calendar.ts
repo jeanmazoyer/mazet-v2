@@ -76,3 +76,10 @@ export async function deleteEvent(token: string, id: string): Promise<void> {
   const res = await call(token, `${API}/${encodeURIComponent(id)}`, "DELETE");
   if (!res.ok && res.status !== 404 && res.status !== 410) throw refused(res.status);
 }
+/** A visit's event as the agenda holds it now, with its hours given in the estate's time zone. Null when it is gone. */
+export async function readEvent(token: string, id: string): Promise<{ status?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } } | null> {
+  const res = await call(token, `${API}/${encodeURIComponent(id)}?timeZone=${encodeURIComponent(CAL_ZONE)}`, "GET");
+  if (res.status === 404 || res.status === 410) return null;
+  if (!res.ok) throw refused(res.status);
+  return (await res.json()) as { status?: string };
+}

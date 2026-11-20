@@ -15,10 +15,11 @@ import { config } from "./config.ts";
 import { migrate, sql } from "./db.ts";
 import { DEAL_ID, forRole, mergeForSave, stored, type Doc } from "./deals.ts";
 import { AiError, draftMail, draftPrompt, draftToHtml, plainText } from "./ai.ts";
+import { driveIdOf, mailSummary, planDocs, visitFromEvent, type DocLine } from "./sync.ts";
 import { jobOf, newToken, PIXEL, sendAtOf, TRACK_TOKEN, type Job } from "./outbox.ts";
-import { calAuthUrl, CalError, calSeen, CAL_SCOPE, deleteEvent, eventBody, eventId, putEvent, visitOf, VISIT_ID, type CalSetting } from "./calendar.ts";
-import { addressesOf, buildMime, cleanMailHtml, inlineImages, trackLinks, type InlineFile, type OutFile, mailAuthUrl, MailError, mailSeen, MAIL_SCOPES, attachmentHeaders, readAttachment, recipientsFor, sendMail, threadHead, threadsFor, type MailSetting } from "./mail.ts";
-import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, exportPdf, ownDriveDocs, pagePdf, pdfName, lockDoc, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
+import { calAuthUrl, CalError, calSeen, CAL_SCOPE, deleteEvent, eventBody, eventId, putEvent, readEvent, visitOf, VISIT_ID, type CalSetting } from "./calendar.ts";
+import { addressesOf, buildMime, cleanMailHtml, inlineImages, trackLinks, type InlineFile, type OutFile, mailAuthUrl, MailError, mailSeen, MAIL_SCOPES, attachmentHeaders, readAttachment, recipientsFor, sendMail, threadsMeta, threadHead, threadsFor, type MailSetting } from "./mail.ts";
+import { accessToken, createDoc, createFolder, docHtml, driveAuthUrl, DriveError, driveSeen, DRIVE_ID, exchangeCode, editedSince, folderName, forgetToken, listTree, uploadTo, exportPdf, ownDriveDocs, pagePdf, pdfName, lockDoc, moveQuery, readFolder, readStamp, revoke, updateFolder, writeDoc, type DriveSetting } from "./drive.ts";
 import { fetchIcal, type Source, type Stay } from "./ical.ts";
 
 const app = new Hono<{ Variables: { user: User } }>();
@@ -26,7 +27,7 @@ const CHANNEL = "domaine_changes";
 // Settings anyone signed in may write, and those only an administrator may.
 const SHARED_KEYS = ["library", "feeds", "agents", "mailkit"], ADMIN_KEYS = ["prefs", "bank"];
 // Settings the team does not even receive: the bank statement, and the secret of the calendar link.
-const PRIVATE_KEYS = ["bank", "ical_token", "drive", "gmail", "agenda", "ai_usage"];
+const PRIVATE_KEYS = ["bank", "ical_token", "drive", "gmail", "agenda", "ai_usage", "sync"];
 // Settings that never leave the server at all: they hold a secret.
 const SECRET_KEYS = ["ical_token", "drive", "gmail", "agenda", "ai_usage"];
 const UPLOAD_MIME = ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/csv",
@@ -139,7 +140,7 @@ async function driveConnected(cookies: string | undefined, code: string): Promis
     const before = await driveSetting();
     const folder = before && before.email === who.email ? before.folder : await createFolder(got.access, "Les jardins de Campagne");
     const same = before && before.email === who.email ? before : null;
-    const value: DriveSetting = { refresh: got.refresh, email: who.email, folder, ...(same?.prospects ? { prospects: same.prospects } : {}), ...(same?.clients ? { clients: same.clients } : {}) };
+    const value: DriveSetting = { refresh: got.refresh, email: who.email, folder, full: true, ...(same?.prospects ? { prospects: same.prospects } : {}), ...(same?.clients ? { clients: same.clients } : {}) };
     await sql`insert into settings (key, value) values ('drive', ${sql.json(value as never)}) on conflict (key) do update set value = excluded.value, updated_at = now()`;
     forgetToken(); await sql.notify(CHANNEL, JSON.stringify({ kind: "setting", key: "drive", client: "" }));
     return backTo("ok");
@@ -364,7 +365,9 @@ function withPlaces(drive: DriveSetting, token: string): Promise<DriveSetting> {
  * The folder of one stay, where it belongs: in "Clients" once signed, in "Prospects" before. A known
  * folder is renamed or moved when needed; one that was deleted in Drive is made again.
  */
-async function dealFolder(token: string, drive: DriveSetting, given: string, name: string, client: boolean): Promise<string> {
+async function dealFolder(token: string, drive: DriveSetting, given: string, name: string, client: boolean, fixed = false): Promise<string> {
+  // A folder the estate already kept for the stay is used as it is: never renamed, never moved.
+  if (fixed && DRIVE_ID.test(given) && (await readFolder(token, given))) return given;
   const places = await withPlaces(drive, token), want = (client ? places.clients : places.prospects) as string;
   const known = DRIVE_ID.test(given) ? await readFolder(token, given) : null;
   if (!known) return createFolder(token, name, want);
@@ -376,7 +379,7 @@ const driveFailure = (c: { json: (body: unknown, status: 409 | 502) => Response 
   if (e instanceof DriveError && e.status === 401) { forgetToken(); return c.json({ error: "Google Drive n'est plus connecté : reconnectez-le dans les réglages" }, 409); }
   console.error("drive call failed", e); return c.json({ error: "Google Drive ne répond pas, réessayez" }, 502);
 };
-const folderAsk = (body: Record<string, unknown> | null) => ({ dealId: String(body?.dealId ?? ""), given: String(body?.folder ?? ""), name: folderName(String(body?.name ?? "")), client: body?.client === true });
+const folderAsk = (body: Record<string, unknown> | null) => ({ dealId: String(body?.dealId ?? ""), given: String(body?.folder ?? ""), name: folderName(String(body?.name ?? "")), client: body?.client === true, fixed: body?.fixed === true });
 app.post("/api/drive/folder", async (c) => {
   const ask = folderAsk(await readJson(c));
   if (!DEAL_ID.test(ask.dealId)) return c.json({ error: "affaire invalide" }, 400);
@@ -384,7 +387,7 @@ app.post("/api/drive/folder", async (c) => {
   if (!drive) return c.json({ error: "Google Drive n'est pas connecté" }, 409);
   try {
     const token = await accessToken(drive.refresh, config.googleId, config.googleSecret);
-    return c.json({ folder: await dealFolder(token, drive, ask.given, ask.name, ask.client) });
+    return c.json({ folder: await dealFolder(token, drive, ask.given, ask.name, ask.client, ask.fixed) });
   } catch (e) { return driveFailure(c as never, e); }
 });
 app.post("/api/drive/docs", async (c) => {
@@ -394,7 +397,7 @@ app.post("/api/drive/docs", async (c) => {
   if (!drive) return c.json({ error: "Google Drive n'est pas connecté" }, 409);
   try {
     const token = await accessToken(drive.refresh, config.googleId, config.googleSecret);
-    const folder = await dealFolder(token, drive, ask.given, ask.name, ask.client);
+    const folder = await dealFolder(token, drive, ask.given, ask.name, ask.client, ask.fixed);
     const made = await createDoc(token, title, docHtml(title, html), folder);
     return c.json({ id: made.id, stamp: made.stamp, url: `https://docs.google.com/document/d/${made.id}/edit`, folder });
   } catch (e) { return driveFailure(c as never, e); }
@@ -647,10 +650,134 @@ app.delete("/api/calendar", async (c) => {
   return c.json({ ok: true });
 });
 
+/* ---------- Synchronisation: every hour, the deals are brought in line with Drive, Gmail and the agenda ---------- */
+// One pass, three subjects, each on its own: a connection that fails does not stop the others. A deal is
+// changed through patchDeal, which gives way if someone saved it in the meantime (the next pass will
+// take it again). Nothing is deleted on either side: what has gone is marked, for a person to decide.
+type Part = { state: "off" | "ok" | "err"; note: string };
+const off = (note: string): Part => ({ state: "off", note }), plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
+async function patchDeal(id: string, change: (doc: Doc) => Doc | null, tries = 3): Promise<boolean> {
+  // Someone saving the deal at the same moment makes the write miss: it is tried again on what they saved.
+  for (let n = 0; n < tries; n++) {
+    const [row] = await sql`select doc, version from deals where id = ${id}`;
+    const next = row ? change(row.doc as Doc) : null;
+    if (!row || !next) return false;
+    const done = await sql`update deals set doc = ${sql.json(next as never)}, version = version + 1 where id = ${id} and version = ${row.version} returning version`;
+    if (!done.length) continue;
+    await sql.notify(CHANNEL, JSON.stringify({ kind: "deal", id, version: done[0].version, client: "" }));
+    return true;
+  }
+  return false;
+}
+type Loose = Record<string, unknown>;
+async function syncDrive(ids: string[]): Promise<Part> {
+  const drive = await driveSetting();
+  if (!drive) return off("Non connecté");
+  if (!drive.full) return off("Connecté avant la synchronisation : reconnectez Google Drive pour autoriser la lecture des dossiers");
+  let token = "";
+  try { token = await accessToken(drive.refresh, config.googleId, config.googleSecret); } catch { return { state: "err", note: "Google Drive n'est plus connecté : reconnectez-le" }; }
+  let read = 0, added = 0, renamed = 0, pushed = 0, lost = 0;
+  for (const id of ids) {
+    const doc = (await dealDoc(id)) as (Doc & Loose) | null, folder = doc ? (DRIVE_ID.test(String(doc.driveFolder ?? "")) ? String(doc.driveFolder) : driveIdOf(doc.folderUrl)) : "";
+    if (!doc || !folder) continue;
+    try {
+      const files = await listTree(token, folder); read++;
+      // Files dropped in the app go to the folder too, once: one already there under the same name is taken
+      // as the copy. Those reserved to administrators stay in the app.
+      const copies = new Map<string, string>();
+      for (const x of (Array.isArray(doc.docs) ? doc.docs : []) as DocLine[]) {
+        if (typeof x.fileId !== "string" || x.gid || x.admin === true || !/^[0-9a-f-]{36}$/.test(x.fileId)) continue;
+        const [row] = await sql`select name, mime from files where id = ${x.fileId} and deal_id = ${id}`, twin = row ? files.find((f) => f.name === String(row.name)) : undefined;
+        if (twin) { copies.set(x.fileId, twin.id); continue; }
+        const bytes = row ? await readFile(join(config.dataDir, "files", x.fileId)).catch(() => null) : null;
+        if (row && bytes) { copies.set(x.fileId, await uploadTo(token, String(row.name), String(row.mime), bytes, folder)); pushed++; }
+      }
+      let seen = { added: 0, renamed: 0 };
+      await patchDeal(id, (cur) => {
+        const mine = ((Array.isArray(cur.docs) ? cur.docs : []) as DocLine[]).map((x) => (typeof x.fileId === "string" && copies.has(x.fileId) && !x.gid ? { ...x, gid: copies.get(x.fileId) } : x));
+        const plan = planDocs(mine, files), adopt = !DRIVE_ID.test(String((cur as Loose).driveFolder ?? ""));
+        seen = { added: plan.added, renamed: plan.renamed };
+        return plan.changed || copies.size || adopt ? ({ ...cur, docs: plan.docs, ...(adopt ? { driveFolder: folder, drivePlace: "ext" } : {}) } as Doc) : null;
+      });
+      added += seen.added; renamed += seen.renamed;
+    } catch (e) {
+      if (e instanceof DriveError && e.status === 401) { forgetToken(); return { state: "err", note: "Google Drive n'est plus connecté : reconnectez-le" }; }
+      if (!(e instanceof DriveError)) console.error("drive sync failed for a deal", e);
+      lost++;
+    }
+  }
+  return { state: lost && !read ? "err" : "ok", note: `${plural(read, "dossier lu", "dossiers lus")}, ${plural(added, "document ajouté", "documents ajoutés")}, ${plural(renamed, "renommé", "renommés")}, ${plural(pushed, "fichier envoyé vers Drive", "fichiers envoyés vers Drive")}${lost ? `, ${plural(lost, "dossier inaccessible", "dossiers inaccessibles")} avec ce compte` : ""}` };
+}
+async function syncMail(ids: string[]): Promise<Part> {
+  const box = await mailSetting();
+  if (!box) return off("Non connectée");
+  let token = "";
+  try { token = await accessToken(box.refresh, config.googleId, config.googleSecret); } catch { return { state: "err", note: "La boîte Gmail n'est plus connectée : reconnectez-la" }; }
+  // Stays ended more than four months ago keep what was last read: their mail no longer moves.
+  const since = new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10);
+  let read = 0, waiting = 0;
+  for (const id of ids) {
+    const doc = (await dealDoc(id)) as (Doc & Loose) | null, addresses = doc ? addressesOf(doc as never) : [];
+    if (!doc || !addresses.length || doc.status === "Perdu" || (typeof doc.end === "string" && doc.end && doc.end < since)) continue;
+    try {
+      const sum = mailSummary(await threadsMeta(token, addresses, box.email)); read++; if (sum.waiting) waiting++;
+      await patchDeal(id, (cur) => { const { asOf: _asOf, ...before } = ((cur as Loose).mails ?? {}) as Loose; return JSON.stringify(before) === JSON.stringify(sum) ? null : ({ ...cur, mails: { ...sum, asOf: new Date().toISOString() } } as Doc); });
+    } catch (e) {
+      if ((e instanceof MailError || e instanceof DriveError) && e.status === 401) { forgetToken(); return { state: "err", note: "La boîte Gmail n'est plus connectée : reconnectez-la" }; }
+      if (e instanceof MailError && e.status === 403) return { state: "err", note: "Gmail refuse l'accès : vérifiez que « Gmail API » est activée" };
+      console.error("mail sync failed for a deal", e);
+    }
+  }
+  return { state: "ok", note: `${plural(read, "affaire relue", "affaires relues")}, ${waiting ? plural(waiting, "client attend une réponse", "clients attendent une réponse") : "aucun client en attente de réponse"}` };
+}
+async function syncVisits(ids: string[]): Promise<Part> {
+  const cal = await calSetting();
+  if (!cal) return off("Non connecté");
+  let token = "";
+  try { token = await accessToken(cal.refresh, config.googleId, config.googleSecret); } catch { return { state: "err", note: "Google Agenda n'est plus connecté : reconnectez-le" }; }
+  const today = new Date().toISOString().slice(0, 10);
+  let read = 0, moved = 0, gone = 0;
+  for (const id of ids) {
+    const doc = (await dealDoc(id)) as (Doc & Loose) | null, visits = (doc && Array.isArray(doc.visits) ? doc.visits : []) as Array<Loose>;
+    // Only visits to come that the app did write in the agenda: one never sent has no event to compare with.
+    const due = visits.filter((v) => typeof v.id === "string" && typeof v.sent === "string" && v.sent && !v.gone && String(v.date ?? "") >= today);
+    if (!doc || !due.length) continue;
+    try {
+      const changes = new Map<string, ReturnType<typeof visitFromEvent>>();
+      for (const v of due) { const known = visitOf(doc as never, String(v.id)); if (!known) continue; read++; const now = visitFromEvent(known, await readEvent(token, eventId(id, known.id))); if (now) changes.set(known.id, now); }
+      if (!changes.size) continue;
+      for (const c of changes.values()) if (c && "gone" in c) gone++; else moved++;
+      await patchDeal(id, (cur) => ({ ...cur, visits: ((Array.isArray((cur as Loose).visits) ? (cur as Loose).visits : []) as Loose[]).map((v) => { const c = changes.get(String(v.id)); return c ? { ...v, ...c } : v; }) } as Doc));
+    } catch (e) {
+      if ((e instanceof CalError || e instanceof DriveError) && e.status === 401) { forgetToken(); return { state: "err", note: "Google Agenda n'est plus connecté : reconnectez-le" }; }
+      if (e instanceof CalError && e.status === 403) return { state: "err", note: "Google Agenda refuse l'accès : vérifiez que « Google Calendar API » est activée" };
+      console.error("agenda sync failed for a deal", e);
+    }
+  }
+  return { state: "ok", note: `${plural(read, "visite vérifiée", "visites vérifiées")}, ${plural(moved, "déplacée dans l'agenda", "déplacées dans l'agenda")}, ${plural(gone, "retirée de l'agenda", "retirées de l'agenda")}` };
+}
+let syncing = false;
+async function syncAll(): Promise<void> {
+  if (syncing) return; syncing = true;
+  try {
+    const ids = (await sql`select id from deals order by updated_at desc`).map((r) => String(r.id));
+    const report = { at: new Date().toISOString(), drive: await syncDrive(ids), gmail: await syncMail(ids), agenda: await syncVisits(ids) };
+    await sql`insert into settings (key, value) values ('sync', ${sql.json(report)}) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+    await sql.notify(CHANNEL, JSON.stringify({ kind: "setting", key: "sync", client: "" }));
+  } finally { syncing = false; }
+}
+// A person asks for a pass now. It runs behind: the page is told when it is done, like any other change.
+app.post("/api/sync", (c) => {
+  if (!adminOnly(c.get("user"))) return c.json({ error: "réservé aux administrateurs" }, 403);
+  const already = syncing;
+  if (!already) syncAll().catch((e) => console.error("synchronisation failed", e));
+  return c.json({ ok: true, running: true, already });
+});
+
 /* ---------- Backup: everything the app holds, as one file ---------- */
 // Uploaded files are listed, not embedded: they live on their own volume.
 async function snapshot(): Promise<string> {
-  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings where key not in ('drive', 'gmail', 'agenda', 'ai_usage')`, sql`select id, deal_id, name, mime, size, created_at from files`]);
+  const [users, deals, settings, files] = await Promise.all([sql`select email, name, role, created_at from users`, sql`select id, doc, version, updated_at from deals`, sql`select key, value from settings where key not in ('drive', 'gmail', 'agenda', 'ai_usage', 'sync')`, sql`select id, deal_id, name, mime, size, created_at from files`]);
   return JSON.stringify({ format: "domaine-backup-1", at: new Date().toISOString(), users, deals, settings, files });
 }
 const backupDir = join(config.dataDir, "backups");
@@ -689,4 +816,6 @@ setInterval(() => { syncFeeds().catch((e) => console.error("calendar sync failed
 const backup = () => { dailyBackup().catch((e) => console.error("backup failed", e)); };
 backup(); setInterval(backup, 6 * 60 * 60 * 1000).unref();
 setInterval(() => { sendDue().catch((e) => console.error("scheduled e-mails failed", e)); }, 30 * 1000).unref();
+const hourly = () => { syncAll().catch((e) => console.error("synchronisation failed", e)); };
+setTimeout(hourly, 90 * 1000).unref(); setInterval(hourly, 60 * 60 * 1000).unref();
 serve({ fetch: app.fetch, port: config.port, hostname: "0.0.0.0" }, (info) => console.warn(`domaine listening on :${info.port} (${config.baseUrl})`));
