@@ -78,6 +78,8 @@ const feed = await p.evaluate((u) => fetch(new URL(u).pathname).then((r) => r.te
 ok("my calendar lists held stays without any name", (feed.match(/BEGIN:VEVENT/g) ?? []).length === 4 && !/Fictif|Essai|Modele|Demo/.test(feed) && feed.includes("SUMMARY:Réservé"), feed.slice(0, 200));
 ok("a wrong calendar link gives nothing", (await p.evaluate(() => fetch("/ical/not-the-secret-not-the-secret.ics").then((r) => r.status))) === 404);
 await p.goto(`${BASE}/#affaires`); await p.waitForSelector(".board");
+await p.keyboard.press("Control+f"); await p.waitForSelector(".searchm");
+ok("the find shortcut opens the app's own search, and a second press hands it back to the browser", (await p.locator(".searchm").count()) === 1 && (await p.keyboard.press("Control+f"), await p.waitForTimeout(200), await p.locator(".searchm").count()) === 0);
 await p.keyboard.press("Control+k"); await p.keyboard.type("fictif");
 ok("search finds a deal and its contact", (await p.locator(".searchm .pick").count()) >= 2); await p.keyboard.press("Escape");
 await p.goto(`${BASE}/#taches`); await p.waitForTimeout(300); await p.click('[data-a="task-new"]'); await p.fill("#tk-text", "Rappeler pour la visite"); await p.click('[data-a="task-add"]'); await p.waitForTimeout(300);

@@ -213,7 +213,7 @@ function rail(active) {
   const due = live().flatMap((d) => d.todos).filter((t) => t.due && t.due <= TODAY).length, n = alerts().length, u = me();
   return `<nav class="rail" aria-label="Navigation principale">
     <a class="brand" href="#affaires" title="Accueil" aria-label="Accueil : affaires"><span class="logo">J</span><span class="lb">Les jardins de Campagne</span></a><hr>
-    <button class="tile" data-a="search" title="Rechercher (Ctrl K)" aria-label="Rechercher partout">${ico("search", "m")}<span class="lb">Rechercher</span><kbd class="lb">Ctrl K</kbd></button>
+    <button class="tile" data-a="search" title="Rechercher (${FIND_KEY})" aria-label="Rechercher partout">${ico("search", "m")}<span class="lb">Rechercher</span><kbd class="lb">${FIND_KEY}</kbd></button>
     ${item("affaires", "grid", "Affaires")}${item("reservations", "cal", "Réservations")}${item("contacts", "users", "Contacts")}${item("documents", "doc", "Documents")}${item("audit", "shield", "Audit", auditCount())}${item("messages", "mail", "Messages", unread)}${item("taches", "tasks", "Tâches", due)}${item("openspace", "spark", "Open Space", S.props.length)}${item("statistiques", "chart", "Statistiques")}${item("reglages", "gear", "Réglages")}
     <button class="plus" data-a="new" title="Nouvelle affaire" aria-label="Nouvelle affaire">${ico("plus")}<span class="lb">Nouvelle affaire</span></button>
     <div class="spacer"></div>
@@ -925,7 +925,8 @@ function extModal() {
       <footer><button class="btn alt" data-a="close-modal">Fermer</button><button class="btn" data-a="sim" data-msg="Dans l'application : la réservation s'ouvre sur la plateforme d'origine.">Ouvrir sur la plateforme</button></footer>
     </div>`;
 }
-// One search across deals, contacts and documents, opened from the rail or with Ctrl K.
+// One search across deals, contacts and documents, opened from the rail or with Ctrl F (Cmd F on a Mac).
+const FIND_KEY = /Mac|iPhone|iPad/.test(navigator.platform ?? "") ? "⌘ F" : "Ctrl F";
 function searchModal() {
   if (S.modal !== "search") return "";
   const q = dval("gq").trim().toLowerCase(), hit = (...v) => v.some((s) => String(s).toLowerCase().includes(q));
@@ -2004,7 +2005,11 @@ document.addEventListener("change", (e) => { const r = ctx(), id = e.target.id, 
     else S.notice = "Une affaire signée reste gagnée. Pour revenir en arrière, changez son étape.";
     render(); } });
 document.addEventListener("keydown", (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); S.modal = "search"; S.preview = null; S.menu = null; S.draft.gq = ""; render(); return; }
+  // Ctrl or Cmd with F (or K) opens the app's own search, which looks through deals, contacts and
+  // documents. Pressed again while it is open, F is left to the browser: its search in the page stays reachable.
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && ["f", "k"].includes(e.key.toLowerCase())) {
+    if (S.modal === "search" && e.key.toLowerCase() === "f") { S.modal = null; render(); return; }
+    e.preventDefault(); S.modal = "search"; S.preview = null; S.menu = null; S.draft.gq = ""; render(); return; }
   if (e.key === "Escape" && S.preview && !S.edit && !S.payEdit && !S.modal && !S.menu) { closePanel(); render(); return; }
   if (e.key === "Escape" && S.peek && !S.edit && !S.payEdit && !S.modal && !S.menu) { closePeek(); render(); return; }
   if (e.key === "Escape" && (S.edit || S.payEdit || S.preview || S.modal || S.menu)) { if (S.modal === "confirm") { S.modal = null; S.confirm = null; } else S.edit = S.payEdit = S.preview = S.modal = S.pending = S.menu = S.pick = S.confirm = null; S.modalErr = ""; S.docEdit = false; render(); return; }
