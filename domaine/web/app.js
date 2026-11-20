@@ -700,31 +700,39 @@ function viewSettings() {
 /* ---------- Documents page: folders per deal, or one cross-deal list once filtered ---------- */
 const NONE = "Non classé", ALL = { kind: "Tous les documents", year: "Toutes les années", deal: "Toutes les affaires", status: "Tous les statuts" };
 const kindOf = (x) => (SLOTS.find((s) => s.key === x.slot) ?? SLOTS.find((s) => x.t.toLowerCase().includes(s.hint)))?.label ?? "Autre";
-const everyDoc = () => [...S.deals.flatMap((d) => d.docs.map((x, i) => ({ x, ref: `${d.id}:${i}`, from: d.title }))), ...S.library.map((x, i) => ({ x, ref: `lib:${i}`, from: NONE }))];
-const docFiltered = () => S.dq !== "" || S.dKind !== ALL.kind || S.dYear !== ALL.year || S.dDeal !== ALL.deal || S.dStatus !== ALL.status;
+// Searching ignores case, accents and punctuation, and every word typed must be found: a dossier is
+// found by its name, by a tenant's family name or by a file name, whatever was typed first.
+const plainWords = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+const hasWords = (hay, q) => { const h = ` ${plainWords(hay)} `; return plainWords(q).split(" ").filter(Boolean).every((w) => h.includes(w)); };
+const dealWords = (d) => [d.title, d.contact.name, d.contact.email, ...(d.tenants ?? [])].join(" ");
+const everyDoc = () => [...S.deals.flatMap((d) => d.docs.map((x, i) => ({ x, ref: `${d.id}:${i}`, from: d.title, who: dealWords(d) }))), ...S.library.map((x, i) => ({ x, ref: `lib:${i}`, from: NONE, who: "" }))];
+const docPicked = () => S.dKind !== ALL.kind || S.dYear !== ALL.year || S.dDeal !== ALL.deal || S.dStatus !== ALL.status;
+const docFiltered = () => S.dq !== "" || docPicked();
 function filteredDocs() {
-  const q = S.dq.toLowerCase();
-  return everyDoc().filter(({ x, from }) => (S.dKind === ALL.kind || kindOf(x) === S.dKind) && (S.dYear === ALL.year || x.d.slice(0, 4) === S.dYear)
-    && (S.dDeal === ALL.deal || from === S.dDeal) && (S.dStatus === ALL.status || (x.st ?? "Brouillon") === S.dStatus) && (x.t + " " + from).toLowerCase().includes(q));
+  return everyDoc().filter(({ x, from, who }) => (S.dKind === ALL.kind || kindOf(x) === S.dKind) && (S.dYear === ALL.year || x.d.slice(0, 4) === S.dYear)
+    && (S.dDeal === ALL.deal || from === S.dDeal) && (S.dStatus === ALL.status || (x.st ?? "Brouillon") === S.dStatus) && hasWords(`${x.t} ${from} ${who}`, S.dq));
 }
+// The dossiers of the folders view: by date of stay, the most recent first, those without a date last.
+const dossiers = () => [...S.deals].filter((d) => S.dq === "" || hasWords(`${dealWords(d)} ${d.docs.map((x) => x.t).join(" ")}`, S.dq)).sort((a, b) => (a.start && b.start ? (a.start < b.start ? 1 : a.start > b.start ? -1 : 0) : a.start ? -1 : b.start ? 1 : 0));
 function viewDocuments() {
-  const every = everyDoc(), flat = S.dView === "flat" || docFiltered(), all = filteredDocs();
+  // Typing a few words keeps the dossiers in view and narrows them; a filter on documents switches to the flat list.
+  const every = everyDoc(), flat = S.dView === "flat" || docPicked(), all = filteredDocs(), shown = dossiers();
   const SHORT = { [ALL.kind]: "Type", [ALL.year]: "Année", [ALL.deal]: "Affaire", [ALL.status]: "Statut" };
   const sel = (id, label, cur, list) => `<select id="${id}" class="${cur === list[0] ? "" : "on"}" aria-label="${label}">${list.map((o) => `<option value="${esc(o)}" ${cur === o ? "selected" : ""}>${esc(SHORT[o] ?? o)}</option>`).join("")}</select>`;
   const years = [...new Set(every.map((e) => e.x.d.slice(0, 4)))].sort().reverse();
   const folder = (id, title, sub, body, warn) => `<section class="folder ${S.openFolders[id] ? "open" : ""}"><button class="fh" data-folder="${id}" aria-expanded="${Boolean(S.openFolders[id])}">
       <span class="fi">${ico("folder", "m")}</span><span class="grow"><b>${esc(title)}</b><small>${sub}</small></span>${warn ? `<span class="mini t-orange">${warn}</span>` : `<span class="mini t-green">Complet</span>`}<span class="chevr">${ico("chev", "m")}</span></button>
       ${S.openFolders[id] ? `<div class="docs">${body}</div>` : ""}</section>`;
-  const folders = S.deals.map((d) => { const need = slotsFor(d), have = need.filter((sl) => d.docs.some((x) => x.slot === sl.key)).length, miss = need.length - have;
+  const folders = shown.map((d) => { const need = slotsFor(d), have = need.filter((sl) => d.docs.some((x) => x.slot === sl.key)).length, miss = need.length - have;
       return folder(d.id, d.title, `${d.kind} · ${range(d.start, d.end)} · ${have} sur ${need.length} document${need.length > 1 ? "s" : ""}`, dealDocs(d, true), miss ? `${miss} manquant${miss > 1 ? "s" : ""}` : ""); }).join("")
-    + (S.library.length ? folder("lib", NONE, `${S.library.length} fichiers à rattacher à une affaire`, S.library.map((x, i) => docCard(x, `lib:${i}`, "", kindOf(x))).join(""), "À classer") : "");
-  return topbar("Documents", `<button class="btn" data-a="doc">${ico("doc", "s")}Ajouter un document</button>`) + `<div class="content"><div class="tray"><div class="tl"><strong class="num">${flat ? `${all.length} document${all.length > 1 ? "s" : ""}` : `${S.deals.length} dossiers`}</strong>
+    + (S.library.length && S.dq === "" ? folder("lib", NONE, `${S.library.length} fichiers à rattacher à une affaire`, S.library.map((x, i) => docCard(x, `lib:${i}`, "", kindOf(x))).join(""), "À classer") : "");
+  return topbar("Documents", `<button class="btn" data-a="doc">${ico("doc", "s")}Ajouter un document</button>`) + `<div class="content"><div class="tray"><div class="tl"><strong class="num">${flat ? `${all.length} document${all.length > 1 ? "s" : ""}` : `${shown.length} dossier${shown.length > 1 ? "s" : ""}`}</strong>
       <input id="dq" class="search" type="search" placeholder="Rechercher un document ou une affaire" value="${esc(S.dq)}" aria-label="Rechercher un document">
       ${sel("d-kind", "Filtrer par type de document", S.dKind, [ALL.kind, ...SLOTS.map((s) => s.label), "Autre"])}${sel("d-year", "Filtrer par année", S.dYear, [ALL.year, ...years])}${sel("d-deal", "Filtrer par affaire", S.dDeal, [ALL.deal, ...new Set(every.map((e) => e.from))])}${sel("d-status", "Filtrer par statut", S.dStatus, [ALL.status, ...Object.keys(DOC_ST)])}${docFiltered() ? `<button class="link" data-a="doc-reset">Réinitialiser</button>` : ""}</div><div class="tr">
-      <div class="seg" role="group" aria-label="Affichage"><button class="${flat ? "" : "on"}" data-dview="folders" ${docFiltered() ? "disabled" : ""}>${ico("folder", "s")}Dossiers</button><button class="${flat ? "on" : ""}" data-dview="flat">${ico("list", "s")}Liste</button></div>
+      <div class="seg" role="group" aria-label="Affichage"><button class="${flat ? "" : "on"}" data-dview="folders" ${docPicked() ? "disabled" : ""}>${ico("folder", "s")}Dossiers</button><button class="${flat ? "on" : ""}" data-dview="flat">${ico("list", "s")}Liste</button></div>
       ${flat ? `<button class="btn" data-a="export" ${all.length ? "" : "disabled"}>${ico("down", "s")}Exporter (${all.length})</button>` : ""}</div></div>
     ${S.exportMsg && flat ? `<p class="exportmsg" role="status">${esc(S.exportMsg)}</p>` : ""}
-    ${!flat ? `<div class="folders">${folders}</div>` : all.length ? `<div class="docs">${all.map(({ x, ref, from }) => docCard(x, ref, from, kindOf(x))).join("")}</div>` : `<p class="muted">Aucun document ne correspond à ces filtres.</p>`}</div>`;
+    ${!flat ? (folders ? `<div class="folders">${folders}</div>` : `<p class="muted">Aucun dossier ne correspond à « ${esc(S.dq)} ». Essayez un prénom, un nom de famille ou un mot du nom de fichier.</p>`) : all.length ? `<div class="docs">${all.map(({ x, ref, from }) => docCard(x, ref, from, kindOf(x))).join("")}</div>` : `<p class="muted">Aucun document ne correspond à ces filtres.</p>`}</div>`;
 }
 
 const BADGE = { file: "FICH", pl: "PL", pdf: "PDF", gdoc: "DOC", xls: "XLS", img: "IMG" }, KLBL = { pl: "Facturation", file: "Fichier", pdf: "PDF", gdoc: "Document", xls: "Tableur", img: "Image" };

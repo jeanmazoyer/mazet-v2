@@ -78,6 +78,10 @@ const feed = await p.evaluate((u) => fetch(new URL(u).pathname).then((r) => r.te
 ok("my calendar lists held stays without any name", (feed.match(/BEGIN:VEVENT/g) ?? []).length === 4 && !/Fictif|Essai|Modele|Demo/.test(feed) && feed.includes("SUMMARY:Réservé"), feed.slice(0, 200));
 ok("a wrong calendar link gives nothing", (await p.evaluate(() => fetch("/ical/not-the-secret-not-the-secret.ics").then((r) => r.status))) === 404);
 await p.goto(`${BASE}/#affaires`); await p.waitForSelector(".board");
+await p.goto(`${BASE}/#documents`); await p.waitForSelector(".folder"); const firstFolder = await txt(".folder b");
+await p.fill("#dq", "hugo EXEMPLE"); await p.waitForTimeout(300);
+ok("dossiers are listed by date of stay and found by a tenant's name, in any case", firstFolder === "Julie & Thomas Modele" && (await p.locator(".folder").count()) === 1 && (await txt(".folder b")) === "Famille Exemple");
+await p.fill("#dq", "zzz"); await p.waitForTimeout(300); ok("a search with no match says so", (await p.locator(".folder").count()) === 0 && (await txt(".content .muted")).includes("Aucun dossier")); await p.fill("#dq", ""); await p.waitForTimeout(200);
 await p.keyboard.press("Control+f"); await p.waitForSelector(".searchm");
 ok("the find shortcut opens the app's own search, and a second press hands it back to the browser", (await p.locator(".searchm").count()) === 1 && (await p.keyboard.press("Control+f"), await p.waitForTimeout(200), await p.locator(".searchm").count()) === 0);
 await p.keyboard.press("Control+k"); await p.keyboard.type("fictif");
