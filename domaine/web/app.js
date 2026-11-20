@@ -18,6 +18,15 @@ const I = {
   check: '<path d="m5 12.500 4.500 4.500L19 7.500"/>',
   alert: '<path d="M12 8v5M12 16.500v.5"/><circle cx="12" cy="12" r="9"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  note: '<path d="M5 4h14v11l-5 5H5z"/><path d="M14 20v-5h5M8 9h8M8 13h4"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+  redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>',
+  indent: '<path d="M4 6h16M11 12h9M4 18h16M4 9.500l3 2.500-3 2.500"/>',
+  outdent: '<path d="M4 6h16M11 12h9M4 18h16M7 9.500 4 12l3 2.500"/>',
+  quote: '<path d="M9 7H6a1 1 0 0 0-1 1v4h4zM9 12c0 2.500-1 4-3.500 5M19 7h-3a1 1 0 0 0-1 1v4h4zM19 12c0 2.500-1 4-3.500 5"/>',
+  strike: '<path d="M4 12h16M16 7.500C15.500 5.800 14 5 12 5c-2.500 0-4 1.200-4 3 0 1 .500 1.800 1.500 2.500M8 16.500C8.500 18.200 10 19 12 19c2.500 0 4-1.200 4-3 0-.700-.200-1.300-.600-1.800"/>',
+  eraser: '<path d="m8 20-4-4a1.500 1.500 0 0 1 0-2L13 5a1.500 1.500 0 0 1 2 0l5 5a1.500 1.500 0 0 1 0 2l-8 8z"/><path d="M8 20h12M9 9l7 7"/>',
+  olist: '<path d="M10 6h10M10 12h10M10 18h10M4 5h1.500v4M4 9h3M4 15.500c0-1 2.500-1 2.500.300 0 1-2.500 1.700-2.500 3.200h3"/>',
   image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.500"/><path d="m4 17 5-4 4 3 3-2 4 3"/>',
   eye: '<path d="M2 12s3.500-7 10-7 10 7 10 7-3.500 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   shield: '<path d="M12 3 5 6v6c0 4.500 3 7.500 7 9 4-1.500 7-4.500 7-9V6z"/>',
@@ -406,9 +415,9 @@ function viewAffaire(id, peek = false) {
   const TLBL = { Toutes: "Toutes", Note: "Notes", "E-mail": "E-mails", WhatsApp: "WhatsApp", Paiement: "Paiements", Document: "Documents", Modification: "Modifications" };
   const counts = Object.fromEntries(types.map((t) => [t, t === "Toutes" ? d.history.length : d.history.filter((h) => h.type === t).length]));
   const hist = d.history.filter((h) => S.histTab === "Toutes" || h.type === S.histTab);
-  const ev = (h) => `<article class="ev"><span class="mk done">${ico("check", "xs")}</span><div class="tx"><div class="tt">${esc(h.t)}</div>${h.body ? `<div class="plain">${esc(h.body)}</div>` : ""}<div class="meta">${esc(h.at)} · ${h.type} · Par ${esc(h.by)}</div></div></article>`;
+  const ev = (h) => `<article class="ev"><span class="mk">${ico(HIST_ICON[h.type] ?? "pen", "s")}</span><div class="tx"><div class="tt">${esc(h.t)}</div>${h.body ? `<div class="plain">${esc(h.body)}</div>` : ""}<div class="meta">${esc(h.at)} · ${h.type} · Par ${esc(h.by)}</div></div></article>`;
   const comp = S.composer, dv = (k, dflt = "") => S.draft[k] ?? dflt;
-  const composer = `<div class="composer"><div class="ctabs">${["Notes", "Visite", "E-mail", "WhatsApp", "Devis", "Événement"].map((t) => `<button class="${comp === t ? "on" : ""}" data-comp="${t}">${t === "WhatsApp" ? `<i class="wdot"></i>` : ""}${t}</button>`).join("")}</div>
+  const composer = `<div class="composer"><div class="ctabs">${["Notes", "Visite", "E-mail", "WhatsApp", "Devis", "Événement"].map((t) => `<button class="${comp === t ? "on" : ""}" data-comp="${t}">${t === "WhatsApp" ? `<i class="wdot"></i>` : ico(COMP_ICON[t], "s")}${t}</button>`).join("")}</div>
     <div class="cbody">${comp === "Notes" ? `<textarea id="note" class="stickyin" placeholder="Cliquez ici pour ajouter une note" aria-label="Nouvelle note">${esc(dv("note"))}</textarea><div class="cfoot"><span class="hint">La note reste affichée en haut de la fiche, au-dessus des documents.</span><button class="btn sm" data-a="note">Ajouter la note</button></div>`
       : comp === "Visite" ? `<div class="vform">${visitFields("vs", { date: addDays(TODAY, 2), time: "10:00", dur: 60, note: "" })}</div><div class="cfoot"><span class="hint">${S.agenda.on ? "La visite s'affiche dans le calendrier et s'inscrit dans Google Agenda." : "La visite s'affiche dans le calendrier de l'application."}</span><button class="btn sm" data-a="visit-add">${ico("cal", "s")}Planifier la visite</button></div>`
       : comp === "E-mail" ? mailTab(d) : comp === "WhatsApp" ? waTab(d) : comp === "Devis" ? quoteTab(d) : eventTab(d)}</div></div>`;
@@ -440,10 +449,11 @@ function viewAffaire(id, peek = false) {
         <div class="list">${d.todos.length ? d.todos.map((t) => { const lt = t.due && t.due < TODAY; return `<article class="ev"><button class="mk todo" data-done="${t.id}" aria-label="Marquer comme fait : ${esc(t.t)}"></button><div class="tx"><div class="tt">${esc(t.t)}</div><div class="meta">${esc(t.type ?? "Rappel")}${t.due ? ` · <span class="${lt ? "latetx" : ""}">${lt ? "en retard depuis le" : "pour le"} ${fr(t.due)}</span>` : ""} · Par ${esc(t.by)}</div></div>${t.cta ? `<button class="btn out" data-a="remind">${esc(t.cta)}</button>` : ""}</article>`; }).join("") : `<span class="muted">Rien ne demande votre attention.</span>`}</div></section>
         <section class="blk"><h3 class="h">Historique</h3>
         <div class="tabs">${types.map((t) => `<button class="${S.histTab === t ? "on" : ""}" data-hist="${t}">${TLBL[t]}${counts[t] ? ` <span class="count num">${counts[t]}</span>` : ""}</button>`).join("")}</div>
-        <div class="list">${hist.map(ev).join("") || `<span class="muted">Aucun élément.</span>`}</div></section>
+        <div class="list hist">${hist.map(ev).join("") || `<span class="muted">Aucun élément.</span>`}</div></section>
       </div></div>`;
 }
 
+const COMP_ICON = { Notes: "note", Visite: "cal", "E-mail": "mail", Devis: "euro", "Événement": "home" }, HIST_ICON = { Note: "note", "E-mail": "mail", WhatsApp: "send", Paiement: "euro", Document: "doc", Modification: "pen" };
 /* ---------- Visits: planned on a deal, shown in the calendar, written in Google Agenda ---------- */
 const DURS = [[30, "30 min"], [60, "1 h"], [90, "1 h 30"], [120, "2 h"], [180, "3 h"]], DOW = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
 const durLabel = (n) => (DURS.find(([v]) => v === n) ?? [n, `${n} min`])[1];
@@ -1215,12 +1225,12 @@ function mailComposer(d, cur, all, to) {
       <span class="sp"></span>${S.ai ? `<button class="tlink ai" data-a="mail-ai" title="Un brouillon rédigé par Claude à partir de l'affaire et de la conversation">${ico("spark", "s")}Rédige mon e-mail</button>` : ""}</div>
     <div id="mail-body" class="rich edit" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message" data-ph="${cur ? "Répondre à" : "Écrire à"} ${esc(d.contact.name)}">${S.draft["mail-body"] ?? ""}</div>
     ${S.mailSign && signature() ? `<div class="msign" aria-label="Signature ajoutée à l'envoi">-- <br>${esc(signature()).replace(/\n/g, "<br>")}</div>` : ""}
-    <div class="rte bottom" role="toolbar" aria-label="Mise en forme du message">${tb("undo", "↶", "Annuler")}${tb("redo", "↷", "Rétablir")}<i class="tsep"></i>${sel("mail-font", "Police", "Police", MAIL_FONTS.map((f) => [f, f]))}${sel("mail-size", "Taille du texte", "Taille", MAIL_SIZES)}<i class="tsep"></i>
+    <div class="rte bottom" role="toolbar" aria-label="Mise en forme du message">${tb("undo", ico("undo", "s"), "Annuler")}${tb("redo", ico("redo", "s"), "Rétablir")}<i class="tsep"></i>${sel("mail-font", "Police", "Police", MAIL_FONTS.map((f) => [f, f]))}${sel("mail-size", "Taille du texte", "Taille", MAIL_SIZES)}<i class="tsep"></i>
       ${tb("bold", "B", "Gras").replace('class="tb"', 'class="tb bold"')}${tb("italic", "I", "Italique").replace('class="tb"', 'class="tb italic"')}${tb("underline", "U", "Souligné").replace('class="tb"', 'class="tb underline"')}${sel("mail-color", "Couleur du texte", "Couleur", MAIL_COLORS)}<i class="tsep"></i>
-      ${tb("insertOrderedList", "1.", "Liste numérotée")}${tb("insertUnorderedList", ico("list", "s"), "Liste à puces")}${tb("outdent", "⇤", "Diminuer le retrait")}${tb("indent", "⇥", "Augmenter le retrait")}${tb("formatBlock", "❝", "Citation", "blockquote")}<i class="tsep"></i>
+      ${tb("insertOrderedList", ico("olist", "s"), "Liste numérotée")}${tb("insertUnorderedList", ico("list", "s"), "Liste à puces")}${tb("outdent", ico("outdent", "s"), "Diminuer le retrait")}${tb("indent", ico("indent", "s"), "Augmenter le retrait")}${tb("formatBlock", ico("quote", "s"), "Citation", "blockquote")}<i class="tsep"></i>
       <button class="tb" data-cmd="link" title="Lien" aria-label="Insérer un lien">${ico("link", "s")}</button><span class="linkbox" hidden><input class="inp sm" placeholder="https://" aria-label="Adresse du lien"><button class="btn sm" data-cmd="linkok">OK</button></span>
       <button class="tb" data-a="mail-img-pick" title="Insérer une image dans le texte" aria-label="Insérer une image dans le texte">${ico("image", "s")}</button><input id="mail-img" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-      ${tb("strikeThrough", "<s>S</s>", "Barré")}${tb("removeFormat", ico("close", "s"), "Effacer la mise en forme")}</div>
+      ${tb("strikeThrough", ico("strike", "s"), "Barré")}${tb("removeFormat", ico("eraser", "s"), "Effacer la mise en forme")}</div>
     ${S.mailFiles.length || S.mailUp ? `<div class="mfiles out">${S.mailFiles.map((f) => `<span class="mini att">${ico("clip", "xs")}${esc(f.name)}${f.size ? `<small class="num">${fileSize(f.size)}</small>` : ""}<button data-a="mail-unattach" data-id="${esc(f.id)}" aria-label="Retirer ${esc(f.name)}">${ico("close", "xs")}</button></span>`).join("")}${S.mailUp ? `<span class="hint">Envoi du fichier…</span>` : ""}</div>` : ""}
     <div class="mactions"><span class="menuwrap"><button class="iconbtn ${S.menu === "mailatt" ? "on" : ""}" data-menu="mailatt" title="Joindre un fichier" aria-label="Joindre un fichier" aria-haspopup="menu" aria-expanded="${S.menu === "mailatt"}">${ico("clip", "m")}</button>${attMenu}</span><input id="mail-file" type="file" multiple hidden>
       <button class="iconbtn ${S.mailSign && signature() ? "on" : ""}" data-a="mail-sign" title="${signature() ? (S.mailSign ? "Signature ajoutée : cliquer pour l'enlever" : "Ajouter la signature") : "Écrire une signature"}" aria-label="Signature" aria-pressed="${Boolean(S.mailSign && signature())}">${ico("pen", "m")}</button>

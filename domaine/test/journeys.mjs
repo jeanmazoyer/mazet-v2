@@ -181,7 +181,7 @@ await a.goto(`${BASE}/#reglages-import`); await a.waitForSelector("#imp-file"); 
 ok("a season file: valid stays in, invalid ones skipped, the audit opens", (await S(a, "S.deals.filter(d => d.id.startsWith('t27-')).length")) === 1 && (await a.locator(".flash").innerText()).includes("2 ignorés"), await a.locator(".flash").innerText().catch(() => ""));
 ok("the season file fills in the lessor where nothing was typed", (await S(a, "S.lessor.name")) === "SARL Importée" && (await S(a, "S.lessor.city")) === "Nîmes");
 ok("only Google Drive links are kept on documents", (await S(a, "S.deals.find(d => d.id === 't27-ok').docs.length")) === 2);
-ok("the audit lists the stay and flags the contract dates", (await a.locator('[data-aopen="t27-ok"] .ac.bad').count()) === 1 && (await a.locator('[data-aopen="t27-ok"] .st').innerText()) === "Bloquant");
+ok("the audit lists the stay and flags the contract dates", (await a.locator('[data-aopen="t27-ok"] .ac.bad').count()) === 1 && (await a.locator('[data-aopen="t27-ok"] .st').textContent()).trim() === "Bloquant");
 await a.click('[data-aopen="t27-ok"]'); const treat = a.locator('.aitems li.warn [data-aok]').first(), before = await a.locator(".aitems li.seen").count(); await treat.click(); await settle(a);
 ok("a remark marked as dealt with is struck out", (await a.locator(".aitems li.seen").count()) === before + 1);
 await a.goto(`${BASE}/#reglages-import`); await a.waitForSelector("#imp-file"); await a.setInputFiles("#imp-file", "/tmp/domaine-season.json"); await a.waitForSelector(".audit"); await settle(a); await a.reload(); await a.waitForSelector(".audit");
