@@ -25,9 +25,9 @@ import { fetchIcal, type Source, type Stay } from "./ical.ts";
 const app = new Hono<{ Variables: { user: User } }>();
 const CHANNEL = "domaine_changes";
 // Settings anyone signed in may write, and those only an administrator may.
-const SHARED_KEYS = ["library", "feeds", "agents", "mailkit"], ADMIN_KEYS = ["prefs", "bank"];
-// Settings the team does not even receive: the bank statement, and the secret of the calendar link.
-const PRIVATE_KEYS = ["bank", "ical_token", "drive", "gmail", "agenda", "ai_usage", "sync"];
+const SHARED_KEYS = ["library", "feeds", "agents", "mailkit"], ADMIN_KEYS = ["prefs", "bank", "invoices"];
+// Settings the team does not even receive: the bank statement, the register of invoices, and the secret of the calendar link.
+const PRIVATE_KEYS = ["bank", "invoices", "ical_token", "drive", "gmail", "agenda", "ai_usage", "sync"];
 // Settings that never leave the server at all: they hold a secret.
 const SECRET_KEYS = ["ical_token", "drive", "gmail", "agenda", "ai_usage"];
 const UPLOAD_MIME = ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/csv",
@@ -225,7 +225,7 @@ const dealOut = (row: { id: string; doc: Doc; version: number }, role: Role) => 
 
 // Which version of the pages is being served: it changes whenever one of their files does. A page left
 // open compares it with the one it started from, so that nobody keeps working in yesterday's version.
-const PAGE_FILES = ["index.html", "app.js", "contract.js", "app.css"];
+const PAGE_FILES = ["index.html", "app.js", "contract.js", "invoices.js", "app.css"];
 async function buildId(): Promise<string> {
   const parts = await Promise.all(PAGE_FILES.map((f) => stat(join("web", f)).then((i) => `${f}:${i.size}:${Math.round(i.mtimeMs)}`, () => `${f}:-`)));
   return hashToken(parts.join("|")).slice(0, 16);

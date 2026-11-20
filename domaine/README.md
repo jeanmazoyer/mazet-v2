@@ -8,7 +8,8 @@ The estate's own app: deals, stays, calendar, documents, payments. One small Nod
 - `server/`: the HTTP server. `main.ts` (routes), `auth.ts` (Google sign-in, sessions),
   `deals.ts` (what each role may read and write), `ical.ts` (imported calendars), `db.ts`
   (connection and migrations), `migrations/` (numbered SQL files, applied at start).
-- `web/`: the pages, served as they are. `app.js` draws every screen; `app.css` is the design.
+- `web/`: the pages, served as they are. `app.js` draws every screen; `app.css` is the design;
+  `invoices.js` holds the register of invoices and what the audit says of it.
 - `test/`: `rules.test.ts` (sign-in, rights, calendar parsing) and `journeys.mjs` (the app end
   to end, in a browser).
 
@@ -84,6 +85,25 @@ The Audit page confronts every stay of a season with what each source says: date
 contract), contract signed or not, deposit and balance against the bank statement, security deposit,
 insurance, information sheet, e-mails. A remark is blocking, to check, or plain information; a remark
 marked as dealt with no longer counts. Credits of the statement that no stay claims are listed below.
+
+The scale is the owner's: blocking when an invoice, an agreement or money is missing; to check for a
+missing piece (security deposit, insurance) or a small gap (up to 200 euros, or what a platform keeps).
+
+### The register of invoices
+
+Settings, "Factures" takes the export of the invoicing tool as a CSV file: any separator, French or English
+column names, at least a number and an amount including tax (or before tax plus tax). A second file adds to
+the first, the same number is updated. The register is an administrator's setting (`invoices`): the team
+neither receives nor writes it, and it is part of the backups. Like the bank statement, it holds client
+data and is never committed.
+
+Each invoice is matched to a stay by the client's name (two words in common, or the family name; a first
+name alone must come with an amount the stay expects), and can be linked by hand. The audit then says, for
+each stay: money received during the bank statement and never invoiced (blocking), the same payment
+invoiced twice, an invoice for another amount than what was received, the security deposit counted in an
+invoice, a credit note owed after a refund, and an invoice no payment answers. Without a register, the
+audit falls back on the documents of the dossier and only asks to check. These rules live in
+`web/invoices.js`, apart from the page, and are tested in `test/rules.test.ts`.
 
 ## Google Drive (documents created from the app)
 

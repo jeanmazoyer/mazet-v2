@@ -1,6 +1,7 @@
 
 import { Idiomorph } from "/vendor/idiomorph.js";
 import { CONTRACT } from "/contract.js";
+import { parseInvoices, mergeInvoices, assignInvoices, billing } from "/invoices.js";
 const I = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
@@ -115,7 +116,7 @@ const S = {
   // Files found in Google Drive that no deal claims yet.
   library: [],
   closed: { contact: true }, month: TODAY.slice(0, 7),
-  bankStatement: [],
+  bankStatement: [], invoices: [], lastInvoices: "jamais", invEdit: null,
   feeds: [],
   auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, agenda: { on: false }, visitEdit: null, mailkit: { templates: [], signature: "" }, mailSkip: {}, mailFiles: [], mailSign: true, mailUp: false, tplQ: "", ai: false, aiBusy: false, syncReport: null, syncBusy: false, mailTrack: (() => { try { return localStorage.getItem("mailTrack") === "1"; } catch (_) { return false; } })(), creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
@@ -646,8 +647,32 @@ function viewStats() {
 /* ---------- Settings ---------- */
 const stepper = (minus, plus, label, lo, hi) => `<div class="stepper"><button data-a="${minus}" aria-label="Diminuer" ${lo ? "disabled" : ""}>−</button><b class="num">${label}</b><button data-a="${plus}" aria-label="Augmenter" ${hi ? "disabled" : ""}>+</button></div>`;
 // The settings: sections listed on the left, grouped by subject; the chosen one on the right.
-const SET_GROUPS = [["Le domaine", ["bailleur", "utilisateurs"]], ["Réservations", ["pipeline", "echeancier", "menage", "calendriers"]], ["Connexions", ["sync", "drive", "gmail", "agenda"]], ["Données", ["banque", "modeles", "emails", "import", "sauvegarde"]]];
+const SET_GROUPS = [["Le domaine", ["bailleur", "utilisateurs"]], ["Réservations", ["pipeline", "echeancier", "menage", "calendriers"]], ["Connexions", ["sync", "drive", "gmail", "agenda"]], ["Données", ["banque", "factures", "modeles", "emails", "import", "sauvegarde"]]];
 const SET_KEYS = SET_GROUPS.flatMap(([, keys]) => keys);
+// The register of invoices in the settings: what was imported, file by file, then every invoice with its stay.
+function invoicesBody(row) {
+  const list = S.invoices, owner = new Map(Object.entries(invoiceMap().byDeal).flatMap(([id, l]) => l.map((i) => [i, id]))), sum = (l, k) => Math.round(l.reduce((t, i) => t + (i[k] ?? 0), 0) * 100) / 100;
+  const stays = [...S.deals].sort((a, b) => (a.start < b.start ? 1 : -1)), files = [...new Set(list.map((i) => i.src ?? ""))];
+  // The totals of each file are shown apart: they are what is compared with the accounting tool's own totals.
+  const per = files.map((f) => { const l = list.filter((i) => (i.src ?? "") === f), days = l.map((i) => i.on).filter(Boolean).sort();
+    return row(esc(f || "Fichier sans nom"), `${l.length} facture${l.length > 1 ? "s" : ""}${days.length ? `, du ${fr(days[0])} au ${fr(days[days.length - 1])}` : ""}`, `${sum(l, "ht") ? `<span class="mini num">${eur2(sum(l, "ht"))} HT</span>` : ""}<span class="mini num">${eur2(sum(l, "ttc"))} TTC</span>`); }).join("");
+  const pick = (i, id) => `<select class="inp auto" data-ilink="${esc(i.n)}" aria-label="Séjour de la facture ${esc(i.n)}"><option value="">${i.deal ? "Rattachement automatique" : "Choisir un séjour…"}</option><option value="none" ${i.deal === "none" ? "selected" : ""}>Aucun séjour</option>${stays.map((d) => `<option value="${d.id}" ${id === d.id ? "selected" : ""}>${esc(d.title)} · ${range(d.start, d.end)}</option>`).join("")}</select>`;
+  const line = (i) => { const id = owner.get(i), d = id ? deal(id) : null, open = !d || Boolean(i.deal) || S.invEdit === i.n;
+    return `<div class="er inv"><span class="grow"><b>N° ${esc(i.n)} · ${esc(i.who || "client non précisé")}</b><small class="num">${i.on ? fr(i.on) : "date inconnue"}${i.label ? " · " + esc(i.label) : ""}</small></span><span class="mini num">${eur2(i.ttc)}</span>${open ? pick(i, id) : `<span class="mini t-green">${esc(d.title)}</span><button class="link" data-iedit="${esc(i.n)}">Changer</button>`}</div>`; };
+  const loose = list.filter((i) => !owner.has(i)), tied = list.filter((i) => owner.has(i));
+  return row("Registre", list.length ? `${list.length} facture${list.length > 1 ? "s" : ""}${sum(list, "ht") ? ` · ${eur2(sum(list, "ht"))} HT` : ""} · ${eur2(sum(list, "ttc"))} TTC, avoirs déduits · importé ${esc(S.lastInvoices)}` : "Aucun registre pour l'instant", list.length ? `<button class="btn alt sm" data-a="inv-clear">${ico("trash", "s")}Vider</button>` : "")
+    + per + row("Importer un export", "Un fichier CSV avec, au moins, le numéro, la date, le client et le montant TTC. Un second fichier s'ajoute au premier ; une facture déjà connue est mise à jour.", `<input id="inv-file" class="inp filein" type="file" accept=".csv,text/csv" aria-label="Importer un export de factures">`)
+    + (list.length ? `<div class="invlist"><h4>Sans séjour rattaché <span class="count num">${loose.length}</span></h4><p class="docnote">Le nom du client n'a pas suffi : choisissez le séjour, ou « Aucun séjour » pour une facture qui n'en concerne pas.</p><div class="list">${loose.map(line).join("") || `<span class="muted">Toutes les factures ont leur séjour.</span>`}</div>
+      <h4>Rattachées à un séjour <span class="count num">${tied.length}</span></h4><div class="list">${tied.map(line).join("") || `<span class="muted">Aucune pour l'instant.</span>`}</div></div>` : "");
+}
+function importInvoices(text, name) {
+  if (!isAdmin()) return;
+  const out = parseInvoices(text, String(name ?? "").replace(/\.[a-z0-9]+$/i, ""));
+  if (out.error || !out.list.length) { S.notice = "Export refusé, rien n'a été importé : " + (out.error ?? "aucune facture trouvée dans ce fichier") + "."; render(); return; }
+  const m = mergeInvoices(S.invoices, out.list); S.invoices = m.list; S.lastInvoices = "le " + fr(TODAY); S.invEdit = null; invCache = null;
+  const loose = assignInvoices(out.list, S.deals).loose.length, n = out.list.length;
+  S.notice = ""; S.flash = { text: `${n} facture${n > 1 ? "s" : ""} lue${n > 1 ? "s" : ""} (${out.ht ? eur2(out.ht) + " HT, " : ""}${eur2(out.ttc)} TTC) : ${m.added} nouvelle${m.added > 1 ? "s" : ""}, ${m.updated} mise${m.updated > 1 ? "s" : ""} à jour${out.skipped ? `, ${out.skipped} ligne${out.skipped > 1 ? "s" : ""} ignorée${out.skipped > 1 ? "s" : ""}` : ""}. ${loose ? `${loose} sans séjour rattaché.` : "Toutes ont leur séjour."}` }; render();
+}
 function viewSettings() {
   if (!isAdmin()) return topbar("Réglages", "") + `<div class="content"><div class="card lockcard"><span class="nic">${ico("lock", "s")}</span><div><b>Réglages réservés aux administrateurs</b><p class="muted">Vous utilisez l'application avec le rôle Équipe. Les étapes, l'échéancier, les calendriers, la banque et les utilisateurs se modifient avec un compte administrateur.</p></div><button class="btn alt" data-a="role" data-role="admin">Revenir en administrateur</button></div></div>`;
   const row = (main, sub, right = "") => `<div class="setrow"><span class="grow"><b>${main}</b>${sub ? `<small>${sub}</small>` : ""}</span><span class="ctl">${right}</span></div>`;
@@ -684,6 +709,8 @@ function viewSettings() {
     banque: { icon: "bank", label: "Banque", sub: "Importez le relevé de votre banque (CSV avec les colonnes Date, Description, Amount). Seuls les encaissements sont gardés, puis rapprochés des échéances : même montant, nom du locataire dans le libellé.",
       body: () => row("Relevé importé", S.bankStatement.length ? `${S.bankStatement.length} encaissement${S.bankStatement.length > 1 ? "s" : ""}, du ${fr(S.bankStatement.reduce((m, t) => (t.on < m ? t.on : m), "9999"))} au ${fr(S.bankStatement.reduce((m, t) => (t.on > m ? t.on : m), "0000"))} · importé ${esc(S.lastBank)}` : "Aucun relevé pour l'instant", S.bankStatement.length ? `<button class="btn alt sm" data-a="sync-all">${ico("sync", "s")}Rapprocher</button>` : "")
         + row("Importer un relevé", "Le nouveau relevé remplace le précédent.", `<input id="bank-file" class="inp filein" type="file" accept=".csv,text/csv" aria-label="Importer un relevé">`) },
+    factures: { icon: "euro", label: "Factures", sub: "Le registre des factures émises, tel que l'exporte votre outil de facturation (Tiime, Pennylane). L'audit s'en sert pour dire quel encaissement n'a pas de facture, quelle facture a été faite deux fois ou pour un autre montant. Seuls les administrateurs le voient.",
+      body: () => invoicesBody(row) },
     modeles: { icon: "doc", label: "Modèles de documents", sub: "Le bouton « Créer » d'un document manquant part de ces modèles.",
       body: () => SLOTS.map((sl) => row(sl.label, KLBL[sl.k], sim("Ouvrir le modèle", `Dans l'application : le modèle « ${sl.label} » s'ouvre dans Google Docs.`))).join("") },
     emails: { icon: "mail", label: "Modèles d'e-mail et signature", sub: "Les modèles se créent depuis un message : écrivez-le dans une affaire, puis « Choisir un modèle », « Enregistrer le brouillon comme modèle ». La signature s'ajoute sous chaque message envoyé, tant que le bouton de signature est actif.",
@@ -1599,7 +1626,7 @@ function syncBank(d) {
   const say = (n, verb) => (n === 1 ? `1 paiement ${verb} par le relevé.` : `${n} paiements ${verb}s par le relevé.`);
   S.sync = matched || confirmed ? [matched ? say(matched, "retrouvé") : "", confirmed ? say(confirmed, "confirmé") : ""].join(" ").trim() : "Rien de nouveau sur le relevé.";
 }
-const SEL = ["go", "tab", "view", "edit", "a", "toggle", "pay", "hist", "comp", "done", "stage", "month", "doc", "jump", "pick", "folder", "dview", "day", "pm", "menu", "sort", "newday", "ext", "mtab", "ttab", "qdel", "pvdel", "rmdel", "unpin", "udel", "src", "agent", "agent-open", "agent-run", "prop-ok", "prop-no", "tool", "kind", "calview", "real", "seemonth", "year", "ayear", "atab", "aopen", "aok", "bskip"].map((k) => `[data-${k}]`).join(",");
+const SEL = ["go", "tab", "view", "edit", "a", "toggle", "pay", "hist", "comp", "done", "stage", "month", "doc", "jump", "pick", "folder", "dview", "day", "pm", "menu", "sort", "newday", "ext", "mtab", "ttab", "qdel", "pvdel", "rmdel", "unpin", "udel", "iedit", "src", "agent", "agent-open", "agent-run", "prop-ok", "prop-no", "tool", "kind", "calview", "real", "seemonth", "year", "ayear", "atab", "aopen", "aok", "bskip"].map((k) => `[data-${k}]`).join(",");
 // Ask before anything that removes something. The action itself runs only on "confirm-yes".
 function ask(title, body, more, cta, run, link = null) { S.modal = "confirm"; S.confirm = { title, body, more, cta, run, link }; }
 function openLost() { S.modal = "lost"; S.modalErr = ""; S.draft = { "ls-reason": LOST[0] }; }
@@ -1932,6 +1959,8 @@ document.addEventListener("click", (e) => {
     else if (gap > 0) { d.payments.push({ id: "p" + Date.now(), kind: "Complément", amount: gap, due: d.start < TODAY ? TODAY : d.start, status: "due", paidOn: null, bank: null }); log(d, "Paiement", `Échéancier ajusté : complément de ${eur(gap)}`); }
     else S.notice = `Le montant reçu dépasse le nouveau montant de ${eur(-gap)} : un remboursement est à prévoir, à saisir à la main.`; }
   if (ds.a === "sync" && d) syncBank(d);
+  if (ds.iedit) S.invEdit = ds.iedit;
+  if (ds.a === "inv-clear" && isAdmin()) { const n = S.invoices.length; ask("Vider le registre des factures ?", `Les ${n} facture${n > 1 ? "s" : ""} importée${n > 1 ? "s" : ""} et leurs rattachements faits à la main seront retirés de l'application. Rien ne change dans votre outil de facturation, ni dans les séjours.`, "", "Vider le registre", () => { S.invoices = []; S.lastInvoices = "jamais"; invCache = null; S.flash = { text: "Registre des factures vidé." }; render(); }); }
   if (ds.a === "sync-all") { S.deals.filter((x) => x.payments.length).forEach(syncBank); S.sync = ""; if (r.name === "reglages") S.flash = { text: "Relevé relu : les paiements retrouvés sont rapprochés." }; }
 
   /* Deal: quote and event sheet */
@@ -2001,6 +2030,7 @@ document.addEventListener("change", (e) => { const r = ctx(), id = e.target.id, 
       if (to) { if (x.slot && to.docs.some((y) => y.slot === x.slot)) x.slot = undefined; to.docs.push(x); log(to, "Document", `${x.t} rattaché`); S.preview = { deal: to.id, i: to.docs.length - 1 }; S.toast = `Rangé dans « ${to.title} ».`; }
       else { S.library.push(x); S.preview = { lib: S.library.length - 1 }; S.toast = "Remis dans les documents non classés."; }
       render(); } return; }
+  if (e.target.matches("[data-ilink]") && isAdmin()) { const n = e.target.dataset.ilink; S.invoices = S.invoices.map((i) => { if (i.n !== n) return i; const { deal: _, ...bare } = i; return v ? { ...bare, deal: v } : bare; }); S.invEdit = null; invCache = null; render(); return; }
   if (e.target.matches("[data-urole]")) { const u = S.users[Number(e.target.dataset.urole)]; if (u) { u.role = v; S.flash = { text: `${u.name} : rôle ${v}.` }; render(); } return; }
   const DOCF = { "d-kind": "dKind", "d-year": "dYear", "d-deal": "dDeal", "d-status": "dStatus" };
   if (DOCF[id]) { S[DOCF[id]] = v; S.exportMsg = ""; render(); return; }
@@ -2063,12 +2093,20 @@ const gotOf = (p) => p.got ?? p.amount;
 const stmtStart = () => (S.bankStatement.length ? S.bankStatement.reduce((m, t) => (t.on < m ? t.on : m), "9999").slice(0, 4) + "-01-01" : "");
 const bankKeys = () => { const k = new Set(); S.deals.forEach((d) => d.payments.forEach((p) => { if (p.bank && p.paidOn && !p.hold) k.add(p.paidOn + "|" + p.bank); if (p.inBank) k.add(p.inOn + "|" + p.inBank); })); return k; };
 const looseLines = (yr) => { const k = bankKeys(); return S.bankStatement.filter((t) => !t.used && !t.skip && !k.has(t.on + "|" + t.label) && (yr === "all" || t.on.startsWith(yr))); };
+// The owner's scale: blocking when an invoice, an agreement or money is missing; to be checked for a
+// missing piece or a small gap. A small gap is a bank fee or a rounding, and a platform always keeps its share.
+const GAP_MINOR = 200, PLATFORM = /airbnb|booking|abritel/i;
+// Which stay each invoice of the register is for. Worked out once per drawing of the page, not once per stay.
+let invCache = null;
+const invoiceMap = () => { if (!invCache) { invCache = assignInvoices(S.invoices, S.deals); queueMicrotask(() => { invCache = null; }); } return invCache; };
+// Without a bank statement, the register itself says how far back invoicing can be checked.
+const invStart = () => { const first = S.invoices.reduce((m, i) => (i.on && i.on < m ? i.on : m), "9999"); return first === "9999" ? "" : first.slice(0, 4) + "-01-01"; };
 // What the page checks for one stay. Each remark names the column it belongs to; the worst remark colours the column.
 function auditDeal(d) {
   const out = [], add = (c, lvl, t) => out.push({ c, lvl, t }), src = d.src ?? {}, past = d.end < TODAY, start = stmtStart();
   const family = d.kind === "Famille", lost = d.status === "Perdu", firm = d.stage >= 4 && !lost;
   const same = (s) => s && s.start && (s.start !== d.start || s.end !== d.end);
-  if (same(src.contract)) add("dates", "bad", `Dates du contrat (${range(src.contract.start, src.contract.end)}) différentes de celles du séjour (${range(d.start, d.end)}).`);
+  if (same(src.contract)) add("dates", "warn", `Dates du contrat (${range(src.contract.start, src.contract.end)}) différentes de celles du séjour (${range(d.start, d.end)}).`);
   if (same(src.fiche)) add("dates", "warn", `Dates de la fiche (${range(src.fiche.start, src.fiche.end)}) différentes de celles du séjour (${range(d.start, d.end)}).`);
   if (same(src.cal)) add("dates", "warn", `Dates du calendrier (${range(src.cal.start, src.cal.end)}) différentes de celles du séjour (${range(d.start, d.end)}).`);
   if (!lost) S.deals.filter((o) => o !== d && o.status !== "Perdu" && o.stage >= 2 && d.stage >= 2 && o.start < d.end && d.start < o.end).forEach((o) => add("dates", "bad", `Chevauchement avec « ${o.title} » (${range(o.start, o.end)}).`));
@@ -2080,36 +2118,36 @@ function auditDeal(d) {
     if (!d.mails || !d.mails.threads) add("mails", "info", "Aucune conversation Gmail rattachée.");
     const has = (k) => d.docs.find((x) => x.slot === k), contract = has("contrat");
     if (d.stage >= 4 || lost) {
-      if (!contract) add("contrat", d.signed ? "warn" : "bad", d.signed ? `Contrat signé le ${fr(d.signed)}, mais absent du dossier.` : "Aucun contrat dans le dossier.");
+      // A firm stay without its agreement in the dossier cannot be proved, whatever the date noted for its signature.
+      if (!contract) add("contrat", lost ? "warn" : "bad", d.signed ? `Contrat signé le ${fr(d.signed)}, mais absent du dossier.` : "Aucun contrat dans le dossier.");
       else if (contract.st !== "Signé") add("contrat", "warn", "Le contrat du dossier n'est pas la version signée.");
       else if (!d.signed) add("contrat", "info", "Contrat signé, date de signature non relevée.");
     }
     if (firm) {
       const inc = income(d), exp = inc.reduce((s, p) => s + p.amount, 0), paid = inc.filter((p) => p.status === "paid"), rec = paid.reduce((s, p) => s + gotOf(p), 0);
       if (!d.amount) add("solde", "bad", `Montant total inconnu${rec ? ` (${eur2(rec)} déjà encaissés)` : ""}.`);
-      else if (inc.length && Math.abs(exp - d.amount) > 0.005) add("solde", "warn", `L'échéancier (${eur2(exp)}) ne correspond pas au montant du contrat (${eur2(d.amount)}).`);
+      else if (inc.length && Math.abs(exp - d.amount) >= 1) add("solde", "warn", `L'échéancier (${eur2(exp)}) ne correspond pas au montant du contrat (${eur2(d.amount)}).`);
       if (!inc.length && d.amount) add("solde", "bad", "Aucune ligne d'encaissement.");
       inc.forEach((p) => { const c = p.id.startsWith("dep") ? "acompte" : "solde", note = p.note ? " " + p.note : "";
         if (p.status === "due") { if (p.due < TODAY) add(c, "bad", `${p.kind} non reçu : ${eur2(p.amount)}, échéance du ${fr(p.due)}.${note}`); return; }
         if (p.status !== "paid") return;
-        if (Math.abs(gotOf(p) - p.amount) > 0.005) add(c, "warn", `${p.kind} : ${eur2(gotOf(p))} reçus pour ${eur2(p.amount)} prévus (écart de ${eur2(Math.abs(p.amount - gotOf(p)))}).${note}`);
+        if (Math.abs(gotOf(p) - p.amount) > 0.005) add(c, p.amount - gotOf(p) > GAP_MINOR && !PLATFORM.test(p.kind) ? "bad" : "warn", `${p.kind} : ${eur2(gotOf(p))} reçus pour ${eur2(p.amount)} prévus (écart de ${eur2(Math.abs(p.amount - gotOf(p)))}).${note}`);
         else if (p.note) add(c, "info", `${p.kind} : ${p.note}`);
         if (!p.bank) { const before = !start || !p.due || p.due < start, bill = p.proof === "facture" ? ", facture trouvée" : "";
           add(c, !start || before ? "info" : "warn", !start ? `${p.kind} (${eur2(p.amount)}) noté reçu, sans rapprochement bancaire : importez le relevé.`
             : before ? `${p.kind} (${eur2(p.amount)}) ${p.due ? `reçu avant le début du relevé (${fr(start)})` : "noté reçu, date inconnue et absent du relevé"}${bill} : non vérifiable ici.` : `${p.kind} (${eur2(p.amount)}) noté reçu mais introuvable sur le relevé${bill}.`); }
         else if (p.due && p.paidOn && dayDiff(p.due, p.paidOn) > 3) { const n = dayDiff(p.due, p.paidOn); add(c, "info", `${p.kind} payé le ${fr(p.paidOn)}, ${n} jours après l'échéance du ${fr(p.due)}.`); } });
-      const bills = [["acompte", "dep", "d'acompte"], ["solde", "bal", "de solde"]].filter(([slot, id]) => inc.some((p) => p.id.startsWith(id)) && !has(slot));
-      if (bills.length) add(bills[0][0], "warn", `Facture ${bills.map((x) => x[2]).join(" et facture ")} absente${bills.length > 1 ? "s" : ""} du dossier.`);
       const h = d.payments.find((p) => p.hold);
       if (!h) add("caution", past ? "info" : "warn", "Aucune caution prévue.");
       else { if (h.note) add("caution", "info", "Caution : " + h.note);
-        if (h.got != null && h.got < h.amount) add("caution", "bad", `Caution : ${eur2(h.got)} obtenus${h.how ? " (" + h.how + ")" : ""} pour ${eur2(h.amount)} prévus au contrat.`);
+        if (h.got != null && h.got < h.amount) add("caution", "warn", `Caution : ${eur2(h.got)} obtenus${h.how ? " (" + h.how + ")" : ""} pour ${eur2(h.amount)} prévus au contrat.`);
         if (!has("caution") && !h.inOn && !h.how) add("caution", past ? "info" : "warn", `Caution de ${eur2(h.amount)} : aucune trace, ni document ni virement.`);
         if (h.inOn && !h.back && past && dayDiff(d.end, TODAY) > 14) add("caution", "bad", `Caution de ${eur2(h.got ?? h.amount)} reçue par virement le ${fr(h.inOn)} et pas encore rendue.`);
         if (h.back) add("caution", h.back.amount === (h.got ?? h.amount) ? "info" : "warn", `Caution reçue par virement${h.inOn ? " le " + fr(h.inOn) : ""}, ${eur2(h.back.amount)} rendus le ${fr(h.back.on)} (${dayDiff(d.end, h.back.on)} jours après le départ).`); }
       if (!has("assurance")) add("assurance", past ? "info" : "warn", "Attestation d'assurance absente du dossier.");
       if (!(d.sheet ?? []).length && !d.providers.length) add("fiche", past ? "info" : "warn", "Pas de fiche d'information (lieux, prestataires, besoins).");
     }
+    if (firm || lost) billing(d, invoiceMap().byDeal[d.id] ?? [], { eur: eur2, day: fr, start: stmtStart() || invStart(), upTo: invoiceMap().upTo, registered: S.invoices.length > 0 }).forEach((i) => add(i.c, i.lvl, i.t));
   }
   (d.refunds ?? []).forEach((r) => add("solde", "info", `Remboursement de ${eur2(r.amount)} le ${fr(r.on)}.`));
   (d.findings ?? []).forEach((f) => add(f.c ?? "note", LVL[f.lvl] !== undefined ? f.lvl : "info", f.t));
@@ -2133,6 +2171,7 @@ function viewAudit() {
   const firm = kept.filter((x) => x.d.stage >= 4 && x.d.kind !== "Famille"), n = (lvl) => all.filter((x) => (lvl === "ok" ? LVL[x.a.worst] < 2 : x.a.worst === lvl)).length;
   const total = firm.reduce((s, x) => s + x.d.amount, 0), rec = firm.reduce((s, x) => s + income(x.d).filter((p) => p.status === "paid").reduce((t, p) => t + gotOf(p), 0), 0);
   const owed = firm.reduce((s, x) => s + income(x.d).filter((p) => p.status === "due").reduce((t, p) => t + p.amount, 0), 0), loose = looseLines(yr);
+  const stray = invoiceMap().loose.filter((i) => i.deal !== "none" && (yr === "all" || !i.on || i.on.startsWith(yr)));
   const tab = S.auditTab, shown = all.filter((x) => tab === "all" || (tab === "ok" ? LVL[x.a.worst] < 2 : x.a.worst === tab));
   const kpi = (l, v, sub, tone = "") => `<div class="card kpi"><span class="l">${l}</span><span class="v num ${tone}">${v}</span><span class="ks">${sub}</span></div>`;
   const row = ({ d, a }) => { const openRow = Boolean(S.auditOpen[d.id]), lost = d.status === "Perdu";
@@ -2146,10 +2185,11 @@ function viewAudit() {
   const tabs = [["all", "Tous", all.length], ["bad", "Bloquants", n("bad")], ["warn", "À vérifier", n("warn")], ["ok", "OK", n("ok")]];
   // The audit is recomputed each time the page is drawn; what can be stale is what it reads. The button
   // fetches the latest from Drive, Gmail and the agenda, and the line says how fresh each source is.
-  const fresh = `Pièces, e-mails et visites relus ${S.syncReport ? "le " + when(S.syncReport.at) : "pas encore"} · relevé bancaire importé ${S.lastBank && S.lastBank !== "jamais" ? S.lastBank : "jamais"}.`;
+  const fresh = `Pièces, e-mails et visites relus ${S.syncReport ? "le " + when(S.syncReport.at) : "pas encore"} · relevé bancaire importé ${S.lastBank && S.lastBank !== "jamais" ? S.lastBank : "jamais"}${isAdmin() ? ` · registre des factures importé ${esc(S.lastInvoices)}` : ""}.`;
   const again = isAdmin() ? `<button class="btn alt" data-a="sync-now" ${S.syncBusy ? "disabled" : ""} title="Relit Drive, Gmail et l'agenda, puis recalcule l'audit">${ico("sync", "s")}${S.syncBusy ? "Audit en cours…" : "Relancer l'audit"}</button>` : "";
   return topbar("Audit", seg + again, "", `Chaque séjour confronté à la fiche, au calendrier, aux contrats, aux e-mails et au relevé bancaire. ${fresh}`) + `<div class="content audit">
     ${S.bankStatement.length || !isAdmin() ? "" : `<div class="finwarn">${ico("alert", "s")}<span>Aucun relevé bancaire importé : les encaissements ne peuvent pas être vérifiés.</span><button class="link" data-go="reglages-banque">Importer le relevé</button></div>`}
+    ${S.invoices.length || !isAdmin() ? "" : `<div class="finwarn">${ico("alert", "s")}<span>Aucun registre de factures importé : l'audit ne sait pas quels encaissements ont été facturés.</span><button class="link" data-go="reglages-factures">Importer le registre</button></div>`}
     <div class="kpis">${kpi("Séjours", all.length, `${firm.length} confirmés${gone.length ? ` · ${gone.length} annulé${gone.length > 1 ? "s" : ""}` : ""}`)}${kpi("Points bloquants", all.reduce((s, x) => s + x.a.bad, 0), `sur ${n("bad")} séjour${n("bad") > 1 ? "s" : ""}`, all.some((x) => x.a.bad) ? "red" : "green")}
       ${kpi("À vérifier", all.reduce((s, x) => s + x.a.warn, 0), `${n("ok")} séjour${n("ok") > 1 ? "s" : ""} sans remarque à traiter`)}${kpi("Encaissé", eur(rec), `sur ${eur(total)} de contrats${owed ? ` · ${eur(owed)} attendus` : ""}`)}
       ${!isAdmin() ? "" : kpi("Hors affaire", loose.length, loose.length ? `${eur(loose.reduce((s, t) => s + t.amount, 0))} reçus sans séjour rattaché` : "tous les encaissements sont rattachés", loose.length ? "orange" : "green")}</div>
@@ -2157,7 +2197,10 @@ function viewAudit() {
     <div class="alist">${shown.map(row).join("") || `<span class="muted">Aucun séjour dans cette catégorie.</span>`}</div>
     ${!isAdmin() ? "" : `<section class="blk"><h3 class="h flex">Encaissements sans séjour rattaché <span class="count num">${loose.length}</span></h3>
       <p class="docnote">Lignes créditées sur le relevé ${yr === "all" ? "" : "de " + yr + " "}qu'aucune affaire ne réclame : acompte d'une saison suivante à saisir, remboursement d'un fournisseur, ou séjour oublié. Écartez celles qui ne concernent pas un séjour.</p>
-      <div class="list">${loose.map((t) => `<div class="er"><span class="grow"><b>${esc(t.label)}</b><small class="num">${fr(t.on)}</small></span><span class="mini num">${eur2(t.amount)}</span>${isAdmin() ? `<button class="link" data-bskip="${esc(t.on + "|" + t.label + "|" + t.amount)}">Écarter</button>` : ""}</div>`).join("") || `<span class="muted">${S.bankStatement.length ? "Rien à rattacher." : "Importez d'abord le relevé bancaire."}</span>`}</div></section>`}</div>`;
+      <div class="list">${loose.map((t) => `<div class="er"><span class="grow"><b>${esc(t.label)}</b><small class="num">${fr(t.on)}</small></span><span class="mini num">${eur2(t.amount)}</span>${isAdmin() ? `<button class="link" data-bskip="${esc(t.on + "|" + t.label + "|" + t.amount)}">Écarter</button>` : ""}</div>`).join("") || `<span class="muted">${S.bankStatement.length ? "Rien à rattacher." : "Importez d'abord le relevé bancaire."}</span>`}</div></section>`}
+    ${!isAdmin() || !S.invoices.length ? "" : `<section class="blk"><h3 class="h flex">Factures sans séjour rattaché <span class="count num">${stray.length}</span><button class="link" data-go="reglages-factures">Les rattacher</button></h3>
+      <p class="docnote">Factures du registre ${yr === "all" ? "" : "datées de " + yr + " "}qu'aucun séjour ne réclame : séjour d'une autre saison, prestation hors location, ou client écrit autrement.</p>
+      <div class="list">${stray.map((i) => `<div class="er"><span class="grow"><b>N° ${esc(i.n)} · ${esc(i.who || "client non précisé")}</b><small class="num">${i.on ? fr(i.on) : "date inconnue"}${i.label ? " · " + esc(i.label) : ""}</small></span><span class="mini num">${eur2(i.ttc)}</span></div>`).join("") || `<span class="muted">Toutes les factures ont leur séjour.</span>`}</div></section>`}</div>`;
 }
 // The same remarks, on the deal page.
 function auditBlock(d) {
@@ -2245,12 +2288,13 @@ const SETTINGS = {
   library: () => S.library,
   mailkit: () => S.mailkit,
   bank: () => ({ lines: S.bankStatement, last: S.lastBank }),
+  invoices: () => ({ list: S.invoices, last: S.lastInvoices }),
 };
 const usersOut = () => S.users.map((u) => ({ email: u.email, name: u.name, role: u.role === "Équipe" ? "team" : "admin" }));
 function applySettings(st) {
   const p = st.settings.prefs ?? {}, bank = st.settings.bank ?? {};
   S.buffer = p.buffer ?? 0; TERMS.deposit = p.deposit ?? 30; TERMS.hold = p.hold ?? 2500; S.plSeq = p.plSeq ?? { D: 0, F: 0 }; S.sources = p.sources ?? []; S.mailbox = p.mailbox ?? ""; S.lessor = p.lessor ?? {};
-  S.library = st.settings.library ?? []; S.mailkit = { templates: [], signature: "", ...(st.settings.mailkit ?? {}) }; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false }; S.agenda = st.agenda ?? { on: false }; S.ai = st.ai === true; S.syncReport = st.settings.sync ?? null; S.syncBusy = false;
+  S.library = st.settings.library ?? []; S.mailkit = { templates: [], signature: "", ...(st.settings.mailkit ?? {}) }; S.bankStatement = bank.lines ?? []; S.lastBank = bank.last ?? "jamais"; S.invoices = st.settings.invoices?.list ?? []; S.lastInvoices = st.settings.invoices?.last ?? "jamais"; S.feeds = st.settings.feeds ?? []; S.admin = st.admin ?? null; S.drive = st.drive ?? { on: false }; S.mail = st.mail ?? { on: false }; S.agenda = st.agenda ?? { on: false }; S.ai = st.ai === true; S.syncReport = st.settings.sync ?? null; S.syncBusy = false;
   const mine = st.user.email;
   S.users = [...st.users].sort((a, b) => Number(b.email === mine) - Number(a.email === mine)).map((u) => ({ email: u.email, name: u.name || u.email.split("@")[0], role: u.role === "admin" ? "Admin" : "Équipe", pending: u.pending }));
   for (const k of Object.keys(SETTINGS)) savedSettings[k] = JSON.stringify(SETTINGS[k]());
@@ -2294,7 +2338,7 @@ async function persist() {
     }
     const live = new Set(S.deals.map((d) => d.id));
     for (const id of [...saved.keys()]) if (!live.has(id)) { wrote = true; const r = await api("DELETE", "/api/deals/" + encodeURIComponent(id)); if (r.status !== 200) throw new Error(r.data.error || "suppression refusée"); saved.delete(id); }
-    for (const k of Object.keys(SETTINGS)) { const json = JSON.stringify(SETTINGS[k]()); if (json === savedSettings[k]) continue; if ((k === "prefs" || k === "bank") && !isAdmin()) continue;
+    for (const k of Object.keys(SETTINGS)) { const json = JSON.stringify(SETTINGS[k]()); if (json === savedSettings[k]) continue; if ((k === "prefs" || k === "bank" || k === "invoices") && !isAdmin()) continue;
       wrote = true; const r = await api("PUT", "/api/settings/" + k, { value: JSON.parse(json) }); if (r.status !== 200) throw new Error(r.data.error || "réglage refusé"); savedSettings[k] = json; }
     if (isAdmin()) { const json = JSON.stringify(usersOut()); if (json !== savedSettings.users) { wrote = true; const r = await api("PUT", "/api/users", { users: JSON.parse(json) }); if (r.status !== 200) throw new Error(r.data.error || "utilisateurs refusés"); savedSettings.users = json; } }
     if (wrote) { saveState("Enregistré"); setTimeout(() => { if (!saving) saveState(""); }, 1500); }
@@ -2426,7 +2470,8 @@ function importPlanning(text) {
 }
 document.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (!f) return;
   if (e.target.id === "imp-file") f.text().then(importPlanning);
-  if (e.target.id === "bank-file") f.text().then((t) => { importStatement(t); e.target.value = ""; }); });
+  if (e.target.id === "bank-file") f.text().then((t) => { importStatement(t); e.target.value = ""; });
+  if (e.target.id === "inv-file") f.text().then((t) => { importInvoices(t, f.name); e.target.value = ""; }); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") persist(); else checkBuild(); });
 setInterval(checkBuild, 5 * 60 * 1000);
 async function boot() {
@@ -2448,5 +2493,5 @@ async function boot() {
   render(); follow();
 }
 // For the journey checks only: lets a test read the state it is looking at.
-window.__app = { mails, S, TERMS, bookings, clean, persist, mk, SEL, parseStatement, auditDeal, importSeason, checkBuild };
+window.__app = { mails, S, TERMS, bookings, clean, persist, mk, SEL, parseStatement, auditDeal, importSeason, importInvoices, checkBuild };
 boot();

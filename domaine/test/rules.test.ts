@@ -381,3 +381,95 @@ test("a visit moved or removed in the agenda is brought back to the deal", async
   // An event turned into a whole day in the agenda carries no hour: the visit is left as it is.
   assert.equal(visitFromEvent(v, { status: "confirmed", start: { date: "2027-03-06" }, end: { date: "2027-03-07" } }), null);
 });
+
+/* ---------- The register of invoices: read from an export, matched to the stays, checked against what was received ---------- */
+const { parseInvoices, mergeInvoices, assignInvoices, billing } = await import("../web/invoices.js");
+const say = { eur: (n: number) => `${n} €`, day: (d: string) => d };
+const stay = (over: Record<string, unknown> = {}) => ({ id: "d1", title: "Mariage Alba & Bruno", contact: { name: "Alba Fictive" }, tenants: ["Alba Fictive", "Bruno Inventé"], status: "Gagné", amount: 9000, docs: [], refunds: [],
+  payments: [{ id: "dep1", kind: "Acompte", amount: 2700, status: "paid", paidOn: "2025-11-02", bank: null }, { id: "bal1", kind: "Solde", amount: 6300, status: "paid", paidOn: "2026-03-30", bank: "VIR ALBA" }, { id: "hold1", kind: "Caution", amount: 2500, status: "held", hold: true }], ...over });
+const inv = (n: string, ttc: number, who = "Alba Fictive", on = "2026-06-30") => ({ n, on, who, label: "", ht: Math.round(ttc / 1.1 * 100) / 100, ttc, src: "test" });
+const texts = (deal: Record<string, unknown>, list: unknown[], start = "2026-01-01") => billing(deal, list, { ...say, start, registered: true }).map((i: { lvl: string; t: string }) => `${i.lvl}: ${i.t}`);
+
+test("an export of invoices is read whatever its separator, its column names and its way of writing amounts", () => {
+  const fr = parseInvoices("﻿Numéro;Date d'émission;Client;Intitulé;Montant HT;TVA;Montant TTC;Statut\n71;30/06/2026;Alba Fictive;Solde séjour;5 727,27 €;572,73 €;6 300,00 €;Envoyée\n72;30/06/2026;\"Inventé; Bruno\";Acompte;2 454,55;245,45;2 700,00;Facturée\n;;;Total;8 181,82;818,18;9 000,00;\n");
+  assert.equal(fr.error, undefined);
+  assert.deepEqual(fr.list.map((i: { n: string; on: string; who: string; ttc: number; ht: number }) => [i.n, i.on, i.who, i.ttc, i.ht]), [["71", "2026-06-30", "Alba Fictive", 6300, 5727.27], ["72", "2026-06-30", "Inventé; Bruno", 2700, 2454.55]]);
+  assert.equal(fr.ttc, 9000); assert.equal(fr.ht, 8181.82);
+  const en = parseInvoices("Invoice number,Date,Customer,Total excl. tax,Total incl. tax\nF-2026-10-1,2026-10-31,Alba Fictive,\"1,000.00\",\"1,100.00\"\n");
+  assert.deepEqual(en.list.map((i: { n: string; on: string; ttc: number }) => [i.n, i.on, i.ttc]), [["F-2026-10-1", "2026-10-31", 1100]]);
+});
+test("a credit note counts against the invoices, a draft is left out, and a file without the needed columns is refused whole", () => {
+  const out = parseInvoices("Numéro,Date,Client,Type,Montant HT,Montant TTC,Statut\n107,06/07/2026,Alba Fictive,Facture,1000,1100,Envoyée\n108,06/07/2026,Alba Fictive,Avoir,1000,1100,Envoyée\n109,07/07/2026,Alba Fictive,Facture,500,550,Brouillon\n");
+  assert.deepEqual(out.list.map((i: { n: string; ttc: number }) => [i.n, i.ttc]), [["107", 1100], ["108", -1100]]);
+  assert.equal(out.ttc, 0); assert.equal(out.skipped, 1);
+  assert.match(parseInvoices("Date,Libellé,Débit\n01/01/2026,x,3\n").error, /numéro/);
+  assert.match(parseInvoices("").error, /vide/);
+});
+test("importing a second file adds to the register, and the same number is updated, never doubled", () => {
+  const first = mergeInvoices([], [inv("71", 6300), inv("72", 2700)]);
+  assert.deepEqual([first.list.length, first.added, first.updated], [2, 2, 0]);
+  const linked = first.list.map((i: { n: string }) => (i.n === "72" ? { ...i, deal: "d9" } : i));
+  const second = mergeInvoices(linked, [inv("72", 2750), inv("F-1", 1100)]);
+  assert.deepEqual([second.list.length, second.added, second.updated], [3, 1, 1]);
+  const again = second.list.find((i: { n: string }) => i.n === "72");
+  assert.equal(again.ttc, 2750); assert.equal(again.deal, "d9", "a link made by hand survives a new import");
+});
+test("an invoice goes to the stay of its client: by two names, by the family name, or by the amount when a first name is shared", () => {
+  const a = stay(), b = stay({ id: "d2", title: "Mariage Alba & Cyril", contact: { name: "Alba Autre" }, tenants: ["Alba Autre", "Cyril Imaginé"], payments: [{ id: "dep1", kind: "Acompte", amount: 1500, status: "paid" }] });
+  const out = assignInvoices([inv("1", 6300, "Mme Alba FICTIVE"), inv("2", 1500, "Alba"), inv("3", 999, "Alba"), inv("4", 800, "Zoé Inconnue"), { ...inv("5", 10, "Personne"), deal: "d2" }], [a, b]);
+  assert.deepEqual(out.byDeal.d1.map((i: { n: string }) => i.n), ["1"]);
+  assert.deepEqual(out.byDeal.d2.map((i: { n: string }) => i.n), ["2", "5"]);
+  assert.deepEqual(out.loose.map((i: { n: string }) => i.n), ["3", "4"]);
+});
+test("money received during the bank statement and never invoiced is blocking, earlier money is only noted", () => {
+  assert.deepEqual(texts(stay(), [inv("71", 6300), inv("30", 2700)]), []);
+  const none = texts(stay(), []);
+  assert.equal(none.length, 2);
+  assert.match(none.find((t: string) => t.includes("Solde")), /^bad: Solde de 6300 € reçu le 2026-03-30, sans facture/);
+  assert.match(none.find((t: string) => t.includes("Acompte")), /^info: /);
+  assert.deepEqual(texts(stay({ payments: [{ id: "air1", kind: "Part Airbnb", amount: 5000, status: "paid", paidOn: "2026-09-07", bank: "AIRBNB" }] }), []).map((t: string) => t.slice(0, 5)), ["warn:"]);
+});
+test("an invoice found in the dossier, or one invoice for several payments, counts as invoiced", () => {
+  assert.deepEqual(texts(stay({ docs: [{ slot: "solde" }] }), [inv("30", 2700)]), []);
+  assert.deepEqual(texts(stay({ payments: [{ id: "bal1", kind: "Solde (1/2)", amount: 5000, status: "paid", paidOn: "2026-06-18", bank: "A" }, { id: "bal2", kind: "Solde (2/2)", amount: 2000, status: "paid", paidOn: "2026-06-18", bank: "B" }] }), [inv("80", 7000)]), []);
+});
+test("when two payments have the same amount, the invoice goes first to the one seen at the bank", () => {
+  const two = stay({ payments: [{ id: "dep1", kind: "Acompte 1", amount: 1500, status: "paid" }, { id: "dep2", kind: "Acompte 2", amount: 1500, status: "paid", paidOn: "2026-02-09", bank: "VIR ALBA" }] });
+  assert.deepEqual(texts(two, [inv("71", 1500)]).map((t: string) => t.slice(0, 5)), ["info:"]);
+});
+test("an invoice issued before the bank statement goes to the earlier payment, even when a later one has the same amount", () => {
+  const twin = stay({ amount: 6000, payments: [{ id: "dep1", kind: "Acompte", amount: 3000, status: "paid" }, { id: "bal1", kind: "Solde", amount: 3000, status: "paid", paidOn: "2026-07-03", bank: "VIR ALBA" }] });
+  const dated = texts(twin, [inv("36", 3000, "Alba Fictive", "2025-03-01")]);
+  assert.equal(dated.length, 1); assert.match(dated[0], /^bad: Solde de 3000 € reçu le 2026-07-03, sans facture/);
+  // Without a date, the number tells: invoices are numbered in the order they are issued.
+  const all = [{ ...inv("36", 3000), on: "" }, inv("38", 3500, "Zoé Inconnue", "2025-03-21"), inv("71", 100, "Zoé Inconnue", "2026-06-30")];
+  const upTo = assignInvoices(all, [twin]).upTo;
+  assert.equal(upTo["36"], "2025-03-21");
+  const undated = billing(twin, [all[0]], { ...say, start: "2026-01-01", registered: true, upTo }).map((i: { lvl: string }) => i.lvl);
+  assert.deepEqual(undated, ["bad"]);
+});
+test("one invoice for transfers received together is not mistaken for an older payment of the same total", () => {
+  const split = stay({ amount: 14000, payments: [{ id: "dep1", kind: "Acompte", amount: 7000, status: "paid" }, { id: "bal1", kind: "Solde (1/2)", amount: 5000, status: "paid", paidOn: "2026-06-18", bank: "A" }, { id: "bal2", kind: "Solde (2/2)", amount: 2000, status: "paid", paidOn: "2026-06-18", bank: "B" }] });
+  assert.deepEqual(texts(split, [inv("80", 7000)]).map((t: string) => t.slice(0, 5)), ["info:"]);
+});
+test("the same payment invoiced twice, an invoice for another amount, and a deposit inside an invoice are blocking", () => {
+  const twice = texts(stay(), [inv("70", 2700, "Alba Fictive", "2025-09-30"), inv("103", 2700), inv("71", 6300)]);
+  assert.equal(twice.length, 1); assert.match(twice[0], /^bad: .*deux fois.*n° 70.*n° 103/);
+  const wrong = texts(stay(), [inv("30", 2700), inv("F-3", 6700)]);
+  assert.equal(wrong.length, 1); assert.match(wrong[0], /^bad: Facture n° F-3 de 6700 € pour 6300 € reçus/);
+  const hold = texts(stay(), [inv("30", 2700), inv("92", 8800)]);
+  assert.equal(hold.length, 1); assert.match(hold[0], /^bad: .*n° 92.*caution de 2500 €/);
+  const extra = texts(stay(), [inv("30", 2700), inv("71", 6300), inv("99", 1234)]);
+  assert.deepEqual(extra.map((t: string) => t.slice(0, 5)), ["warn:"]);
+  assert.deepEqual(texts(stay(), [inv("30", 2700), inv("71", 6300), inv("90", 500), inv("91", -500)]), [], "a credit note cancels its invoice");
+});
+test("a cancelled stay whose money went back still has its invoice: a credit note is owed", () => {
+  const gone = stay({ status: "Perdu", payments: [{ id: "dep1", kind: "Acompte", amount: 3600, status: "paid" }], refunds: [{ amount: 3600, on: "2026-08-06" }] });
+  const out = texts(gone, [inv("75", 3600)]);
+  assert.equal(out.length, 1); assert.match(out[0], /^bad: .*avoir/);
+  assert.deepEqual(texts(gone, [inv("75", 3600), inv("110", -3600)]), []);
+});
+test("without a register, a payment whose invoice is not in the dossier is only to be checked", () => {
+  const out = billing(stay(), [], { ...say, start: "2026-01-01", registered: false }).map((i: { lvl: string; t: string }) => `${i.lvl}: ${i.t}`);
+  assert.equal(out.length, 1); assert.match(out[0], /^warn: Facture d'acompte et facture de solde absentes du dossier/);
+});

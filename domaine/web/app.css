@@ -1110,3 +1110,9 @@ select.tlink, select.tlink:hover { background-image: var(--chev); background-rep
 /* In a table row only the first column carries the name in strong; the rest stays quiet. */
 .cell b { font-weight: var(--w-medium); } .row > .cell:first-child b { font-weight: var(--w-strong); }
 .vsync.gone { color: var(--orange-ink); } .setfoot .grow { flex: 1; align-self: center; }
+
+/* The register of invoices, in the settings */
+.invlist { padding: var(--s4) var(--s5) var(--s5); border-top: 1px solid var(--line-soft); }
+.invlist h4 { margin: var(--s4) 0 var(--s2); font-size: 14px; font-weight: var(--w-strong); display: flex; align-items: center; gap: var(--s2); } .invlist h4:first-child { margin-top: 0; }
+.invlist .docnote { margin: 0 0 var(--s3); } .invlist .list { display: flex; flex-direction: column; gap: var(--s2); }
+.er.inv { flex-wrap: wrap; } .er.inv select { max-width: 280px; } .er.inv .mini.t-green { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

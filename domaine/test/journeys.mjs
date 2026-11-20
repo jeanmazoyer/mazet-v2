@@ -90,7 +90,7 @@ ok("a web page is refused as an upload", (await a.evaluate(async () => { const f
 await a.click("#close-preview"); await a.goto(`${BASE}/#reglages-echeancier`); await a.waitForSelector(".setmain"); await a.click('[data-a="dep-plus"]'); await settle(a);
 await a.reload(); await a.waitForSelector(".setmain");
 ok("a setting survives a reload", (await S(a, "TERMS.deposit")) === 35);
-ok("cards of features not plugged in are not shown", !(await a.locator(".setx").innerText()).includes("Pennylane") && (await a.locator(".setnav a").count()) === 15 && (await a.locator(".setmain h2").innerText()) === "Échéancier par défaut");
+ok("cards of features not plugged in are not shown", !(await a.locator(".setx").innerText()).includes("Pennylane") && (await a.locator(".setnav a").count()) === 16 && (await a.locator(".setmain h2").innerText()) === "Échéancier par défaut");
 const team = await person("carol@test.local", "team");
 ok("the team does not receive the bank statement or the calendar secret", await team.evaluate(() => fetch("/api/state").then((r) => r.json()).then((s) => !("bank" in s.settings) && !("ical_token" in s.settings) && s.admin === null)));
 ok("the team cannot download a backup", (await team.evaluate(() => fetch("/api/backup").then((r) => r.status))) === 403); await team.goto(`${BASE}/#reglages`); await team.waitForSelector(".lockcard");
@@ -189,11 +189,25 @@ await a.goto(`${BASE}/#reglages-import`); await a.waitForSelector("#imp-file"); 
 ok("a season file: valid stays in, invalid ones skipped, the audit opens", (await S(a, "S.deals.filter(d => d.id.startsWith('t27-')).length")) === 1 && (await a.locator(".flash").innerText()).includes("2 ignorés"), await a.locator(".flash").innerText().catch(() => ""));
 ok("the season file fills in the lessor where nothing was typed", (await S(a, "S.lessor.name")) === "SARL Importée" && (await S(a, "S.lessor.city")) === "Nîmes");
 ok("only Google Drive links are kept on documents", (await S(a, "S.deals.find(d => d.id === 't27-ok').docs.length")) === 2);
-ok("the audit lists the stay and flags the contract dates", (await a.locator('[data-aopen="t27-ok"] .ac.bad').count()) === 1 && (await a.locator('[data-aopen="t27-ok"] .st').textContent()).trim() === "Bloquant");
+ok("the audit lists the stay, and contract dates that differ are to be checked, not blocking", (await a.locator('[data-aopen="t27-ok"] .ac.bad').count()) === 0 && (await a.locator('[data-aopen="t27-ok"] .ac.warn').first().textContent()) === "Dates" && (await a.locator('[data-aopen="t27-ok"] .st').textContent()).trim() === "À vérifier");
 await a.click('[data-aopen="t27-ok"]'); const treat = a.locator('.aitems li.warn [data-aok]').first(), before = await a.locator(".aitems li.seen").count(); await treat.click(); await settle(a);
 ok("a remark marked as dealt with is struck out", (await a.locator(".aitems li.seen").count()) === before + 1);
 await a.goto(`${BASE}/#reglages-import`); await a.waitForSelector("#imp-file"); await a.setInputFiles("#imp-file", "/tmp/domaine-season.json"); await a.waitForSelector(".audit"); await settle(a); await a.reload(); await a.waitForSelector(".audit");
 ok("importing the same season again updates, never duplicates, and keeps what was dealt with", (await S(a, "S.deals.filter(d => d.id === 't27-ok').length")) === 1 && (await S(a, "S.deals.find(d => d.id === 't27-ok').auditOk.length")) === 1, await a.locator(".flash").innerText().catch(() => ""));
+// The register of invoices (fictional): private to administrators, matched to the stays, checked by the audit
+ok("the team can neither read nor write the register of invoices", (await team.request.get(`${BASE}/api/settings/invoices`)).status() === 403 && (await team.request.put(`${BASE}/api/settings/invoices`, { data: { value: { list: [], last: "x" } } })).status() === 403
+  && (await team.evaluate(() => fetch("/api/state").then((r) => r.json()).then((st) => !("invoices" in st.settings)))));
+const register = "Numéro;Date;Client;Montant HT;Montant TTC\n70;30/09/2026;Alba Test;2 181,82;2 400,00\n103;30/06/2027;Alba Test;2 181,82;2 400,00\n104;30/06/2027;Société Inconnue;1 000,00;1 100,00\n";
+await a.goto(`${BASE}/#reglages-factures`); await a.waitForSelector("#inv-file"); await a.setInputFiles("#inv-file", { name: "tiime.csv", mimeType: "text/csv", buffer: Buffer.from(register) }); await settle(a);
+ok("an export of invoices is read, totalled and matched to the stays", (await S(a, "S.invoices.length")) === 3 && /3 factures lues/.test(await a.locator(".flash").innerText()) && /5\s?900/.test(await a.locator(".flash").innerText()) && (await a.locator('[data-ilink="104"]').count()) === 1 && (await a.locator('[data-ilink="70"]').count()) === 0, await a.locator(".flash").innerText().catch(() => ""));
+await a.selectOption('[data-ilink="104"]', "t27-ok"); await settle(a);
+ok("an invoice left without a stay is linked by hand", (await S(a, "S.invoices.find(i => i.n === '104').deal")) === "t27-ok");
+await a.goto(`${BASE}/#audit`); await a.waitForSelector(".audit"); await a.click('[data-aopen="t27-ok"]');
+ok("the audit blocks on a payment invoiced twice", (await a.locator('[data-aopen="t27-ok"] .st').textContent()).trim() === "Bloquant" && (await a.locator(".aitems li.bad").first().innerText()).includes("facturé deux fois"), await a.locator(".aitems").innerText().catch(() => ""));
+await a.reload(); await a.waitForSelector(".audit");
+ok("the register survives a reload", (await S(a, "S.invoices.length")) === 3);
+await a.goto(`${BASE}/#reglages-factures`); await a.waitForSelector('[data-a="inv-clear"]'); await a.click('[data-a="inv-clear"]'); const kept = await S(a, "S.invoices.length"); await a.click('[data-a="confirm-yes"]'); await settle(a);
+ok("emptying the register asks first, then removes it", kept === 3 && (await S(a, "S.invoices.length")) === 0);
 await a.goto(`${BASE}/#affaire-t27-ok`); await a.waitForSelector(".dealhead");
 ok("the deal page shows the remarks, the conversations and the Drive document", (await a.locator(".aitems li").count()) >= 2 && (await a.locator('a.drow[href^="https://mail.google.com/"]').count()) === 1 && (await a.locator(".docs .drow").first().innerText()).includes("Contrat signé"));
 await a.context().route(/https:\/\/(drive|docs)\.google\.com\//, (r) => r.fulfill({ contentType: "text/html", body: "<p>Google</p>" }));
