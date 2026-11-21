@@ -214,6 +214,7 @@ ok("the audit opens the whole file of a stay, with its payments and its document
 ok("the file of a stay is reached from the audit list", await (async () => { await a.goto(`${BASE}/#audit`); await a.waitForSelector(".audit"); await a.click('[data-aopen="t27-ok"]'); return (await a.locator('[data-go="audit-t27-ok"]').count()) === 1; })());
 await a.goto(`${BASE}/#audit-t27-ok`); await a.waitForSelector(".auditdeal"); await a.click('.auditdeal [data-apv="0"]'); await settle(a);
 ok("a document of the file opens in a preview on the same page", (await a.locator(".auditdeal .apreview iframe").count()) === 1);
+ok("the title of a stay file is written as it is, not as code", (await a.locator(".topbar h1").textContent()).includes("Mariage Alba & Noé") && !(await a.locator(".topbar h1").textContent()).includes("&amp;"));
 await a.goto(`${BASE}/#affaire-t27-ok`); await a.waitForSelector(".dealhead");
 ok("the deal page shows the remarks, the conversations and the Drive document", (await a.locator(".aitems li").count()) >= 2 && (await a.locator('a.drow[href^="https://mail.google.com/"]').count()) === 1 && (await a.locator(".docs .drow").first().innerText()).includes("Contrat signé"));
 await a.context().route(/https:\/\/(drive|docs)\.google\.com\//, (r) => r.fulfill({ contentType: "text/html", body: "<p>Google</p>" }));
