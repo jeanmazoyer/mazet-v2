@@ -2223,15 +2223,14 @@ function viewAuditDeal(id) {
   const pick = S.auditPrev != null ? d.docs[S.auditPrev] : null;
   const docs = d.docs.map((x, i) => `<button class="drow ${S.auditPrev === i ? "on" : ""}" data-apv="${i}"><span class="grow"><b>${esc(x.t)}</b><small class="num">${esc(x.st ?? "")}${x.slot ? " · " + esc(x.slot) : ""}</small></span>${ico("right", "s")}</button>`).join("");
   const contract = d.docs.find((x) => x.slot === "contrat");
-  const block = (title, body, empty) => `<section class="blk"><h3 class="h">${title}</h3>${body || `<p class="muted">${empty}</p>`}</section>`;
+  const block = (title, body, empty) => `<section class="blk adblk"><h3 class="h">${title}</h3>${body || `<p class="muted">${empty}</p>`}</section>`;
+  const facts = [["Statut", contract ? esc(contract.st ?? "non précisé") : "aucun contrat dans le dossier"], ["Signature", d.signed ? "signé le " + fr(d.signed) : "date non relevée"]].map(([k, v]) => `<div class="f"><span class="k">${k}</span><div class="v">${v}</div></div>`).join("");
   return topbar(d.title, `<span class="mini st ${LVL_TONE[a.worst]}">${LVL_LABEL[a.worst]}</span>`, "audit", `${range(d.start, d.end)} · ${esc(d.status)} · contrat ${d.amount ? eur2(d.amount) : "montant inconnu"}`) + `<div class="content auditdeal">
     <div class="kpis"><div class="card kpi"><span class="l">Contrat</span><span class="v num">${d.amount ? eur2(d.amount) : "?"}</span></div><div class="card kpi"><span class="l">Reçu</span><span class="v num">${eur2(rec)}</span></div><div class="card kpi"><span class="l">Reste dû</span><span class="v num">${eur2(owed)}</span></div></div>
-    ${block("Paiements", pays, "Aucun paiement prévu.")}
-    ${block("Extraits de compte", extracts, S.bankStatement.length ? "Aucune ligne du relevé ne concerne ce séjour." : "Importez le relevé bancaire dans les réglages.")}
-    ${block("Factures", invs, "Aucune facture rattachée à ce séjour dans le registre.")}
-    ${block("Documents", docs ? `<div class="docs">${docs}</div>${pick ? `<div class="apreview">${docBody(d, pick)}</div>` : `<p class="docnote">Choisissez un document pour l'afficher ici.</p>`}` : "", "Aucun document dans le dossier Drive.")}
-    ${block("Contrat", `<p class="docnote">${contract ? `Statut du document : ${esc(contract.st ?? "non précisé")}. ` : "Aucun contrat dans le dossier. "}${d.signed ? `Signé le ${fr(d.signed)}.` : "Date de signature non relevée."}</p>`, "")}
-    ${block("Remarques", auditItems(d, a), "")}
+    <div class="adgrid">
+      <div class="adcol">${block("Paiements", pays, "Aucun paiement prévu.")}${block("Extraits de compte", extracts, S.bankStatement.length ? "Aucune ligne du relevé ne concerne ce séjour." : "Importez le relevé bancaire dans les réglages.")}${block("Factures", invs, "Aucune facture rattachée à ce séjour dans le registre.")}${block("Contrat", `<div class="facts">${facts}</div>`, "")}</div>
+      <div class="adcol">${block("Documents", d.docs.length ? `<div class="docs">${docs}</div>${pick ? `<div class="apreview">${docBody(d, pick)}</div>` : `<p class="docnote">Choisissez un document pour l'afficher ici.</p>`}` : "", "Aucun document dans le dossier Drive.")}${block("Remarques", auditItems(d, a), "")}</div>
+    </div>
     ${mailsBlock(d)}
   </div>`;
 }
