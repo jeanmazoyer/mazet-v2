@@ -473,3 +473,23 @@ test("without a register, a payment whose invoice is not in the dossier is only 
   const out = billing(stay(), [], { ...say, start: "2026-01-01", registered: false }).map((i: { lvl: string; t: string }) => `${i.lvl}: ${i.t}`);
   assert.equal(out.length, 1); assert.match(out[0], /^warn: Facture d'acompte et facture de solde absentes du dossier/);
 });
+
+/* ---------- The detail of a stay in the audit: which bank lines belong to it, and how each payment shows up ---------- */
+const { bankLinesFor, matchPayment } = await import("../web/dossier.js");
+const lines = [
+  { on: "2026-03-05", label: "VIR ALBA FICTIVE", amount: 2700 },
+  { on: "2026-03-09", label: "VIR BRUNO INVENTE", amount: 500 },
+  { on: "2026-03-10", label: "CB SUPERMARCHE", amount: 42 },
+];
+const dossierDeal = { contact: { name: "Alba Fictive" }, tenants: ["Alba Fictive", "Bruno Inventé"], payments: [{ id: "dep1", kind: "Acompte", amount: 2700, status: "paid", paidOn: "2026-03-05", bank: "VIR ALBA FICTIVE" }] };
+test("the bank lines of a stay are the ones that prove one of its payments or carry the name of a tenant, in date order", () => {
+  assert.deepEqual(bankLinesFor(dossierDeal, lines).map((t: { label: string }) => t.label), ["VIR ALBA FICTIVE", "VIR BRUNO INVENTE"]);
+  assert.deepEqual(bankLinesFor({ ...dossierDeal, tenants: [], contact: { name: "" } }, lines).map((t: { label: string }) => t.label), ["VIR ALBA FICTIVE"]);
+});
+test("a payment is matched to its bank line by label and date, is only noted when no line proves it, and is due when not yet paid", () => {
+  const p = dossierDeal.payments[0];
+  assert.equal(matchPayment(p, lines).state, "matched");
+  assert.equal(matchPayment({ ...p, paidOn: "2026-03-06" }, lines).state, "noted", "a line on another day is not this payment");
+  assert.equal(matchPayment({ ...p, bank: null }, lines).state, "noted");
+  assert.equal(matchPayment({ amount: 1, status: "due", due: "2026-09-01", bank: null }, lines).state, "due");
+});

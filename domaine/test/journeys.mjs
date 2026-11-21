@@ -208,6 +208,12 @@ await a.reload(); await a.waitForSelector(".audit");
 ok("the register survives a reload", (await S(a, "S.invoices.length")) === 3);
 await a.goto(`${BASE}/#reglages-factures`); await a.waitForSelector('[data-a="inv-clear"]'); await a.click('[data-a="inv-clear"]'); const kept = await S(a, "S.invoices.length"); await a.click('[data-a="confirm-yes"]'); await settle(a);
 ok("emptying the register asks first, then removes it", kept === 3 && (await S(a, "S.invoices.length")) === 0);
+// The file of one stay in the audit: money line by line, the documents, and a preview on the same page
+await a.goto(`${BASE}/#audit-t27-ok`); await a.waitForSelector(".auditdeal");
+ok("the audit opens the whole file of a stay, with its payments and its documents", (await a.locator(".auditdeal .er").count()) >= 2 && (await a.locator(".auditdeal").innerText()).includes("Paiements") && (await a.locator(".auditdeal").innerText()).includes("Documents"));
+ok("the file of a stay is reached from the audit list", await (async () => { await a.goto(`${BASE}/#audit`); await a.waitForSelector(".audit"); await a.click('[data-aopen="t27-ok"]'); return (await a.locator('[data-go="audit-t27-ok"]').count()) === 1; })());
+await a.goto(`${BASE}/#audit-t27-ok`); await a.waitForSelector(".auditdeal"); await a.click('.auditdeal [data-apv="0"]'); await settle(a);
+ok("a document of the file opens in a preview on the same page", (await a.locator(".auditdeal .apreview iframe").count()) === 1);
 await a.goto(`${BASE}/#affaire-t27-ok`); await a.waitForSelector(".dealhead");
 ok("the deal page shows the remarks, the conversations and the Drive document", (await a.locator(".aitems li").count()) >= 2 && (await a.locator('a.drow[href^="https://mail.google.com/"]').count()) === 1 && (await a.locator(".docs .drow").first().innerText()).includes("Contrat signé"));
 await a.context().route(/https:\/\/(drive|docs)\.google\.com\//, (r) => r.fulfill({ contentType: "text/html", body: "<p>Google</p>" }));

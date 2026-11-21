@@ -2,6 +2,7 @@
 import { Idiomorph } from "/vendor/idiomorph.js";
 import { CONTRACT } from "/contract.js";
 import { parseInvoices, mergeInvoices, assignInvoices, billing } from "/invoices.js";
+import { bankLinesFor, matchPayment } from "/dossier.js";
 const I = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
@@ -116,7 +117,7 @@ const S = {
   // Files found in Google Drive that no deal claims yet.
   library: [],
   closed: { contact: true }, month: TODAY.slice(0, 7),
-  bankStatement: [], invoices: [], lastInvoices: "jamais", invEdit: null,
+  bankStatement: [], invoices: [], lastInvoices: "jamais", invEdit: null, auditPrev: null,
   feeds: [],
   auditYear: TODAY.slice(0, 4), auditTab: "all", auditOpen: {}, mailbox: "", drive: { on: false }, mail: { on: false }, mailThread: {}, mailBusy: false, noteEdit: null, agenda: { on: false }, visitEdit: null, mailkit: { templates: [], signature: "" }, mailSkip: {}, mailFiles: [], mailSign: true, mailUp: false, tplQ: "", ai: false, aiBusy: false, syncReport: null, syncBusy: false, mailTrack: (() => { try { return localStorage.getItem("mailTrack") === "1"; } catch (_) { return false; } })(), creating: "", previewOut: false, lessor: {}, peek: null, peekOut: false, build: "", stale: false, docBare: (() => { try { return localStorage.getItem("docBare") === "1"; } catch (_) { return false; } })(),
   deals: [],
@@ -1579,11 +1580,12 @@ function route() {
   const h = (location.hash || "#affaires").slice(1);
   if (h.startsWith("affaire-")) return { name: "affaire", id: h.slice(8) };
   if (h.startsWith("contact-")) return { name: "contact", id: h.slice(8) };
+  if (h.startsWith("audit-")) return { name: "auditdeal", id: h.slice(6) };
   if (h.startsWith("connexion")) return { name: "connexion" };
   if (h.startsWith("reglages-")) return { name: "reglages", tab: h.slice(9) };
   return { name: PAGES.includes(h) ? h : "affaires" };
 }
-const VIEWS = { affaire: (r) => viewAffaire(r.id), contact: (r) => viewContact(r.id), affaires: viewAffaires, reservations: viewReservations, contacts: viewContacts, documents: viewDocuments, messages: viewMessages, taches: viewTasks, statistiques: viewStats, reglages: viewSettings, openspace: viewOpenSpace, audit: viewAudit };
+const VIEWS = { affaire: (r) => viewAffaire(r.id), auditdeal: (r) => viewAuditDeal(r.id), contact: (r) => viewContact(r.id), affaires: viewAffaires, reservations: viewReservations, contacts: viewContacts, documents: viewDocuments, messages: viewMessages, taches: viewTasks, statistiques: viewStats, reglages: viewSettings, openspace: viewOpenSpace, audit: viewAudit };
 // The whole page is redrawn after each action. What is being typed lives in S (S.q, S.draft), so
 // a redraw never loses it, and the caret goes back where it was.
 let shownModal = null;
@@ -1597,7 +1599,7 @@ function render() {
   const a = document.activeElement, keep = a && a.id ? { id: a.id, start: a.selectionStart, end: a.selectionEnd } : null;
   const r = route();
   if (r.name === "connexion" || !S.user) { document.getElementById("app").className = "app"; document.getElementById("app").innerHTML = viewLogin(); shownModal = null; return; }
-  const active = r.name === "affaire" ? "affaires" : r.name === "contact" ? "contacts" : r.name;
+  const active = r.name === "affaire" ? "affaires" : r.name === "contact" ? "contacts" : r.name === "auditdeal" ? "audit" : r.name;
   // The page first: opening a conversation marks it read, and the rail counts what is unread.
   const body = VIEWS[r.name](r);
   document.getElementById("app").className = "app" + (S.railOpen ? " wide" : "");
@@ -1626,7 +1628,7 @@ function syncBank(d) {
   const say = (n, verb) => (n === 1 ? `1 paiement ${verb} par le relevé.` : `${n} paiements ${verb}s par le relevé.`);
   S.sync = matched || confirmed ? [matched ? say(matched, "retrouvé") : "", confirmed ? say(confirmed, "confirmé") : ""].join(" ").trim() : "Rien de nouveau sur le relevé.";
 }
-const SEL = ["go", "tab", "view", "edit", "a", "toggle", "pay", "hist", "comp", "done", "stage", "month", "doc", "jump", "pick", "folder", "dview", "day", "pm", "menu", "sort", "newday", "ext", "mtab", "ttab", "qdel", "pvdel", "rmdel", "unpin", "udel", "iedit", "src", "agent", "agent-open", "agent-run", "prop-ok", "prop-no", "tool", "kind", "calview", "real", "seemonth", "year", "ayear", "atab", "aopen", "aok", "bskip"].map((k) => `[data-${k}]`).join(",");
+const SEL = ["go", "apv", "tab", "view", "edit", "a", "toggle", "pay", "hist", "comp", "done", "stage", "month", "doc", "jump", "pick", "folder", "dview", "day", "pm", "menu", "sort", "newday", "ext", "mtab", "ttab", "qdel", "pvdel", "rmdel", "unpin", "udel", "iedit", "src", "agent", "agent-open", "agent-run", "prop-ok", "prop-no", "tool", "kind", "calview", "real", "seemonth", "year", "ayear", "atab", "aopen", "aok", "bskip"].map((k) => `[data-${k}]`).join(",");
 // Ask before anything that removes something. The action itself runs only on "confirm-yes".
 function ask(title, body, more, cta, run, link = null) { S.modal = "confirm"; S.confirm = { title, body, more, cta, run, link }; }
 function openLost() { S.modal = "lost"; S.modalErr = ""; S.draft = { "ls-reason": LOST[0] }; }
@@ -1961,6 +1963,7 @@ document.addEventListener("click", (e) => {
   if (ds.a === "sync" && d) syncBank(d);
   if (ds.iedit) S.invEdit = ds.iedit;
   if (ds.a === "inv-clear" && isAdmin()) { const n = S.invoices.length; ask("Vider le registre des factures ?", `Les ${n} facture${n > 1 ? "s" : ""} importée${n > 1 ? "s" : ""} et leurs rattachements faits à la main seront retirés de l'application. Rien ne change dans votre outil de facturation, ni dans les séjours.`, "", "Vider le registre", () => { S.invoices = []; S.lastInvoices = "jamais"; invCache = null; S.flash = { text: "Registre des factures vidé." }; render(); }); }
+  if (ds.apv !== undefined) { S.auditPrev = Number(ds.apv); render(); return; }
   if (ds.a === "sync-all") { S.deals.filter((x) => x.payments.length).forEach(syncBank); S.sync = ""; if (r.name === "reglages") S.flash = { text: "Relevé relu : les paiements retrouvés sont rapprochés." }; }
 
   /* Deal: quote and event sheet */
@@ -2180,7 +2183,7 @@ function viewAudit() {
         <span class="mini st ${LVL_TONE[a.worst]}">${LVL_LABEL[a.worst]}</span>
         <span class="acells">${AUDIT_CELLS.map(([k, l]) => `<i class="ac ${a.cells[k]}" title="${l}">${l}</i>`).join("")}</span>
         <span class="cell r"><small>${a.bad ? `${a.bad} bloquant${a.bad > 1 ? "s" : ""}` : ""}${a.bad && a.warn ? " · " : ""}${a.warn ? `${a.warn} à vérifier` : ""}${!a.bad && !a.warn ? "rien à traiter" : ""}</small><b class="num">${d.amount ? eur2(d.amount) : d.stage >= 4 && d.kind !== "Famille" ? "montant ?" : ""}</b></span>${ico(openRow ? "chev" : "right", "s")}</button>
-      ${openRow ? `<div class="abody">${auditItems(d, a)}<div class="afoot"><span class="hint">${d.mails?.threads ? `${d.mails.threads} conversation${d.mails.threads > 1 ? "s" : ""} Gmail, dernier échange le ${fr(d.mails.last)} · ` : ""}${d.docs.length} document${d.docs.length > 1 ? "s" : ""}</span><button class="btn alt sm" data-go="affaire-${d.id}">Ouvrir l'affaire</button></div></div>` : ""}</div>`; };
+      ${openRow ? `<div class="abody">${auditItems(d, a)}<div class="afoot"><span class="hint">${d.mails?.threads ? `${d.mails.threads} conversation${d.mails.threads > 1 ? "s" : ""} Gmail, dernier échange le ${fr(d.mails.last)} · ` : ""}${d.docs.length} document${d.docs.length > 1 ? "s" : ""}</span><span class="grow"></span><button class="btn alt sm" data-go="audit-${d.id}">Fiche complète</button><button class="btn alt sm" data-go="affaire-${d.id}">Ouvrir l'affaire</button></div></div>` : ""}</div>`; };
   const seg = `<div class="seg">${[...years, "all"].map((y) => `<button class="${yr === y ? "on" : ""}" data-ayear="${y}">${y === "all" ? "Tout" : y}</button>`).join("")}</div>`;
   const tabs = [["all", "Tous", all.length], ["bad", "Bloquants", n("bad")], ["warn", "À vérifier", n("warn")], ["ok", "OK", n("ok")]];
   // The audit is recomputed each time the page is drawn; what can be stale is what it reads. The button
@@ -2201,6 +2204,36 @@ function viewAudit() {
     ${!isAdmin() || !S.invoices.length ? "" : `<section class="blk"><h3 class="h flex">Factures sans séjour rattaché <span class="count num">${stray.length}</span><button class="link" data-go="reglages-factures">Les rattacher</button></h3>
       <p class="docnote">Factures du registre ${yr === "all" ? "" : "datées de " + yr + " "}qu'aucun séjour ne réclame : séjour d'une autre saison, prestation hors location, ou client écrit autrement.</p>
       <div class="list">${stray.map((i) => `<div class="er"><span class="grow"><b>N° ${esc(i.n)} · ${esc(i.who || "client non précisé")}</b><small class="num">${i.on ? fr(i.on) : "date inconnue"}${i.label ? " · " + esc(i.label) : ""}</small></span><span class="mini num">${eur2(i.ttc)}</span></div>`).join("") || `<span class="muted">Toutes les factures ont leur séjour.</span>`}</div></section>`}</div>`;
+}
+// The whole file of one stay: its money line by line, the bank lines that belong to it, its invoices, its
+// documents with a preview, its agreement, its mail and its remarks. The bank statement is private to the
+// administrator, so the page is drawn for the administrator only.
+function viewAuditDeal(id) {
+  const d = deal(id);
+  if (!d) return topbar("Audit", "", "audit", "") + `<div class="content"><p class="muted">Cette affaire n'existe plus.</p></div>`;
+  const a = auditDeal(d), lines = bankLinesFor(d, S.bankStatement), mine = invoiceMap().byDeal[d.id] ?? [], inc = income(d);
+  const rec = inc.filter((p) => p.status === "paid").reduce((s, p) => s + gotOf(p), 0), owed = inc.filter((p) => p.status === "due").reduce((s, p) => s + p.amount, 0);
+  const proof = (p) => { const m = matchPayment(p, S.bankStatement);
+    if (m.state === "matched") return `<span class="mini t-green">Relevé : ${fr(m.line.on)} · ${esc(m.line.label)}</span>`;
+    if (m.state === "due") return `<span class="mini">À venir${p.due ? " · échéance le " + fr(p.due) : ""}</span>`;
+    return `<span class="mini t-orange">Pas de ligne sur le relevé</span>`; };
+  const pays = inc.map((p) => `<div class="er"><span class="grow"><b>${esc(p.kind)}</b><small class="num">${p.status === "paid" ? "reçu le " + fr(p.paidOn ?? p.due) : "dû le " + fr(p.due)}</small></span>${proof(p)}<span class="mini num">${eur2(gotOf(p))}</span></div>`).join("");
+  const extracts = lines.map((t) => `<div class="er"><span class="grow"><b>${esc(t.label)}</b><small class="num">${fr(t.on)}</small></span><span class="mini num">${eur2(t.amount)}</span></div>`).join("");
+  const invs = mine.map((i) => `<div class="er"><span class="grow"><b>N° ${esc(i.n)}</b><small class="num">${i.on ? fr(i.on) : "date inconnue"}${i.label ? " · " + esc(i.label) : ""}</small></span><span class="mini num">${eur2(i.ttc)}</span></div>`).join("");
+  const pick = S.auditPrev != null ? d.docs[S.auditPrev] : null;
+  const docs = d.docs.map((x, i) => `<button class="drow ${S.auditPrev === i ? "on" : ""}" data-apv="${i}"><span class="grow"><b>${esc(x.t)}</b><small class="num">${esc(x.st ?? "")}${x.slot ? " · " + esc(x.slot) : ""}</small></span>${ico("right", "s")}</button>`).join("");
+  const contract = d.docs.find((x) => x.slot === "contrat");
+  const block = (title, body, empty) => `<section class="blk"><h3 class="h">${title}</h3>${body || `<p class="muted">${empty}</p>`}</section>`;
+  return topbar(esc(d.title), `<span class="mini st ${LVL_TONE[a.worst]}">${LVL_LABEL[a.worst]}</span>`, "audit", `${range(d.start, d.end)} · ${esc(d.status)} · contrat ${d.amount ? eur2(d.amount) : "montant inconnu"}`) + `<div class="content auditdeal">
+    <div class="kpis"><div class="card kpi"><span class="l">Contrat</span><span class="v num">${d.amount ? eur2(d.amount) : "?"}</span></div><div class="card kpi"><span class="l">Reçu</span><span class="v num">${eur2(rec)}</span></div><div class="card kpi"><span class="l">Reste dû</span><span class="v num">${eur2(owed)}</span></div></div>
+    ${block("Paiements", pays, "Aucun paiement prévu.")}
+    ${block("Extraits de compte", extracts, S.bankStatement.length ? "Aucune ligne du relevé ne concerne ce séjour." : "Importez le relevé bancaire dans les réglages.")}
+    ${block("Factures", invs, "Aucune facture rattachée à ce séjour dans le registre.")}
+    ${block("Documents", docs ? `<div class="docs">${docs}</div>${pick ? `<div class="apreview">${docBody(d, pick)}</div>` : `<p class="docnote">Choisissez un document pour l'afficher ici.</p>`}` : "", "Aucun document dans le dossier Drive.")}
+    ${block("Contrat", `<p class="docnote">${contract ? `Version : ${esc(contract.st ?? "non précisée")}. ` : "Aucun contrat dans le dossier. "}${d.signed ? `Signé le ${fr(d.signed)}.` : "Date de signature non relevée."}</p>`, "")}
+    ${block("Remarques", auditItems(d, a), "")}
+    ${mailsBlock(d)}
+  </div>`;
 }
 // The same remarks, on the deal page.
 function auditBlock(d) {
